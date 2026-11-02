@@ -1,5 +1,12 @@
 # Headless workflow invocation
 
+> **Direction (2026-11-02):** this `./run --workflow` contract belongs to the
+> current release. Generated projects are moving to plain `pi -p` invocation;
+> caller concerns (timeouts, cancellation, structured results, artifacts) move
+> to an optional caller-side adapter outside generated projects, and the runner
+> is removed only after its consumers (Revisor's MCP server) have moved. See
+> `docs/architecture-audit.md` §5 (R16).
+
 Generated projects run declared workflows with `./run --workflow <name>`.
 Repeat `--input key=value` to pass input data. `--timeout` accepts integer
 seconds, minutes or hours (`30m` by default); `--allow-concurrent` bypasses

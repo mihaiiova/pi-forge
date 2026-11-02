@@ -10,14 +10,24 @@ integrations, commands, workflows and permissions. It then keeps that agent
 working as your needs change.
 
 **The specialized agent is the product. Pi is its runtime.** Forge composes
-Pi's own resources and adds no runtime, workflow engine or scheduler of its
-own. A generated agent runs with Pi alone and does not need Forge running.
+Pi's own resources and adds no workflow engine or scheduler of its own. In
+this release a generated agent runs with Pi plus the Forge package it pins
+(which supplies memory, declared commands and approval gates), started through
+`./run`.
+
+> **Direction (2026-11-02).** Forge is becoming **Faur**, and generated
+> projects are becoming ordinary Pi projects that run with plain `pi`, with
+> Faur uninstalled. This README describes the current release.
+> See the [product direction](docs/product-direction.md) and the
+> [migration plan](docs/architecture-audit.md#5-runtime-dependencies-and-the-migration).
 
 - [Product direction](docs/product-direction.md): what Forge is, how to judge
   changes, and its non-goals. This is the authoritative document.
 - [Roadmap](docs/roadmap.md): the current audit, gaps, milestones and issues.
+- [AGENTS.md](AGENTS.md): engineering principles for anyone changing this
+  repository.
 
-> **Renamed in 1.0.0.** The repository is `mihaiiova/pi-forge`, the package
+> **Renamed in v0.20.0.** The repository is `mihaiiova/pi-forge`, the package
 > `pi-forge`, and `/forge` replaces `/agent-factory`, `/factory-update` and
 > `/factory-permission`. There is no migration: regenerate projects built with
 > the old names from their `.pi/system.yaml`.
@@ -282,6 +292,14 @@ not guarantee redaction of tool output, screenshots, logs or artifacts. Use only
 trusted agents and tools, and prefer a restricted test account. For Playwright,
 its `--secrets` option expects a dotenv file; environment inheritance alone
 does not automatically create that file or change its MCP configuration.
+
+A trusted run is not a **protected integration**, where selected secrets
+reach only one authorized tool and not Pi, other agents, other tools or other
+runs. Forge does not provide protected integrations: separate files, file
+modes, processes or path rules do not hide values from same-user code (see the
+[investigation](docs/protected-integration-investigation.md)). That boundary
+is deferred until an agent needs it, and will be claimed only with
+adversarial evidence.
 
 #### The Forge package: pin, update, roll back
 

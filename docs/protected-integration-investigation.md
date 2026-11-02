@@ -1,11 +1,15 @@
-# Protected integration boundary: investigation in progress (#56)
+# Protected integration boundary: investigation (#56, closed)
 
-**Direction changed:** the user chose the simpler trusted-run approach, where
-Pi and tools may access inherited credentials. See `README.md` for the current
-usage and security limits. The investigation below is retained as evidence; no
-protected backend was accepted or implemented, and it does not prove secrecy
-from same-user processes. GitHub issues #55–#58 record the approved change in
-direction; their original protected-boundary criteria are superseded, not met.
+**Status (2026-11-02):** investigation complete and closed; no protected
+backend was accepted or implemented. Forge uses **trusted-run credentials**:
+Pi, every agent, every tool and their subprocesses can access the run's
+credentials, so there is **no same-user confidentiality**. See the product
+direction §7 and `README.md` for the current limits. #55, #57 and #58 were
+closed as deferred, not as delivered guarantees. Their requirements are kept
+in one deferred successor issue, activated only when a reference agent needs
+a protected boundary; it must start from this evidence and prove an existing
+isolation mechanism adversarially before any implementation. Nothing below
+proves secrecy from same-user processes.
 
 ## Principals and trust boundaries
 

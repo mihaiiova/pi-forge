@@ -6,6 +6,12 @@ through `forge validate <dir>`. The model lives at
 `<dir>/.pi/system.yaml` and is the forge's source of truth for the generated
 project.
 
+> **Direction (2026-11-02):** `system.yaml` becomes Faur's design record.
+> Native Pi files become authoritative for execution, may be edited directly,
+> and are reconciled with this record when Faur is invoked. This document
+> describes the current release; the migration is staged in
+> `docs/architecture-audit.md` §5.
+
 ## 1. Schema v1
 
 Top-level keys (all others rejected):
