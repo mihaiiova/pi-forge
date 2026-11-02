@@ -13,7 +13,8 @@ architecture review is recorded in
 - **Shipped:** #25 and #41 (v0.19.0); #27 and #28 (v0.20.0); #34 and #32
   (v0.21.0); browsing without asking (v0.22.0); the discuss/apply/discard
   prompt (v0.23.0); permission guidance (v0.24.0); trusted-run credential
-  documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0).
+  documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
+  (v0.28.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
@@ -21,8 +22,7 @@ architecture review is recorded in
   (#59). The current release still pins the Forge package and requires
   `./run`; the migration is staged below.
 - **Next, in order:**
-  1. #66 (one plan/apply path). #65 (security and capability wording) is
-     done on master, unreleased.
+  1. #66 (one plan/apply path).
   2. Migration #59: #60 → #61 → #62 → #63 → #64, then #67 (rename to Faur).
   3. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   4. #68, the public-alpha gate (harness early, criteria pass as issues land).
@@ -361,6 +361,6 @@ workflow-invocation ─▶ run-index ─▶ acceptance-scenarios ─▶ scenario
 | [#69](https://github.com/mihaiiova/pi-forge/issues/69) | Reliability | Change the system's name and description through /faur |
 | [#70](https://github.com/mihaiiova/pi-forge/issues/70) | Deferred | Protected integrations for secret-consuming tools |
 
-Done: [#25](https://github.com/mihaiiova/pi-forge/issues/25) and [#41](https://github.com/mihaiiova/pi-forge/issues/41) (v0.19.0), [#27](https://github.com/mihaiiova/pi-forge/issues/27) and [#28](https://github.com/mihaiiova/pi-forge/issues/28) (v0.20.0), [#32](https://github.com/mihaiiova/pi-forge/issues/32) and [#34](https://github.com/mihaiiova/pi-forge/issues/34) (v0.21.0). [#33](https://github.com/mihaiiova/pi-forge/issues/33) (v0.25.0), [#49](https://github.com/mihaiiova/pi-forge/issues/49) and [#50](https://github.com/mihaiiova/pi-forge/issues/50) (v0.26.0), [#65](https://github.com/mihaiiova/pi-forge/issues/65) (master, unreleased). Closed without implementation: [#26](https://github.com/mihaiiova/pi-forge/issues/26) (migration bridge, not needed), [#36](https://github.com/mihaiiova/pi-forge/issues/36) (scheduler, decided), [#42](https://github.com/mihaiiova/pi-forge/issues/42) (findings filed), [#47](https://github.com/mihaiiova/pi-forge/issues/47) and [#53](https://github.com/mihaiiova/pi-forge/issues/53) (not planned), [#55](https://github.com/mihaiiova/pi-forge/issues/55), [#57](https://github.com/mihaiiova/pi-forge/issues/57) and [#58](https://github.com/mihaiiova/pi-forge/issues/58) (deferred to #70, not delivered), [#56](https://github.com/mihaiiova/pi-forge/issues/56) (investigation complete).
+Done: [#25](https://github.com/mihaiiova/pi-forge/issues/25) and [#41](https://github.com/mihaiiova/pi-forge/issues/41) (v0.19.0), [#27](https://github.com/mihaiiova/pi-forge/issues/27) and [#28](https://github.com/mihaiiova/pi-forge/issues/28) (v0.20.0), [#32](https://github.com/mihaiiova/pi-forge/issues/32) and [#34](https://github.com/mihaiiova/pi-forge/issues/34) (v0.21.0). [#33](https://github.com/mihaiiova/pi-forge/issues/33) (v0.25.0), [#49](https://github.com/mihaiiova/pi-forge/issues/49) and [#50](https://github.com/mihaiiova/pi-forge/issues/50) (v0.26.0), [#65](https://github.com/mihaiiova/pi-forge/issues/65) (v0.28.0). Closed without implementation: [#26](https://github.com/mihaiiova/pi-forge/issues/26) (migration bridge, not needed), [#36](https://github.com/mihaiiova/pi-forge/issues/36) (scheduler, decided), [#42](https://github.com/mihaiiova/pi-forge/issues/42) (findings filed), [#47](https://github.com/mihaiiova/pi-forge/issues/47) and [#53](https://github.com/mihaiiova/pi-forge/issues/53) (not planned), [#55](https://github.com/mihaiiova/pi-forge/issues/55), [#57](https://github.com/mihaiiova/pi-forge/issues/57) and [#58](https://github.com/mihaiiova/pi-forge/issues/58) (deferred to #70, not delivered), [#56](https://github.com/mihaiiova/pi-forge/issues/56) (investigation complete).
 
 **Next:** [#66](https://github.com/mihaiiova/pi-forge/issues/66), then [#60](https://github.com/mihaiiova/pi-forge/issues/60); the full order is in Status.
