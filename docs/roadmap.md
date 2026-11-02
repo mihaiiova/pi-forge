@@ -14,7 +14,7 @@ architecture review is recorded in
   (v0.21.0); browsing without asking (v0.22.0); the discuss/apply/discard
   prompt (v0.23.0); permission guidance (v0.24.0); trusted-run credential
   documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
-  (v0.28.0).
+  (v0.28.0); #66 (v0.29.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
@@ -22,13 +22,12 @@ architecture review is recorded in
   (#59). The current release still pins the Forge package and requires
   `./run`; the migration is staged below.
 - **Next, in order:**
-  1. #66 (one plan/apply path).
-  2. Migration #59: #60 → #61 → #62 → #63 → #64, then #67 (rename to Faur).
-  3. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
-  4. #68, the public-alpha gate (harness early, criteria pass as issues land).
-  5. Composition and evidence: #29, #30, #31, #35, #40.
-  6. When a reference agent needs them: #37, #38, #39, #51, #52, #69.
-  7. Deferred: #48 (compose an existing sandbox), #70 (protected
+  1. Migration #59: #60 → #61 → #62 → #63 → #64, then #67 (rename to Faur).
+  2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
+  3. #68, the public-alpha gate (harness early, criteria pass as issues land).
+  4. Composition and evidence: #29, #30, #31, #35, #40.
+  5. When a reference agent needs them: #37, #38, #39, #51, #52, #69.
+  6. Deferred: #48 (compose an existing sandbox), #70 (protected
      integrations).
 - **Known limitations (current release):**
   - A personal Forge install from a local checkout loads next to a project's
