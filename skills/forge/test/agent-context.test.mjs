@@ -50,7 +50,7 @@ test("each agent's section lists exactly what it has", () => {
   const lead = capabilitySection(model, 'lead');
   assert.match(lead, /- \*\*Built-in tools:\*\* read\n/);
   assert.match(lead, /`openseo` \(all tools; tools named `mcp__openseo__<tool>`, found with tool_search\) — SEO data; asks the user before: run_\*/);
-  assert.match(lead, /`github-issues` \(all tools; tools named `mcp__github_issues__<tool>`\) — asks the user before: issue_write/, 'includeTools are declared directly');
+  assert.match(lead, /`github-issues` \(only `mcp__github_issues__list_issues`, `mcp__github_issues__issue_write`\) — asks the user before: issue_write/, 'includeTools are declared directly');
   assert.match(lead, /`cli_create_issue` — Open an issue: `gh issue create --title \{title\}`; the user approves each run/);
   assert.match(lead, /\*\*Specialists\*\* \(delegate with the subagent tool\):\n  - `seo` — Finds search opportunities\n  - `quiet`/);
   assert.match(lead, /ask with request_permission/);
@@ -65,6 +65,32 @@ test("each agent's section lists exactly what it has", () => {
   assert.match(capabilitySection({ ...several, agents: [{ ...several.agents[0], tools: ['mcp:openseo/get_report', 'mcp:openseo'] }] }, 'seo'), /`openseo` \(all tools; /);
   assert.match(capabilitySection(model, 'quiet'), /- \*\*Built-in tools:\*\* none\n\nIf a task/);
   assert.equal(capabilitySection(model, 'nobody'), '');
+});
+
+test('CAPABILITIES.md lists exactly the MCP tools .pi/mcp.json exposes', () => {
+  const doc = { ...model, integrations: { ...model.integrations, mcp: [
+    { name: 'posthog', config: { url: 'https://mcp.posthog.com/mcp', includeTools: ['query', 'list_insights', 'delete_*'], excludeTools: ['delete_*'], approveTools: ['query'] } },
+    { name: 'openseo', config: { url: 'http://localhost:3002/mcp', excludeTools: ['drop_site'], approveTools: true } },
+    { name: 'plain', config: { url: 'http://localhost:3003/mcp' } },
+  ] } };
+  const { files } = generateProject(doc, {}, { piPackages: pkg.pi.packages });
+  const read = (path) => files.find((f) => f.path === path).content;
+  const servers = JSON.parse(read('.pi/mcp.json')).mcpServers;
+  const capabilities = read('.pi/CAPABILITIES.md');
+  const line = (name) => capabilities.split('\n').find((l) => l.startsWith(`  - \`${name}\` (`));
+  const tools = (name, exposure) => Object.entries(servers[name].toolExposure ?? {}).filter(([, e]) => e === exposure).map(([t]) => `\`mcp__${name}__${t}\``);
+
+  // includeTools: the direct tools, and nothing called "all tools".
+  assert.equal(servers.posthog.exposure, 'hidden');
+  assert.deepEqual(tools('posthog', 'direct'), ['`mcp__posthog__query`', '`mcp__posthog__list_insights`']);
+  assert.match(line('posthog'), new RegExp(`\\(only ${tools('posthog', 'direct').join(', ')}\\) — asks the user before: query$`));
+  assert.doesNotMatch(line('posthog'), /all tools|delete_/);
+  // excludeTools: every tool except the hidden ones; approveTools: true asks for all.
+  assert.deepEqual(tools('openseo', 'hidden'), ['`mcp__openseo__drop_site`']);
+  assert.match(line('openseo'), /\(all tools except `mcp__openseo__drop_site`; tools named `mcp__openseo__<tool>`, found with tool_search\) — asks the user before every tool$/);
+  // No filters: the whole server, deferred.
+  assert.equal(servers.plain.exposure, 'deferred');
+  assert.match(line('plain'), /\(all tools; tools named `mcp__plain__<tool>`, found with tool_search\)$/);
 });
 
 test('subagent files carry their section; the orchestrator file stays the authored prompt', () => {

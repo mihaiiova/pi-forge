@@ -44,7 +44,7 @@ you ──▶ /faur (builder, conversational)
           ▼
    <project>/.pi/system.yaml   compact desired state (schema 1)
    <project>/.pi/…             native Pi files: settings, agents, skills, mcp.json, prompts
-   <project>/run               isolated launcher (own Pi home and credentials)
+   <project>/run               launcher with its own Pi home and logins
    <project>/.forge/           build record, capability manifest, isolated Pi home
           │
           ▼
@@ -236,7 +236,9 @@ without a shell, with your own CLI logins. In a running system:
 ### Running and maintaining a generated system
 
 A generated project starts with `./run`, which isolates it from your global Pi
-configuration (own config dir, own credentials: `/login` once per project).
+configuration (own config dir, own Pi logins: `/login` once per project). Your
+shell environment, including any credentials in it, is still inherited, and
+`./run` is not an OS sandbox.
 On interactive startup Forge warns about declared model providers without
 configured credentials. For example, use `/login deepseek` in `./run` or set
 `DEEPSEEK_API_KEY` before starting it. Run `./run` once to install the pinned

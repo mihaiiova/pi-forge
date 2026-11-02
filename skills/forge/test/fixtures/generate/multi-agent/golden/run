@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Hermetic runtime launcher for a generated Pi agent system.
+# Runtime launcher for a generated Pi agent system.
 # Resolves the project root from this script's own location, then cd's into
 # it so project .pi/ resources are discovered regardless of the caller's
-# working directory. Gives the system its own Pi config dir so the host's
-# global skills/MCP/extensions/instructions/credentials never leak in.
+# working directory. Gives the system its own Pi config dir (settings,
+# logins, packages, MCP servers, extensions, instructions). The caller's
+# environment, including credentials, is inherited. Not an OS sandbox.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

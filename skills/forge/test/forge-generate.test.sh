@@ -24,7 +24,15 @@ fi
 pass "forge generate --dry-run exits 0 and writes nothing"
 
 # ── generate materializes the single-agent tree ─────────────────
-node "$forge" generate "$work" >/dev/null
+first="$(node "$forge" generate "$work" 2>&1 >/dev/null)"
+grep -q 'login files are not inherited' <<<"$first" || fail "first build should explain Pi logins"
+grep -q 'no-context-files' <<<"$first" && fail "context-file warning without a context file"
+echo '# notes' > "$work/AGENTS.md"
+again="$(node "$forge" modify "$work" 2>&1 >/dev/null || true)"
+grep -q 'login files' <<<"$again" && fail "login warning repeated on a rebuild"
+grep -q 'so AGENTS.md will not load' <<<"$again" || fail "skipped AGENTS.md not reported"
+rm "$work/AGENTS.md"
+pass "generation warnings appear only when they apply"
 for f in .pi/settings.json .pi/mcp.json .pi/APPEND_SYSTEM.md README.md .gitignore .env.example data/knowledge/.gitkeep; do
   [[ -f "$work/$f" ]] || fail "generate did not create $f"
 done
@@ -109,7 +117,9 @@ node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf-8"))' \
 grep -q '"openseo"' "$vs/.pi/mcp.json" || fail "valid-seo mcp.json missing openseo"
 grep -q '"publish_\*": "hidden"' "$vs/.pi/mcp.json" || fail "valid-seo hidden tools missing from toolExposure"
 grep -q 'publish_\*' "$vs/.pi/mcp.json" || fail "valid-seo hide publish_* missing"
-grep -q '### Enforced (cannot be bypassed)' "$vs/README.md" || fail "README missing enforced marker"
+grep -q "### Enforced by Pi's tool layer" "$vs/README.md" || fail "README missing enforced marker"
+grep -q 'An agent with `bash` or a shell-like command can still reach' "$vs/README.md" || fail "README omits what tool-layer enforcement does not cover"
+grep -qi 'cannot be bypassed\|credentials are not inherited' "$vs/README.md" "$vs/run" && fail "generated text overstates enforcement"
 grep -q '### Advisory (guidance — not enforced)' "$vs/README.md" || fail "README missing advisory marker"
 rm -rf "$vs"
 pass "forge generate materializes MCP config and enforced/advisory policy"

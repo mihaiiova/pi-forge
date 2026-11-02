@@ -303,7 +303,7 @@ function policySection(model) {
   const enforced = Array.isArray(policies.enforced) ? policies.enforced : [];
   const advisory = advisoryText(policies);
 
-  const lines = ["## Policy", "", "### Enforced (cannot be bypassed)", ""];
+  const lines = ["## Policy", "", "### Enforced by Pi's tool layer", ""];
   const enforcedLines = [];
   for (const rule of enforced) {
     if (!isPlainObject(rule)) continue;
@@ -315,6 +315,8 @@ function policySection(model) {
     }
   }
   lines.push(...(enforcedLines.length ? enforcedLines : ["None declared."]));
+  // A tool allowlist limits which tools an agent calls, not what a shell reaches.
+  if (enforcedLines.length) lines.push("", "An agent with `bash` or a shell-like command can still reach anything your user account can.");
   lines.push("", "### Advisory (guidance — not enforced)", "");
   lines.push(...(advisory.length ? advisory.map((line) => `- ${line}`) : ["None declared."]));
   lines.push("");
@@ -332,9 +334,10 @@ function readmeBody(model) {
     "## Run",
     "",
     "The generated `./run` launcher is the entry point. It starts Pi with the",
-    "project's own isolated config directory so your global Pi settings, MCP",
-    "servers, extensions and credentials are not inherited. Skills in the shared",
-    "Agent Skills folder (`~/.agents/skills/`) do load, for the orchestrator.",
+    "project's own Pi configuration and logins, without your global Pi settings,",
+    "MCP servers or extensions. Your environment, including any credentials in",
+    "it, is inherited, and it is not an OS sandbox. Skills in the shared Agent",
+    "Skills folder (`~/.agents/skills/`) do load, for the orchestrator.",
     "",
     "```sh",
     "./run             # interactive",
@@ -511,14 +514,16 @@ export function managedPaths(model) {
  *
  * @param {object} model the validated `system.yaml` document.
  * @param {Record<string, string>} [existingFiles] project-relative path → text.
- * @param {{ piPackages?: string[] }} [opts] extra deterministic inputs (pinned
- *   dependency list for `.pi/settings.json` `packages`).
+ * @param {{ piPackages?: string[], contextFiles?: string[] }} [opts] extra
+ *   deterministic inputs: the pinned dependency list for `.pi/settings.json`
+ *   `packages`, and the AGENTS.md/CLAUDE.md files the launcher would skip.
  * @returns {{ files: Array<{ path: string, content: string, action: string, desired?: string }>, warnings: string[], errors: string[] }}
  */
 export function generateProject(model, existingFiles = {}, opts = {}) {
   const existing = isPlainObject(existingFiles) ? existingFiles : {};
   const piPackages = isPlainObject(opts) ? opts.piPackages : undefined;
-  const plan = buildRuntimePlan(model, { piPackages });
+  const contextFiles = isPlainObject(opts) && Array.isArray(opts.contextFiles) ? opts.contextFiles : [];
+  const plan = buildRuntimePlan(model, { piPackages, contextFiles, firstBuild: existing["run"] === undefined });
   const prompt = orchestratorBody(model);
   const subagentConfig = backgroundAgents(model).length > 0
     ? [derivedFile(SUBAGENT_CONFIG, buildSubagentConfig(existing[SUBAGENT_CONFIG]), existing[SUBAGENT_CONFIG])]

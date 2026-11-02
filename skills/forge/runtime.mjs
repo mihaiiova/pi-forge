@@ -75,11 +75,12 @@ export function launcherScript(names = [], workflows = [], lead = '', projectCon
   const manifest = Buffer.from(JSON.stringify(workflows.map(w => ({ ...w, lead })))).toString('base64');
   return [
     "#!/usr/bin/env bash",
-    "# Hermetic runtime launcher for a generated Pi agent system.",
+    "# Runtime launcher for a generated Pi agent system.",
     "# Resolves the project root from this script's own location, then cd's into",
     "# it so project .pi/ resources are discovered regardless of the caller's",
-    "# working directory. Gives the system its own Pi config dir so the host's",
-    "# global skills/MCP/extensions/instructions/credentials never leak in.",
+    "# working directory. Gives the system its own Pi config dir (settings,",
+    "# logins, packages, MCP servers, extensions, instructions). The caller's",
+    "# environment, including credentials, is inherited. Not an OS sandbox.",
     "set -euo pipefail",
     "",
     'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
@@ -128,11 +129,14 @@ export function launcherScript(names = [], workflows = [], lead = '', projectCon
 
 /**
  * @param {object} model the validated `system.yaml` document.
- * @param {object} [opts] `{ piPackages?: string[] }` — the forge's `pi.packages`.
+ * @param {object} [opts] `{ piPackages?: string[], firstBuild?: boolean, contextFiles?: string[] }`:
+ *   the forge's `pi.packages`; whether the project has no launcher yet (warn
+ *   about logins once); context files Pi would load here but the launcher skips.
  * @returns {{ agentDir: string, packages: string[], launcherScript: string, warnings: string[], errors: string[] }}
  */
 export function buildRuntimePlan(model, opts = {}) {
   const piPackages = opts?.piPackages;
+  const contextFiles = Array.isArray(opts?.contextFiles) ? opts.contextFiles : [];
   const declared = declaredPackages(model);
   const { packages, errors } = runtimePackages(piPackages, declared);
 
@@ -141,10 +145,12 @@ export function buildRuntimePlan(model, opts = {}) {
     packages,
     launcherScript: launcherScript(envNames(model), model.workflows ?? [], model.orchestrator?.name ?? '', model.orchestrator?.projectContext ?? []),
     warnings: [
-      "Pi login files are not inherited from the host; use /login or export a provider key. The caller's environment is inherited by the run and its tools.",
-      model.orchestrator?.projectContext?.length
-        ? "the launcher disables automatic context discovery; only explicitly listed project files are appended. They can contain untrusted instructions; projectContext enables edit for all accessible files."
-        : "the launcher disables AGENTS.md/CLAUDE.md discovery with --no-context-files; declare project instructions in system.yaml / APPEND_SYSTEM.md. Inherited subagent project context is an explicit opt-in.",
+      ...(opts?.firstBuild ? ["Pi login files are not inherited from the host; use /login or export a provider key. The caller's environment is inherited by the run and its tools."] : []),
+      ...(model.orchestrator?.projectContext?.length
+        ? ["the launcher disables automatic context discovery; only explicitly listed project files are appended. They can contain untrusted instructions; projectContext enables edit for all accessible files."]
+        : contextFiles.length
+          ? [`the launcher disables AGENTS.md/CLAUDE.md discovery with --no-context-files, so ${contextFiles.join(", ")} will not load; list a project file in orchestrator.projectContext, or move its instructions into the prompt.`]
+          : []),
     ],
     errors,
   };

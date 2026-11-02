@@ -1,4 +1,4 @@
-<!-- forge:generated v1 sha256=1b6ef3bdfe20acf40540a77e45b821be5a4bf8621bd93b7b4b1e1ae1cb1ceeae -->
+<!-- forge:generated v1 sha256=2dacd797ee7eb41ca536db8202044b02f6c7367a2873449880efc1c007cab974 -->
 # seo-agent-system
 
 SEO analysis + article drafting with specialist subagents
@@ -6,9 +6,10 @@ SEO analysis + article drafting with specialist subagents
 ## Run
 
 The generated `./run` launcher is the entry point. It starts Pi with the
-project's own isolated config directory so your global Pi settings, MCP
-servers, extensions and credentials are not inherited. Skills in the shared
-Agent Skills folder (`~/.agents/skills/`) do load, for the orchestrator.
+project's own Pi configuration and logins, without your global Pi settings,
+MCP servers or extensions. Your environment, including any credentials in
+it, is inherited, and it is not an OS sandbox. Skills in the shared Agent
+Skills folder (`~/.agents/skills/`) do load, for the orchestrator.
 
 ```sh
 ./run             # interactive
@@ -56,7 +57,7 @@ and adds, removes or reviews them; agents ask for a command they need with
 
 ## Policy
 
-### Enforced (cannot be bypassed)
+### Enforced by Pi's tool layer
 
 None declared.
 

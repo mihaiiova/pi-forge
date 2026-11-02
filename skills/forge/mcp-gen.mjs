@@ -55,6 +55,22 @@ export function mcpApprovals(model) {
 }
 
 /**
+ * What a server exposes: tools nobody may use, and the tools declared directly
+ * (null when the whole server is deferred). Shared by `.pi/mcp.json` and the
+ * capability section so the two cannot disagree.
+ * @returns {{ hidden: string[], included: string[] | null }}
+ */
+export function mcpExposure(entry, policies) {
+  const config = isPlainObject(entry?.config) ? entry.config : {};
+  const hidden = [...new Set([...strings(config.excludeTools), ...hiddenMcpTools(entry?.name, policies)])];
+  // Exact names win over patterns in Pi, so an included name a hidden
+  // pattern covers is left out rather than listed.
+  const included = config.includeTools === undefined ? null
+    : strings(config.includeTools).filter((tool) => !hidden.some((h) => glob(h).test(tool)));
+  return { hidden, included };
+}
+
+/**
  * @param {Array} mcpList the validated `integrations.mcp[]` entries.
  * @param {object|undefined} policies the validated `policies` block.
  * @returns {Record<string, object>} the `mcpServers` map, strictly declared.
@@ -65,13 +81,10 @@ export function mcpFromIntegrations(mcpList, policies) {
     if (!isPlainObject(entry) || !isNonEmptyString(entry.name)) continue;
     const config = isPlainObject(entry.config) ? entry.config : {};
     const server = Object.fromEntries(Object.entries(config).filter(([key]) => !FORGE_KEYS.includes(key)));
-    const hidden = [...new Set([...strings(config.excludeTools), ...hiddenMcpTools(entry.name, policies)])];
-    // Exact names win over patterns in Pi, so an included name a hidden
-    // pattern covers is left out rather than listed.
-    const included = strings(config.includeTools).filter((tool) => !hidden.some((h) => glob(h).test(tool)));
+    const { hidden, included } = mcpExposure(entry, policies);
     const toolExposure = Object.fromEntries(hidden.map((tool) => [tool, "hidden"]));
-    for (const tool of included) toolExposure[tool] ??= "direct";
-    server.exposure = config.includeTools !== undefined ? "hidden" : "deferred";
+    for (const tool of included ?? []) toolExposure[tool] ??= "direct";
+    server.exposure = included ? "hidden" : "deferred";
     if (Object.keys(toolExposure).length) server.toolExposure = toolExposure;
     servers[entry.name] = server;
   }

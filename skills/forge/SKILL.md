@@ -216,7 +216,9 @@ first; the user decides.
   the generated launcher (`./run -p "<workflow input>"`). The launcher is the
   canonical entry point and runs the system under its own isolated Pi config
   directory (`PI_CODING_AGENT_DIR=.forge/pi-home`), so the host's global
-  Pi settings/MCP/extensions/credentials are not inherited. Skills in the
+  Pi settings, logins, MCP servers and extensions are not loaded. The
+  caller's environment, including credentials, is inherited, and the launcher
+  is not an OS sandbox. Skills in the
   shared Agent Skills folder `~/.agents/skills/` (and `.agents/skills/` in the
   project and its parents) do load for the orchestrator, by design;
   subagents get only the skills listed for them.
@@ -243,10 +245,13 @@ Acceptance scenarios for this conversational behavior:
 
 ## Policy and ownership contract
 
-- **Enforced (cannot be bypassed):** agent `tools:` allowlists, MCP
-  `excludeTools` and `approveTools` — a child agent literally lacks unlisted
-  tools, a hidden MCP tool is registered but unreachable, and each call to an
-  `approveTools` tool asks the user first (and fails without a UI).
+- **Enforced at the tool layer:** agent `tools:` allowlists (pi-subagents),
+  MCP `excludeTools` (Pi's MCP exposure) and `approveTools` (the agent
+  runtime's `tool_call` gate) — a child agent literally lacks unlisted tools,
+  a hidden MCP tool is registered but unreachable, and each call to an
+  `approveTools` tool asks the user first (and fails without a UI). These
+  limit which tools an agent calls, not what those tools reach: an agent
+  with `bash` or a shell-like command reaches anything the user can.
 - **Advisory (guidance only):** README and workflow/skill prose stating approval
   requirements (e.g. "publishing requires human confirmation"). Prose is never
   mistaken for enforcement.

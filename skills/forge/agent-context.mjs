@@ -9,7 +9,7 @@
 import { advisoryText, enforcedAgentTools } from "./policy.mjs";
 import { cliEntries, cliRef, cliToolName, formatCommand } from "./cli-tools.mjs";
 import { askingReach, leadTools } from "./asking.mjs";
-import { mcpToolName } from "./mcp-gen.mjs";
+import { mcpExposure, mcpToolName } from "./mcp-gen.mjs";
 import { orchestratorTools } from './project-context.mjs';
 
 const BUILTIN = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
@@ -64,14 +64,21 @@ export function capabilitySection(model, name) {
       selected.set(server, !tool || prior === null ? null : [...(prior ?? []), tool]);
     }
   }
-  const mcp = [...selected].map(([name, only]) => ({ name, only, s: servers.find((s) => s.name === name), scope: only ? `only ${only.join(", ")}` : "all tools" }));
+  // A whole-server selection reaches what .pi/mcp.json exposes, not every tool.
+  const mcp = [...selected].map(([name, picked]) => {
+    const s = servers.find((s) => s.name === name);
+    const { hidden, included } = mcpExposure(s ?? { name }, model?.policies);
+    return { name, s, hidden: picked ? [] : hidden, only: picked ?? included };
+  });
   if (mcp.length) {
     lines.push("- **MCP servers:**");
     for (const m of mcp) {
       const about = describeServer(m.s, m.only);
       // Without includeTools the lead's server is deferred: tool_search loads its tools.
       const search = isLead && m.s?.config?.includeTools === undefined ? ", found with tool_search" : "";
-      const scope = m.only ? `only ${m.only.map((name) => `\`${mcpToolName(m.name, name)}\``).join(", ")}` : `all tools; tools named \`${mcpToolName(m.name, "")}<tool>\``;
+      const code = (tool) => `\`${mcpToolName(m.name, tool)}\``;
+      const except = m.hidden.length ? ` except ${m.hidden.map(code).join(", ")}` : "";
+      const scope = m.only ? (m.only.length ? `only ${m.only.map(code).join(", ")}` : "no tools") : `all tools${except}; tools named \`${mcpToolName(m.name, "")}<tool>\``;
       lines.push(`  - \`${m.name}\` (${scope}${search})${about ? ` — ${about}` : ""}`);
     }
   }

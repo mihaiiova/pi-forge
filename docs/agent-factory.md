@@ -6,7 +6,10 @@
 > In particular, these MVP assumptions are revised there: "scheduling deferred"
 > (decision 2) is now Milestone 2, and capability discovery (§C.8) now also
 > covers Pi packages and extensions. Implementation detail below remains
-> accurate where the status note says so.
+> accurate where the status note says so. Its security wording is not:
+> `./run` is not hermetic (the caller's environment, including credentials,
+> is inherited), and enforced policies are tool-layer limits that `bash` or a
+> shell-like command can get around (#65).
 
 > Status: **implemented**. The `factory` CLI (`validate | generate | discover |
 > modify | import`), the `agent-factory` builder skill, and the hermetic

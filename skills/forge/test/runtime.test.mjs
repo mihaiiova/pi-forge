@@ -10,7 +10,18 @@ test("buildRuntimePlan derives the isolated agent dir, packages, and warnings", 
   assert.equal(plan.agentDir, ".forge/pi-home");
   assert.deepEqual(plan.packages, [expectedForgePin, "npm:pi-subagents@0.83.1", "npm:foo@1.0.0"]);
   assert.deepEqual(plan.errors, []);
-  assert.ok(plan.warnings.length >= 2, "warns about auth + parent context files");
+  assert.deepEqual(plan.warnings, [], "no warning that does not apply");
+});
+
+test("buildRuntimePlan warns about logins on the first build and skipped context files only when there are some", () => {
+  const first = buildRuntimePlan({}, { piPackages: PI_PACKAGES, firstBuild: true });
+  assert.equal(first.warnings.length, 1);
+  assert.match(first.warnings[0], /login files are not inherited.*environment is inherited/);
+  const skipped = buildRuntimePlan({}, { piPackages: PI_PACKAGES, contextFiles: ["AGENTS.md", "../CLAUDE.md"] });
+  assert.equal(skipped.warnings.length, 1);
+  assert.match(skipped.warnings[0], /AGENTS\.md, \.\.\/CLAUDE\.md will not load/);
+  const listed = buildRuntimePlan({ orchestrator: { projectContext: ["AGENTS.md"] } }, { piPackages: PI_PACKAGES });
+  assert.match(listed.warnings.join("\n"), /untrusted instructions/, "projectContext always carries its warning");
 });
 
 test("buildRuntimePlan propagates dependency errors", () => {

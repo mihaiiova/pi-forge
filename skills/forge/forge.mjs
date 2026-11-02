@@ -222,6 +222,16 @@ function applyVendorPlan(dir, copies) {
   }
 }
 
+/** Context files plain Pi would load from the project and its parents (one per directory), which `./run` skips. */
+function skippedContextFiles(dir) {
+  const found = [];
+  for (let d = resolve(dir); ; d = dirname(d)) {
+    const file = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"].map((name) => join(d, name)).find((path) => existsSync(path));
+    if (file) found.push(relative(resolve(dir), file));
+    if (dirname(d) === d) return found;
+  }
+}
+
 function readExisting(dir, model) {
   const existing = {};
   for (const rel of managedPaths(model)) {
@@ -431,7 +441,7 @@ function runGenerate(dir, dryRun) {
   }
 
   const existing = readExisting(dir, normalized);
-  const { files, warnings, errors: depErrors } = generateProject(normalized, existing, { piPackages: readPiPackages() });
+  const { files, warnings, errors: depErrors } = generateProject(normalized, existing, { piPackages: readPiPackages(), contextFiles: skippedContextFiles(dir) });
   const vendor = vendorPlan(dir, normalized);
   if (failOnErrors([...depErrors, ...vendor.errors])) return;
   printWarnings(warnings);
@@ -554,7 +564,7 @@ async function runModify(dir, dryRun, yes) {
   }
 
   const existing = readExisting(dir, normalized);
-  const { files, conflicts, warnings, errors: depErrors } = modifyPlan(normalized, existing, { piPackages: readPiPackages() });
+  const { files, conflicts, warnings, errors: depErrors } = modifyPlan(normalized, existing, { piPackages: readPiPackages(), contextFiles: skippedContextFiles(dir) });
   const vendor = vendorPlan(dir, normalized);
   if (failOnErrors([...depErrors, ...vendor.errors])) return;
   printWarnings(warnings);
