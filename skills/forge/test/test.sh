@@ -66,7 +66,7 @@ else
   fail "forge-import.test.sh"
 fi
 
-# ── hermetic runtime isolation harness (Tests A/B/C) ────────────
+# ── runtime isolation harness (Tests A/B/C) ────────────
 if bash "$here/isolation.test.sh"; then
   pass "isolation.test.sh"
 else

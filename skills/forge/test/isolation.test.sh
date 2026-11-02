@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic runtime isolation harness.
+# Runtime isolation harness.
 #
 # Three distinct categories, named to state exactly what each proves:
 #   A. Deterministic generation  — file-level checks; no Pi, network, or model.
