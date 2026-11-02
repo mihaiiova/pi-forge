@@ -1,6 +1,6 @@
 {
   "name": "pi-forge",
-  "version": "0.26.0",
+  "version": "0.26.1",
   "private": true,
   "dependencies": {
     "yaml": "2.8.3"
