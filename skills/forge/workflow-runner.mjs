@@ -51,7 +51,7 @@ try {
   const secrets = [...new Set(integrationSecrets(model))].flatMap(path => {
     const problem = secretFileProblem(process.cwd(), path);
     if (!problem) return [];
-    const fix = problem === 'missing' ? 'run forge generate <project-dir> to create the file' : 'fix the file safety or git-ignore issue, then run forge check-agent <project-dir> or /forge check';
+    const fix = problem === 'missing' ? 'run forge generate <project-dir> to create the file' : 'fix the file safety or git-ignore issue, then run forge check-agent <project-dir> or /faur check';
     return [`Integration secretsFile ${path}: ${problem}; fix: ${fix}`];
   });
   if (missing.length || secrets.length) {

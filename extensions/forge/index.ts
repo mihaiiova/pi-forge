@@ -1,4 +1,4 @@
-/** /forge designs a new agent outside a Forge project and revises the current one inside it. */
+/** /faur designs a new agent outside a Forge project and revises the current one inside it. */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Type } from 'typebox';
@@ -6,7 +6,7 @@ import { registerMaintenance } from '../../skills/forge/maintenance-extension.mj
 import { registerAgent } from '../../skills/forge/agent-extension.mjs';
 import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 export default function (pi: ExtensionAPI) {
-  // Trusted generated projects also load their runtime and the project half of /forge.
+  // Trusted generated projects also load their runtime and the project half of /faur.
   let project: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
   pi.on('session_start', (_event, ctx) => {
     project = undefined;
@@ -14,13 +14,13 @@ export default function (pi: ExtensionAPI) {
     if (process.env.PI_SUBAGENT_CHILD === '1') registerAgent(pi, Type, ctx.cwd);
     else project = registerMaintenance(pi, Type, ctx.cwd);
   });
-  pi.registerCommand('forge', {
+  pi.registerCommand('faur', {
     description: 'Design or revise a Pi agent: [request] | check | status | sync | env [set NAME] | permissions [add|remove|review]',
     handler: async (args, ctx) => {
       if (project) return project(args, ctx);
       const request = (args ?? '').trim();
       if (/^(check|status|sync|env|permissions?)(\s|$)/.test(request)) {
-        const message = 'This folder is not a Forge project (no trusted .pi/system.yaml). Describe an outcome with /forge to design one, or start an existing project with its ./run.';
+        const message = 'This folder is not a Forge project (no trusted .pi/system.yaml). Describe an outcome with /faur to design one, or start an existing project with its ./run.';
         if (ctx.hasUI) ctx.ui.notify(message, 'warning'); else process.stderr.write(`Forge (warning): ${message}\n`);
         return;
       }

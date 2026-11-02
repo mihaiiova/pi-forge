@@ -198,7 +198,7 @@ Goes next. Decided in the 2026-11-02 review; staged in
   [#62](https://github.com/mihaiiova/pi-forge/issues/62) plain `pi` launch, optional isolation script, `pi -p` →
   [#63](https://github.com/mihaiiova/pi-forge/issues/63) approvals and commands without the Faur runtime →
   [#64](https://github.com/mihaiiova/pi-forge/issues/64) Faur as maker, design record and drift reconcile.
-- [#67](https://github.com/mihaiiova/pi-forge/issues/67): rename to Faur, with or after #64.
+- [#67](https://github.com/mihaiiova/pi-forge/issues/67): rename to Faur, with or after #64. The command became `/faur` in v0.27.0; the repository, package, CLI and folders follow.
 - [#68](https://github.com/mihaiiova/pi-forge/issues/68): public-alpha acceptance tests (criteria above).
 
 ### Reliability from the first agent (#42), re-specified for plain Pi
@@ -344,7 +344,7 @@ workflow-invocation ─▶ run-index ─▶ acceptance-scenarios ─▶ scenario
 | [#48](https://github.com/mihaiiova/pi-forge/issues/48) | Deferred | Compose an existing sandbox for agents that need containment |
 | [#49](https://github.com/mihaiiova/pi-forge/issues/49) | First run (#42) | Declare and run setup steps for integrations |
 | [#50](https://github.com/mihaiiova/pi-forge/issues/50) | First run (#42) | Guide the first run of a generated project |
-| [#51](https://github.com/mihaiiova/pi-forge/issues/51) | First run (#42) | Let /forge change a project's own code |
+| [#51](https://github.com/mihaiiova/pi-forge/issues/51) | First run (#42) | Let /faur change a project's own code |
 | [#52](https://github.com/mihaiiova/pi-forge/issues/52) | First run (#42) | Flag skills that can't work in unattended workflows |
 | [#53](https://github.com/mihaiiova/pi-forge/issues/53) | First run (#42) | Choose a separate model for /forge |
 | [#54](https://github.com/mihaiiova/pi-forge/issues/54) | First run (#42) | Read without asking, and keep secret files out of reach |
@@ -358,7 +358,7 @@ workflow-invocation ─▶ run-index ─▶ acceptance-scenarios ─▶ scenario
 | [#66](https://github.com/mihaiiova/pi-forge/issues/66) | A | One plan/apply path for generate, modify and change |
 | [#67](https://github.com/mihaiiova/pi-forge/issues/67) | A | Rename Pi Forge to Faur |
 | [#68](https://github.com/mihaiiova/pi-forge/issues/68) | A | Public-alpha architecture acceptance tests |
-| [#69](https://github.com/mihaiiova/pi-forge/issues/69) | Reliability | Change the system's name and description through /forge |
+| [#69](https://github.com/mihaiiova/pi-forge/issues/69) | Reliability | Change the system's name and description through /faur |
 | [#70](https://github.com/mihaiiova/pi-forge/issues/70) | Deferred | Protected integrations for secret-consuming tools |
 
 Done: [#25](https://github.com/mihaiiova/pi-forge/issues/25) and [#41](https://github.com/mihaiiova/pi-forge/issues/41) (v0.19.0), [#27](https://github.com/mihaiiova/pi-forge/issues/27) and [#28](https://github.com/mihaiiova/pi-forge/issues/28) (v0.20.0), [#32](https://github.com/mihaiiova/pi-forge/issues/32) and [#34](https://github.com/mihaiiova/pi-forge/issues/34) (v0.21.0). [#33](https://github.com/mihaiiova/pi-forge/issues/33) (v0.25.0), [#49](https://github.com/mihaiiova/pi-forge/issues/49) and [#50](https://github.com/mihaiiova/pi-forge/issues/50) (v0.26.0). Closed without implementation: [#26](https://github.com/mihaiiova/pi-forge/issues/26) (migration bridge, not needed), [#36](https://github.com/mihaiiova/pi-forge/issues/36) (scheduler, decided), [#42](https://github.com/mihaiiova/pi-forge/issues/42) (findings filed), [#47](https://github.com/mihaiiova/pi-forge/issues/47) and [#53](https://github.com/mihaiiova/pi-forge/issues/53) (not planned), [#55](https://github.com/mihaiiova/pi-forge/issues/55), [#57](https://github.com/mihaiiova/pi-forge/issues/57) and [#58](https://github.com/mihaiiova/pi-forge/issues/58) (deferred to #70, not delivered), [#56](https://github.com/mihaiiova/pi-forge/issues/56) (investigation complete).

@@ -51,7 +51,7 @@ Project-owned code in C that Faur does not generate: `tools/revisor-exec.mjs`
 | Dependency | A | B | C | Needed by A? |
 |---|---|---|---|---|
 | Pi (`pi` on PATH) | required | required | required | yes |
-| Faur package, pinned (`git:…/pi-forge@v0.26.0`) | required | required | required | **no** — A uses none of approvals, commands, workflows. It gets `memory`, `request_permission`, the MCP gate (inactive), `/forge` |
+| Faur package, pinned (`git:…/pi-forge@v0.26.0`) | required | required | required | **no** — A uses none of approvals, commands, workflows. It gets `memory`, `request_permission`, the MCP gate (inactive), `/faur` |
 | `npm:pi-subagents@0.83.1` | required | required | required | **no** — A has no specialists (`deps.mjs:21` always adds it) |
 | `npm:pi-web-access@0.27.0` | — | declared | — | — |
 | Remote MCP servers + tokens in `.env` | — | required | — | — |
@@ -78,7 +78,7 @@ All three share one path:
    start.
 3. The Faur extension, seeing a trusted `.pi/system.yaml`, parses and
    validates it and registers: `memory`, MCP boundary gate, declared command
-   tools, `request_permission`, credential notice, `/forge` maintenance and
+   tools, `request_permission`, credential notice, `/faur` maintenance and
    `forge_plan`.
 4. Specialists (B, C) run through `pi-subagents` in the background
    (`async: true`, `forceTopLevelAsync`), each loading the Faur runtime again

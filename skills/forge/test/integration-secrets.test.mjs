@@ -72,7 +72,7 @@ test('generation creates ignored private files and check reports missing files',
   assert.equal(lstatSync(join(root, 'private/keys.env')).mode & 0o777, 0o600);
   assert.equal(spawnSync('git', ['check-ignore', '-q', 'private/keys.env'], { cwd: root }).status, 0);
   const readme = readFileSync(join(root, 'README.md'), 'utf8');
-  assert.match(readme, /\/forge env set NAME --file private\/keys\.env/);
+  assert.match(readme, /\/faur env set NAME --file private\/keys\.env/);
   assert.match(readme, /Forge does not load this file; configure the integration to read it/);
   rmSync(join(root, 'private/keys.env'));
   const checked = spawnSync(process.execPath, [cli, 'check-agent', root], { encoding: 'utf8' });

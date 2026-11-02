@@ -1,6 +1,6 @@
 /**
  * Command permissions at runtime: declared command tools, the orchestrator's
- * request_permission tool, and the handler for /forge permissions.
+ * request_permission tool, and the handler for /faur permissions.
  *
  * Declared commands (integrations.cli) register when the extension loads. In
  * the orchestrator process only the ones it may run are registered (all of
@@ -36,7 +36,7 @@ const checkValues = (args, values) => buildArgv(args, values, null);
 async function confirmChange(root, ctx, title, ops) {
   const plan = planChange(root, ops);
   const stale = plan.preview.staleMentions?.mentions ?? [];
-  const warning = stale.length ? `\n\nStill mentioned after this change (edit with /forge):\n${stale.map((m) => `- ${m.removed} in ${m.where}: ${m.lines[0]}${m.lines.length > 1 || m.more ? ` (+${m.lines.length - 1 + (m.more ?? 0)} more lines)` : ''}`).join('\n')}` : '';
+  const warning = stale.length ? `\n\nStill mentioned after this change (edit with /faur):\n${stale.map((m) => `- ${m.removed} in ${m.where}: ${m.lines[0]}${m.lines.length > 1 || m.more ? ` (+${m.lines.length - 1 + (m.more ?? 0)} more lines)` : ''}`).join('\n')}` : '';
   const summary = `${plan.preview.modelDiff}\n\nFiles: ${plan.preview.files.map((f) => `${f.action} ${f.path}`).join(', ') || 'none'}${warning}`;
   if (!await ctx.ui.confirm(title, summary)) return null;
   return applyChange(root, plan, true);
@@ -100,7 +100,7 @@ export function registerPermissions(pi, Type, root) {
       if (declared) {
         const permitted = cliAgents(current, declared.name).includes(current.orchestrator?.name);
         const loaded = model && cliEntries(model).some(c => c.name === declared.name && commandShape(c) === commandShape(declared)) && cliAgents(model, declared.name).includes(model.orchestrator?.name);
-        return text(`This command is already declared as ${cliToolName(declared.name)}${!permitted ? ', but not for you; ask the user to grant access with /forge permissions' : loaded ? '; call that tool' : '; it will be available after /reload'}.`, true);
+        return text(`This command is already declared as ${cliToolName(declared.name)}${!permitted ? ', but not for you; ask the user to grant access with /faur permissions' : loaded ? '; call that tool' : '; it will be available after /reload'}.`, true);
       }
       const warning = readerFileWarning(entry);
       try { checkValues(entry.args, params.values); } catch (error) { return text(`${error.message}${warning ? `\n${warning}` : ''}`, true); }
@@ -110,7 +110,7 @@ export function registerPermissions(pi, Type, root) {
         }
         const requests = readRequests(root).filter((r) => !(r.command === entry.command && JSON.stringify(r.args) === JSON.stringify(entry.args)));
         writeRequests(root, [...requests, { name: entry.name, command: entry.command, args: entry.args, reason: params.reason, requestedAt: new Date().toISOString() }]);
-        return text(`Saved as a pending request; nothing ran. Tell the user what is blocked. They can approve it with /forge permissions review.${warning ? `\n${warning}` : ''}`, true);
+        return text(`Saved as a pending request; nothing ran. Tell the user what is blocked. They can approve it with /faur permissions review.${warning ? `\n${warning}` : ''}`, true);
       }
       const choice = await ctx.ui.select(`${warning ? `${warning}\n\n` : ''}The agent asks to run a command:\n\n${describeCall(entry, params.values)}\n\nWhy: ${params.reason}\nAs a saved command: ${shape(entry)}`, ['Allow once', `Always allow (save "${entry.name}" to system.yaml)`, 'Deny']);
       if (!choice || choice === 'Deny') return text(`The user denied this command. Do not try to run it another way.${warning ? `\n${warning}` : ''}`, true);
@@ -126,7 +126,7 @@ export function registerPermissions(pi, Type, root) {
     },
   });
 
-  /** /forge permissions: list | add | remove <name> | review */
+  /** /faur permissions: list | add | remove <name> | review */
   return async (args, ctx) => {
     const tell = (message, level = 'info') => (ctx.hasUI ? ctx.ui.notify(message, level) : process.stderr.write(`Forge (${level}): ${message}\n`));
     try {
@@ -136,7 +136,7 @@ export function registerPermissions(pi, Type, root) {
         const enforced = (agent) => enforcedAgentTools(agent.name, current.policies, agent.tools);
         const lines = cliEntries(current).map((c) => `${c.name}: ${shape(c)}\n  agents: ${cliAgents(current, c.name, enforced).join(', ') || 'none'}; ${c.approve === false ? 'runs without asking' : 'asks before each run'}`);
         const pending = readRequests(root).length;
-        tell(`${lines.join('\n') || 'No commands declared.'}${pending ? `\n\n${pending} pending request(s): /forge permissions review` : ''}\n\nadd | remove <name> | review`);
+        tell(`${lines.join('\n') || 'No commands declared.'}${pending ? `\n\n${pending} pending request(s): /faur permissions review` : ''}\n\nadd | remove <name> | review`);
         return;
       }
       if (!ctx.hasUI) throw new Error('Interactive input is required');
@@ -201,7 +201,7 @@ export function registerPermissions(pi, Type, root) {
         } finally { writeRequests(root, [...left, ...requests.slice(seen)]); }
         return tell(`${seen - left.length} handled, ${requests.length - seen + left.length} pending.`);
       }
-      throw new Error('Use: /forge permissions [list | add | remove <name> | review]');
+      throw new Error('Use: /faur permissions [list | add | remove <name> | review]');
     } catch (error) { tell(error.message, 'error'); }
   };
 }

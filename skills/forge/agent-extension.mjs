@@ -1,13 +1,13 @@
 /**
  * The agent runtime: what a generated system's agents use while they work —
  * the orchestrator's memory, declared command tools, request_permission and
- * the /forge permissions handler, and the lead's capability section for
+ * the /faur permissions handler, and the lead's capability section for
  * projects built before it was build output.
  *
  * It comes from the Forge package pinned in the project's .pi/settings.json,
  * so it changes only when an approved update moves that pin. Stable interface:
  * registerAgent(pi, Type, root, { maintaining }), where maintaining() is true
- * during a /forge revision turn. Returns the /forge permissions handler
+ * during a /faur revision turn. Returns the /faur permissions handler
  * (undefined in a subagent process).
  */
 import { readText } from './maintenance-store.mjs';
@@ -115,7 +115,7 @@ function registerMemory(pi, Type, root, maintaining) {
   pi.on('session_start', () => { try { snapshot = memoryPrompt(root); } catch { snapshot = ''; } });
   pi.on('before_agent_start', (event) => {
     if (!snapshot) return;
-    // A /forge revision turn can't use the memory tool; keep any nudge for later.
+    // A /faur revision turn can't use the memory tool; keep any nudge for later.
     maintenanceTurn = maintaining();
     if (maintenanceTurn) return { systemPrompt: `${event.systemPrompt}\n\n${snapshot}` };
     const nudge = failed.length ? `\n\nThe previous task had failed tool calls (${failed.join(', ')}). If you learned something that will matter next time, save it with memory.` : '';

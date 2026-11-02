@@ -246,10 +246,10 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   await assert.rejects(tool({ action: 'propose', operations: '[]' }), /read-only/);
   await mock.endTurn();
   assert.deepEqual(mock.prompts, [], 'a review opens no prompt');
-  assert.deepEqual(mock.pi.getActiveTools(), ['forge_plan'], 'replies stay in /forge');
-  assert.match(mock.status.forge, /\/forge exit/);
+  assert.deepEqual(mock.pi.getActiveTools(), ['forge_plan'], 'replies stay in /faur');
+  assert.match(mock.status.forge, /\/faur exit/);
   await command('exit');
-  assert.deepEqual(mock.pi.getActiveTools(), ['read'], '/forge exit returns to the agent');
+  assert.deepEqual(mock.pi.getActiveTools(), ['read'], '/faur exit returns to the agent');
   assert.equal(mock.tools.forge_plan.exposure, 'hidden');
   assert.equal(mock.status.forge, undefined);
 
@@ -271,7 +271,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   await mock.endTurn();
   assert.equal(mock.prompts.length, 1);
 
-  // A new proposal prompts again; Apply applies it and leaves /forge.
+  // A new proposal prompts again; Apply applies it and leaves /faur.
   await tool({ action: 'propose', operations: cheaper });
   mock.choose('Apply');
   await mock.endTurn();
@@ -280,7 +280,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
   assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read']);
 
-  // Discard drops the proposal and leaves /forge.
+  // Discard drops the proposal and leaves /faur.
   const applied = readText(root, '.pi/system.yaml');
   await command('use the large model again');
   await tool({ action: 'propose', operations: JSON.stringify([{ op: 'assign', name: 'lead', model: 'fixture/large' }]) });
@@ -290,7 +290,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.match(mock.notices.at(-1)[0], /Discarded/);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
 
-  // A session without a UI never applies, and leaves /forge.
+  // A session without a UI never applies, and leaves /faur.
   const prompts = mock.prompts.length;
   await command('use the large model again');
   await tool({ action: 'propose', operations: JSON.stringify([{ op: 'assign', name: 'lead', model: 'fixture/large' }]) });
@@ -300,7 +300,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
 });
 
-test('/forge check shows document writer validation without verbose mode', async t => {
+test('/faur check shows document writer validation without verbose mode', async t => {
   const root = project(t);
   const invalid = { ...model, documents: [{ name: 'report', path: 'reports/report.md', writer: 'lead', sections: [{ heading: 'Summary' }] }] };
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(invalid));
@@ -375,7 +375,7 @@ test('fetch is maintenance-only, asks nothing, and never creates an applicable p
   mock.forge = registerMaintenance(mock.pi, mock.Type, root, { fetcher });
   const tool = params => mock.tools.forge_plan.execute('id', params, undefined, undefined, mock.ctx);
   const command = arg => mock.forge(arg, mock.ctx);
-  await assert.rejects(tool({ action: 'fetch', url: 'https://github.com/github/github-mcp-server' }), /Invoke \/forge/);
+  await assert.rejects(tool({ action: 'fetch', url: 'https://github.com/github/github-mcp-server' }), /Invoke \/faur/);
   await command('add GitHub issue creation for the marketing agent');
   await assert.rejects(tool({ action: 'fetch', url: 'http://github.com/x' }), /Only https/);
   await assert.rejects(tool({ action: 'fetch', url: 'https://github.com/x?token=secret' }), /credential/);
@@ -394,7 +394,7 @@ test('fetch is maintenance-only, asks nothing, and never creates an applicable p
   await mock.endTurn();
   assert.deepEqual(mock.prompts, [], 'fetching proposes nothing to confirm');
   await command('exit');
-  await assert.rejects(tool({ action: 'fetch', url: 'https://github.com/github/github-mcp-server' }), /Invoke \/forge/);
+  await assert.rejects(tool({ action: 'fetch', url: 'https://github.com/github/github-mcp-server' }), /Invoke \/faur/);
   assert.equal(readText(root, '.pi/system.yaml'), before);
 });
 
@@ -473,7 +473,7 @@ test('inspect summarizes subagent launches and the latest failure diagnostic onl
   assert.doesNotMatch(JSON.stringify(runs), /secret task text/);
 });
 
-test('/forge sync on the newest release rebuilds: text directly, reach changes after confirmation', async t => {
+test('/faur sync on the newest release rebuilds: text directly, reach changes after confirmation', async t => {
   const root = project(t);
   const mock = adapter();
   mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
@@ -512,7 +512,7 @@ test('applied changes and rebuilds reload Pi unless the launcher or packages cha
   assert.match(mock.notices.at(-1)[0], new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/CAPABILITIES\\.md\\. Reloading\\.$`));
 });
 
-test('/forge check verifies the agent without a model turn', async t => {
+test('/faur check verifies the agent without a model turn', async t => {
   const root = project(t);
   const mock = adapter();
   mock.forge = registerMaintenance(mock.pi, mock.Type, root);
@@ -523,7 +523,7 @@ test('/forge check verifies the agent without a model turn', async t => {
   const [drift, level] = await check();
   assert.equal(level, 'warning');
   assert.match(drift, /Consistency[\s\S]*defaultTools mismatch/);
-  assert.match(drift, /\/forge sync/, 'points to the fix');
+  assert.match(drift, /\/faur sync/, 'points to the fix');
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify({ ...model, orchestrator: { ...model.orchestrator, model: 'no-provider' } }));
   const [invalid] = await check();
   assert.match(invalid, /Validation[\s\S]*no-provider/);
@@ -531,7 +531,7 @@ test('/forge check verifies the agent without a model turn', async t => {
   assert.deepEqual(mock.dialogs, []);
 });
 
-test('/forge status shows the agents, the Forge pin, newer releases and pending requests', async t => {
+test('/faur status shows the agents, the Forge pin, newer releases and pending requests', async t => {
   const root = project(t);
   writeFileSync(join(root, '.forge/permission-requests.json'), json([{ name: 'list-files', command: 'ls', args: ['-la'], reason: 'Look around', requestedAt: '2026-10-29T00:00:00.000Z' }]));
   const mock = adapter();
@@ -541,7 +541,7 @@ test('/forge status shows the agents, the Forge pin, newer releases and pending 
   assert.match(text, /maintenance-test/);
   assert.match(text, /lead \(orchestrator\): fixture\/large/);
   assert.match(text, new RegExp(`Forge: v${pkg.version} \\(newest release\\)`));
-  assert.match(text, /1 pending permission request[\s\S]*\/forge permissions review/);
+  assert.match(text, /1 pending permission request[\s\S]*\/faur permissions review/);
   const offline = adapter();
   offline.forge = registerMaintenance(offline.pi, offline.Type, root, { updates: { remote: 'file:///nonexistent/forge.git' } });
   await offline.forge('status', offline.ctx);
@@ -629,7 +629,7 @@ test('check-agent reports missing packages without installing them', t => {
   assert.equal(existsSync(join(root, '.pi/npm')), false);
 });
 
-test('/forge check saves and displays capability evidence', async t => {
+test('/faur check saves and displays capability evidence', async t => {
   const root = project(t);
   const a = adapter();
   a.pi.getAllTools = () => [{ name: 'read' }];
@@ -640,7 +640,7 @@ test('/forge check saves and displays capability evidence', async t => {
   assert.match(a.notices.at(-1)[0], /verified now/);
 });
 
-test('/forge status reports the last capability check and build version', async t => {
+test('/faur status reports the last capability check and build version', async t => {
   const root = project(t);
   const a = adapter();
   a.pi.getAllTools = () => [{ name: 'read' }];
@@ -653,7 +653,7 @@ test('/forge status reports the last capability check and build version', async 
   assert.match(a.notices.at(-1)[0], /Last capability check:/);
 });
 
-test('/forge check does not claim unknown capabilities are verified', async t => {
+test('/faur check does not claim unknown capabilities are verified', async t => {
   const root = project(t);
   const doc = { ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'unknown_tool'] } };
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(doc));
@@ -664,7 +664,7 @@ test('/forge check does not claim unknown capabilities are verified', async t =>
   assert.doesNotMatch(a.notices.at(-1)[0], /All checks passed|every agent starts with what it needs/);
 });
 
-test('/forge check names the live extension provider', async t => {
+test('/faur check names the live extension provider', async t => {
   const root = project(t);
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify({ ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'web_search'] } }));
   const a = adapter();
@@ -674,7 +674,7 @@ test('/forge check names the live extension provider', async t => {
   assert.equal(report.capabilities.find(c => c.name === 'web_search').provider, 'npm:web-package@1.0.0');
 });
 
-test('/forge check reports a missing orchestrator extension from the live registry', async t => {
+test('/faur check reports a missing orchestrator extension from the live registry', async t => {
   const root = project(t);
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify({ ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'missing_tool'] } }));
   const a = adapter();
@@ -685,7 +685,7 @@ test('/forge check reports a missing orchestrator extension from the live regist
   assert.ok(report.capabilities.some(c => c.agent === 'lead' && c.name === 'missing_tool' && c.status === 'missing'));
 });
 
-test('/forge env set selects a declared integration secrets file without exposing the value', async t => {
+test('/faur env set selects a declared integration secrets file without exposing the value', async t => {
   const root = project(t);
   const mock = adapter();
   mock.ctx.ui.input = async () => 'integration-secret-test-value';

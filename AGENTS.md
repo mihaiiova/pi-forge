@@ -5,8 +5,9 @@ specialized Pi agents. These instructions apply to every coding session in this
 repository, whatever agent runs it. They are the one copy of the engineering
 principles; other entry points (`CLAUDE.md`) only point here.
 
-The code, package and commands still use the Forge names (`skills/forge/`,
-`/forge`, `.forge/`) until the rename lands. Use the existing names in code.
+The command is `/faur`. The code, package, CLI and folders still use the
+Forge names (`skills/forge/`, `forge`, `forge_plan`, `.forge/`) until the rest
+of the rename (#67) lands. Use the existing names in code.
 
 ## Where the decisions live
 

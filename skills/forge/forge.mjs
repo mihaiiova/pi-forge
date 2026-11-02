@@ -18,7 +18,7 @@
  *   0  valid / generated / discovered / modified / imported (reported conflicts do not fail)
  *   1  invalid, missing, or unparseable system.yaml; or an unknown command
  *
- * Generated sessions use /forge from the pinned Forge package, not
+ * Generated sessions use /faur from the pinned Forge package, not
  * this development CLI or the user's globally installed Pi Forge.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, chmodSync, statSync } from "node:fs";

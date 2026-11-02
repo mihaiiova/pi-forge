@@ -79,7 +79,7 @@ export function inspectProject(root) {
   });
 }
 /**
- * /forge check: system.yaml is valid, the generated files match it, and each
+ * /faur check: system.yaml is valid, the generated files match it, and each
  * agent would start with what it needs. Reads only.
  */
 export function checkProject(root, { registeredTools, mcpTools } = {}) {
@@ -95,7 +95,7 @@ export function checkProject(root, { registeredTools, mcpTools } = {}) {
   }
   return { ok: !consistency.length && !launch.length, validation, consistency, launch, advisories: configurationAdvisories(doc) };
 }
-/** /forge status: what the agent is made of and what is waiting on the user. */
+/** /faur status: what the agent is made of and what is waiting on the user. */
 export function projectStatus(root) {
   const model = parsedModel(readText(root, '.pi/system.yaml'));
   const caps = effectiveCapabilities(model, { piPackages: pinsAt(root) });

@@ -439,10 +439,10 @@ test('workflow reports root setup instructions and missing secret files before P
   const message = JSON.parse(result.stdout.trim()).message;
   assert.match(message, /install-system \(run manually; needs root\)/);
   assert.match(message, /Secrets: Integration secretsFile private\/keys.env: missing; fix: run forge generate <project-dir>/);
-  assert.doesNotMatch(message, /\/forge rebuild|run forge check(?!-agent)/);
+  assert.doesNotMatch(message, /\/faur rebuild|run forge check(?!-agent)/);
   mkdirSync(join(root, 'private'), { recursive: true });
   writeFileSync(join(root, 'private/keys.env'), '', { mode: 0o644 });
   const unsafe = spawnSync(join(root, 'run'), ['--workflow', 'report'], { env, encoding: 'utf8' });
   assert.equal(unsafe.status, 2, unsafe.stderr);
-  assert.match(JSON.parse(unsafe.stdout.trim()).message, /forge check-agent <project-dir> or \/forge check/);
+  assert.match(JSON.parse(unsafe.stdout.trim()).message, /forge check-agent <project-dir> or \/faur check/);
 });

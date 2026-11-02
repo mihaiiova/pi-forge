@@ -171,7 +171,7 @@ test('the orchestrator gets only its commands; a subagent process gets all, boun
   const lead = adapter();
   const permissions = registerPermissions(lead.pi, lead.Type, root);
   assert.deepEqual(Object.keys(lead.tools).sort(), [cliToolName('echo-title'), 'request_permission']);
-  assert.equal(typeof permissions, 'function', '/forge permissions');
+  assert.equal(typeof permissions, 'function', '/faur permissions');
   assert.deepEqual(lead.commands, {}, 'no command of its own');
   process.env.PI_SUBAGENT_CHILD = '1';
   t.after(() => { delete process.env.PI_SUBAGENT_CHILD; });
@@ -249,7 +249,7 @@ test('reader file placeholder warning accompanies request errors', async t => {
   assert.match(result.content[0].text, /not a path to an existing file/);
 });
 
-test('/forge permissions adds, lists, reviews and removes commands', async (t) => {
+test('/faur permissions adds, lists, reviews and removes commands', async (t) => {
   const root = project(t);
   // Asking before each run, for a subagent: routed to the orchestrator.
   const mock = adapter({ choices: [0, 0] });

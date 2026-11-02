@@ -90,7 +90,7 @@ export function checkAgent(root, options = {}) {
         const provider = checked?.providers[name] ?? options.toolProviders?.[name];
         const present = provider || options.registeredTools?.includes(name);
         const known = registeredTools !== undefined;
-        capabilities.push({ agent: agent.name, name, provider: provider || 'extension', status: present ? 'verified now' : known ? 'missing' : 'not verifiable', fix: present ? 'None.' : checked?.missing?.length ? 'Run ./run once to install the project\'s packages, then check again.' : known ? 'Install or enable the providing extension and restart ./run if packages are not installed.' : 'Install or enable the providing extension; use /forge check to verify the live session.' });
+        capabilities.push({ agent: agent.name, name, provider: provider || 'extension', status: present ? 'verified now' : known ? 'missing' : 'not verifiable', fix: present ? 'None.' : checked?.missing?.length ? 'Run ./run once to install the project\'s packages, then check again.' : known ? 'Install or enable the providing extension and restart ./run if packages are not installed.' : 'Install or enable the providing extension; use /faur check to verify the live session.' });
       }
     }
     for (const name of agent === model.orchestrator ? [...skills.keys()] : (agent.skills ?? [])) {
@@ -115,7 +115,7 @@ export function checkAgent(root, options = {}) {
   let build = null;
   try { build = JSON.parse(readFileSync(join(root, '.forge/build.json'), 'utf8')).version ?? null; } catch { /* no build record */ }
   const tooling = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
-  const versions = { build, tooling, ...(build !== tooling ? { fix: 'Run /forge sync to rebuild with the installed tooling.' } : {}) };
+  const versions = { build, tooling, ...(build !== tooling ? { fix: 'Run /faur sync to rebuild with the installed tooling.' } : {}) };
   const result = { timestamp, versions, ok: checks.ok && !capabilities.some(c => c.status === 'missing'), capabilities, checks, ...(mcpTimestamp ? { mcpEvidence: { timestamp: mcpTimestamp, servers: mcpEvidence } } : {}), ...(checked?.error ? { extensionDiagnostic: checked.error } : {}), ...(checked?.missing.length ? { unresolvedPackages: checked.missing } : {}) };
   atomicWrite(root, '.forge/check.json', json(result));
   return result;
@@ -155,7 +155,7 @@ export async function loadProjectTools(root) {
     // The SDK's public discoverAndLoadExtensions also auto-loads these paths,
     // bypassing resolver filters. Refuse ambiguity rather than execute disabled code.
     for (const dir of [join(root, '.pi/extensions'), join(agentDir, 'extensions')]) {
-      if (hasExtensionCode(dir)) throw new Error(`Cannot safely verify extension autoload at ${dir}; use /forge check in a running session`);
+      if (hasExtensionCode(dir)) throw new Error(`Cannot safely verify extension autoload at ${dir}; use /faur check in a running session`);
     }
     const settings = sdk.SettingsManager.create(root, agentDir);
     settings.setProjectTrusted(true);

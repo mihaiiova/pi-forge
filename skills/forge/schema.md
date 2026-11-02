@@ -82,7 +82,7 @@ The orchestrator always has memory: notes it keeps across sessions in
 into its prompt at session start. It writes them freely with the `memory` tool
 (add, replace, remove), and is told to record lessons before finishing a task,
 and after a task with failed tool calls. Subagents neither see nor write them.
-`/forge review` reads the notes; making a lesson permanent (a prompt,
+`/faur review` reads the notes; making a lesson permanent (a prompt,
 skill or tool change) is a normal previewed change. The file is the user's to
 edit, and no generated file depends on it.
 
@@ -142,7 +142,7 @@ Allowed keys: `name` (required string), `description`, and at most one of:
   project directory.
 - `source: skills:<owner>/<repo>/<skill-dir>@<commit>` — one skill directory
   from the open Agent Skills ecosystem (skills.sh), pinned to a full 40-character
-  commit. `forge generate`/`modify` and an approved `/forge` change install it
+  commit. `forge generate`/`modify` and an approved `/faur` change install it
   with the `skills` CLI (`npx skills@1.7.4 add <github tree URL> --agent pi
   --copy -y`) into the project's `.agents/skills/<name>/` — never globally —
   and `skills-lock.json` records the commit. The installed `SKILL.md` must
@@ -201,12 +201,12 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   entry. In Pi the tool is `cli_<name>` (hyphens become underscores). The
   orchestrator gets the commands its `tools` list, or all of them when its
   `tools` is omitted; a subagent gets exactly the ones in its allowlist, and
-  runs in the background. `/forge permissions` (list, add, remove, review)
+  runs in the background. `/faur permissions` (list, add, remove, review)
   edits these declarations through the normal preview. The orchestrator can
   also ask for a command it has no tool for with `request_permission`: the
   user allows it once, saves it here, or denies it; in a headless run the
   request waits in `.forge/permission-requests.json` for
-  `/forge permissions review`.
+  `/faur permissions review`.
 
   ```yaml
   integrations:
@@ -301,7 +301,7 @@ path/key and the expected value. Rejected conditions:
 
 The skill name `forge` is reserved (it is the Forge skill) and cannot be declared in
 `skills[]`. Operational model edits use the structured operations of
-`/forge`, which reuse this validator and reject dangling references.
+`/faur`, which reuse this validator and reject dangling references.
 The Forge version is the pinned package in `.pi/settings.json` (recorded in
 `.forge/build.json`), never part of this operational model. An explicit empty orchestrator `tools: []` remains empty unless non-empty
 `projectContext` enables `edit`; omitted tools use Pi defaults.
@@ -381,6 +381,6 @@ setup:
     needsRoot: false
 ```
 
-Alternatively use `check: { file: path }`. Checks run automatically during generation, checks and headless workflow startup. **Command checks execute shell code with the user's permissions and may have side effects or access secrets. Only use trusted project declarations.** Do not put literal credentials in setup commands; use environment references. Install commands run only after confirmation via `/forge setup` or `forge setup <dir> --yes`; `needsRoot` commands are printed for manual execution. Headless workflows never install.
+Alternatively use `check: { file: path }`. Checks run automatically during generation, checks and headless workflow startup. **Command checks execute shell code with the user's permissions and may have side effects or access secrets. Only use trusted project declarations.** Do not put literal credentials in setup commands; use environment references. Install commands run only after confirmation via `/faur setup` or `forge setup <dir> --yes`; `needsRoot` commands are printed for manual execution. Headless workflows never install.
 
-MCP and CLI integrations may declare `secretsFile: .forge/service-secrets.env`. Paths must be project-relative, use only letters, digits, `_`, `-`, `.`, and `/`, and contain no `.` or `..` components or symlinks. To protect case-insensitive filesystems, reserved paths are rejected regardless of case: `.forge`, `.pi`, `data`, `.env`, `.env.example`, `run`, `README.md`, `data/knowledge/.gitkeep`, `.forge/build.json`, `.forge/capabilities.json`, `.forge/check.json`, and `.forge/permission-requests.json`; all paths under `.pi/` or `.forge/pi-home/`; and any `.git` or `.gitignore` path component. Forge adds an anchored gitignore entry and creates the missing file with mode 0600 without replacing existing content. Before applying, Forge conservatively refuses any negation rule in a nested `.gitignore` along the secret file's directory path, even if unrelated; resolve it explicitly. Root negations are handled as described in the `.gitignore` exception above. Existing files must be regular, private, and untracked/ignored; Forge reports problems rather than changing them. `/forge env set NAME --file .forge/service-secrets.env` writes a declared `integrations.env` variable to that explicitly selected declared file. Without `--file`, the existing `.env` behavior remains. The integration must be configured to read its secrets file; Forge does not automatically load it. Git ignore cannot undo committed secrets. Path checks are not a defense against hostile concurrent filesystem changes.
+MCP and CLI integrations may declare `secretsFile: .forge/service-secrets.env`. Paths must be project-relative, use only letters, digits, `_`, `-`, `.`, and `/`, and contain no `.` or `..` components or symlinks. To protect case-insensitive filesystems, reserved paths are rejected regardless of case: `.forge`, `.pi`, `data`, `.env`, `.env.example`, `run`, `README.md`, `data/knowledge/.gitkeep`, `.forge/build.json`, `.forge/capabilities.json`, `.forge/check.json`, and `.forge/permission-requests.json`; all paths under `.pi/` or `.forge/pi-home/`; and any `.git` or `.gitignore` path component. Forge adds an anchored gitignore entry and creates the missing file with mode 0600 without replacing existing content. Before applying, Forge conservatively refuses any negation rule in a nested `.gitignore` along the secret file's directory path, even if unrelated; resolve it explicitly. Root negations are handled as described in the `.gitignore` exception above. Existing files must be regular, private, and untracked/ignored; Forge reports problems rather than changing them. `/faur env set NAME --file .forge/service-secrets.env` writes a declared `integrations.env` variable to that explicitly selected declared file. Without `--file`, the existing `.env` behavior remains. The integration must be configured to read its secrets file; Forge does not automatically load it. Git ignore cannot undo committed secrets. Path checks are not a defense against hostile concurrent filesystem changes.

@@ -6,7 +6,7 @@
  * orchestrator's prompt at session start and are written freely by the
  * orchestrator through the `memory` tool within a size cap. Subagents neither
  * see nor write them. Turning a lesson into a lasting change (a prompt, a
- * skill, a tool) still goes through a /forge proposal and its confirmation.
+ * skill, a tool) still goes through a /faur proposal and its confirmation.
  */
 import { atomicWrite, readText } from './maintenance-store.mjs';
 

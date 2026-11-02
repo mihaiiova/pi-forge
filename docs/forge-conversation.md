@@ -1,6 +1,6 @@
 # Pi Forge — conversational acceptance scenarios
 
-`/forge` is a design conversation, not an interview: the specification
+`/faur` is a design conversation, not an interview: the specification
 emerges from the discussion, and "build it" moves into discovery, a preview and
 the usual confirmation. The behavior is defined in
 [`skills/forge/SKILL.md`](../skills/forge/SKILL.md) (*How to
@@ -13,7 +13,7 @@ must come from real discovery results, never invented models, tools or skills.
 
 ## 1. Vague idea
 
-**Input.** `/forge I want something that helps with my newsletter.`
+**Input.** `/faur I want something that helps with my newsletter.`
 
 **Pass.** The Forge talks about the outcome — drafting issues, curating links,
 growing subscribers — sketches the simplest approach that would help (for
@@ -29,7 +29,7 @@ before there is a design; writing `system.yaml`.
 
 **Input.** Earlier in the session the user said they want weekly SEO reports
 for `example.com`, already run OpenSEO, and want drafts only, no publishing.
-Then they type `/forge` with no arguments.
+Then they type `/faur` with no arguments.
 
 **Pass.** The Forge continues from that: it restates the direction in a line
 or two (weekly SEO reports via OpenSEO, Markdown drafts, no publishing) and
@@ -98,4 +98,4 @@ design, or keeping parts of the abandoned architecture.
 Discovery, validation, the `--dry-run` preview, explicit confirmation before
 generation, skill previews before installation, user-chosen capabilities and
 MCP scope, and credential isolation are unchanged. `system.yaml`, the generator,
-the `forge` CLI and the in-project `/forge` subcommands are unchanged.
+the `forge` CLI and the in-project `/faur` subcommands are unchanged.

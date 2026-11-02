@@ -28,14 +28,18 @@ this release a generated agent runs with Pi plus the Forge package it pins
   repository.
 
 > **Renamed in v0.20.0.** The repository is `mihaiiova/pi-forge`, the package
-> `pi-forge`, and `/forge` replaces `/agent-factory`, `/factory-update` and
+> `pi-forge`, and `/forge` replaced `/agent-factory`, `/factory-update` and
 > `/factory-permission`. There is no migration: regenerate projects built with
 > the old names from their `.pi/system.yaml`.
+>
+> **Command renamed in v0.27.0:** `/faur` replaces `/forge`, with no alias.
+> Projects pick it up with their next sync (`/faur sync`); until then they
+> keep the pinned release and its `/forge`.
 
 ### Architecture in brief
 
 ```text
-you ──▶ /forge (builder, conversational)
+you ──▶ /faur (builder, conversational)
           │  forge CLI: discover · validate · generate --dry-run · generate
           ▼
    <project>/.pi/system.yaml   compact desired state (schema 1)
@@ -44,18 +48,18 @@ you ──▶ /forge (builder, conversational)
    <project>/.forge/           build record, capability manifest, isolated Pi home
           │
           ▼
-   ./run, ./run -p "…"   Pi runs the agent; /forge revises it in place
+   ./run, ./run -p "…"   Pi runs the agent; /faur revises it in place
 ```
 
-- **Design and generate:** `/forge` holds a design conversation, writes
+- **Design and generate:** `/faur` holds a design conversation, writes
   `system.yaml`, previews the generated files and writes them only after you
   confirm. Generation is deterministic and idempotent, and never silently
   overwrites your edits.
-- **Check:** `/forge check` validates `system.yaml`, compares generated files,
+- **Check:** `/faur check` validates `system.yaml`, compares generated files,
   and reports capability evidence for every agent. A configured capability is
   not necessarily verified; results distinguish live, last seen, missing and
   not verifiable. Checking actual behavior is on the [roadmap](docs/roadmap.md).
-- **Revise:** inside a project, `/forge <request>` proposes a small structured
+- **Revise:** inside a project, `/faur <request>` proposes a small structured
   change. When the turn ends, Forge shows the diff and applies it only if you
   approve.
 
@@ -66,7 +70,7 @@ extensions) now lives in the private
 
 ## Using Forge today
 
-Start it from any Pi session outside a Forge project with `/forge <outcome>`
+Start it from any Pi session outside a Forge project with `/faur <outcome>`
 (or `/skill:forge`). The builder works as a design conversation, not an
 interview: it uses what you've already said, recommends the simplest system
 that fits, and asks only questions that change the design. When you say
@@ -141,14 +145,14 @@ few rules — and you add, remove or change sections before it is recorded in
 run produces the same shape. Any agent can have any number of documents, and a
 document can be delivered anywhere an MCP tool reaches — Google Drive, Notion,
 Slack — with `deliver: [{ mcp, tool, with }]`. Change formats later with
-`/forge`.
+`/faur`.
 
 Subagents that use MCP or extension tools (web search, for example) always
 run in the background, where those tools load; the forge sets this up. On
 every start, `./run` checks that each agent will get the tools and skills it is
 declared to have, and names any that are missing. MCP servers connect after
-start, so `/forge check` also checks their tools. The last result is saved in
-`.forge/check.json` and shown by `/forge status`.
+start, so `/faur check` also checks their tools. The last result is saved in
+`.forge/check.json` and shown by `/faur status`.
 
 Outside a session, run `node /path/to/pi-forge/skills/forge/forge.mjs check-agent <project>`.
 It makes no model calls and does not connect MCP by default; `--connect` runs
@@ -161,7 +165,7 @@ checks test command presence only, not authentication or functionality. The
 CLI inspects installed Pi extensions using Pi's SDK without installing missing
 packages. If the project has auto-discovered extension code that Pi's SDK
 could load even when disabled, CLI extension results are `not verifiable`
-(configuration such as Forge's `subagent/config.json` doesn't count); use `/forge check` in
+(configuration such as Forge's `subagent/config.json` doesn't count); use `/faur check` in
 a running session. Extension loading runs the installed extensions' registration
 code. Results reflect observations, not a functional or credential test.
 
@@ -187,7 +191,7 @@ Always on. The orchestrator keeps short notes (up to 4000 characters) in
 corrections, preferences, and tools or specialists that failed and what worked
 instead. It writes them itself with a `memory` tool, is reminded to after a task
 with failed tool calls, and loads them at the start of each session. Subagents
-don't see them. The file is plain Markdown you can edit. `/forge review`
+don't see them. The file is plain Markdown you can edit. `/faur review`
 reads it, so a lesson that should always hold can become a previewed change to a
 prompt, skill or tool.
 
@@ -203,7 +207,7 @@ Forge tooling was updated. The same holds for the runtime agents use (memory,
 command tools, `request_permission`): it comes from the Forge version that
 last built the project, recorded in `.forge/build.json`. A change that removes
 a capability lists any prompt, workflow or policy that still mentions it, and
-`/forge review` flags prompts that describe specific tools.
+`/faur review` flags prompts that describe specific tools.
 
 ### Commands: CLI permissions per agent
 
@@ -223,11 +227,11 @@ integrations:
 Give it to an agent with `cli:create-issue` in its `tools`. Commands run
 without a shell, with your own CLI logins. In a running system:
 
-- `/forge permissions` lists commands and who may run them; `add`, `remove
+- `/faur permissions` lists commands and who may run them; `add`, `remove
   <name>` and `review` change them through a preview you confirm.
 - When the orchestrator needs a command it has no tool for, it asks with
   `request_permission`: allow once, always (saved to `system.yaml`), or deny.
-  In a headless run the request waits for `/forge permissions review`.
+  In a headless run the request waits for `/faur permissions review`.
 
 ### Running and maintaining a generated system
 
@@ -247,29 +251,29 @@ orchestrator:
   projectContext: [AGENTS.md]
 ```
 
-Regenerate the project through `/forge` and restart `./run`. The listed files
+Regenerate the project through `/faur` and restart `./run`. The listed files
 are appended in order to the orchestrator's prompt; missing files and paths
-resolving outside the project are skipped and reported by `/forge check`.
+resolving outside the project are skipped and reported by `/faur check`.
 Their contents are sent to the model, so do not list credentials, and review
 untrusted instructions for prompt injection. A non-empty list also enables
 Pi's `edit` tool, which can edit **any accessible file**, not just those listed.
 This is not a filesystem sandbox.
 
-Inside it, `/forge` is the one command:
+Inside it, `/faur` is the one command:
 
 | Command | What it does |
 |---|---|
-| `/forge [request]` | Revise the agent, for example `/forge add a research specialist` or `/forge use a cheaper model for the writer`. When the turn ends with a proposal, Forge prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/forge exit`. Without a request, or with `review`, the first answer is a read-only review. |
-| `/forge check` | Validate `system.yaml`, compare the generated files with it, and run the launch check. |
-| `/forge status` | Agents and models, capabilities, the pinned Forge release and whether a newer one exists, and pending permission requests. |
-| `/forge sync` | Move to the newest Forge release after two confirmations (below), or rebuild with the current one. |
+| `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Forge prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. Without a request, or with `review`, the first answer is a read-only review. |
+| `/faur check` | Validate `system.yaml`, compare the generated files with it, and run the launch check. |
+| `/faur status` | Agents and models, capabilities, the pinned Forge release and whether a newer one exists, and pending permission requests. |
+| `/faur sync` | Move to the newest Forge release after two confirmations (below), or rebuild with the current one. |
 
-Lower-level: `/forge env [set NAME]` and `/forge permissions [add | remove
+Lower-level: `/faur env [set NAME]` and `/faur permissions [add | remove
 <name> | review]`. Headless sessions never apply a change.
 While preparing a change, the maintainer can read public documentation (for
 example an MCP server's README and releases) to verify versions, tools and
 auth, and can declare the environment variables an integration needs. You set
-their values with `/forge env set NAME`; `./run` loads them from the
+their values with `/faur env set NAME`; `./run` loads them from the
 project's gitignored `.env`. Generation and change previews also add missing
 secret and state paths to an existing `.gitignore` without rewriting your rules.
 Ignoring files does not remove credentials already committed to git: rotate any
@@ -309,13 +313,13 @@ Nothing is copied into the project. On the first `./run`, Pi installs that
 exact tag under `.pi/git/` in the project (ignored by the generated
 `.gitignore`, like `.pi/npm/`) and loads the
 agent runtime (memory, declared commands, `request_permission`) and
-`/forge` from it. The first start therefore needs network access to
+`/faur` from it. The first start therefore needs network access to
 GitHub. Pi never moves a pinned tag by itself.
 
-`/forge status` lists the release tags on GitHub and says whether a newer one
+`/faur status` lists the release tags on GitHub and says whether a newer one
 exists. It downloads and runs nothing. Startup does not check.
 
-`/forge sync` asks twice:
+`/faur sync` asks twice:
 
 1. **Run the new release to preview it?** The dialog names the tag, the commit
    it points to and a link to the changes. Only after you agree does Forge
@@ -356,7 +360,7 @@ git clone https://github.com/mihaiiova/pi-forge.git /path/to/pi-forge
 pi install /path/to/pi-forge
 ```
 
-`/forge` is then available in any Pi session. Pi treats a local checkout and a
+`/faur` is then available in any Pi session. Pi treats a local checkout and a
 project's git pin as different packages, so inside a generated project both
 load and each command appears twice. Install from the tag instead
 (`pi install git:github.com/mihaiiova/pi-forge@vX.Y.Z`) to let the project pin
@@ -395,6 +399,6 @@ setup:
     install: npm run install-browser
 ```
 
-`/forge check` reports unmet steps; `/forge setup` previews installs and asks for confirmation. For non-interactive administration use `forge setup <dir> --yes`. Steps marked `needsRoot` are printed, not run. Workflow launches never install. **Command checks execute shell code with your permissions automatically**, including during checks and workflow startup; use only trusted declarations.
+`/faur check` reports unmet steps; `/faur setup` previews installs and asks for confirmation. For non-interactive administration use `forge setup <dir> --yes`. Steps marked `needsRoot` are printed, not run. Workflow launches never install. **Command checks execute shell code with your permissions automatically**, including during checks and workflow startup; use only trusted declarations.
 
-An MCP or CLI integration may also declare `secretsFile: .forge/service-secrets.env`. Forge creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env`, then use `/forge env set API_KEY --file .forge/service-secrets.env` to choose that file explicitly; without `--file` the destination remains `.env`. The value is entered interactively, not sent to the model. Integrations must be configured to read their chosen file themselves; Forge does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.
+An MCP or CLI integration may also declare `secretsFile: .forge/service-secrets.env`. Forge creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env`, then use `/faur env set API_KEY --file .forge/service-secrets.env` to choose that file explicitly; without `--file` the destination remains `.env`. The value is entered interactively, not sent to the model. Integrations must be configured to read their chosen file themselves; Forge does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.

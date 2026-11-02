@@ -51,7 +51,7 @@ export function documentInstructions(model, writer) {
     "",
     "The owner agreed these formats. Use exactly these sections, in this order,",
     "within the length limit. If a format no longer fits the work, say so and",
-    "suggest a change (applied with /forge) instead of deviating.",
+    "suggest a change (applied with /faur) instead of deviating.",
     "",
     docs.map(renderDocument).join("\n\n"),
     "",

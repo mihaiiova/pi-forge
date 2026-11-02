@@ -48,7 +48,7 @@ it, **—** closed or deferred.
 | 48 | Faur-managed Gondolin VMs | VM lifecycle in Faur; Pi has sandbox examples; Revisor uses Bubblewrap | **Rewritten**: compose an existing sandbox, report what is enforced, fail closed; no VM lifecycle or new schema; deferred | — |
 | 49 | Setup steps and secrets files | — | **Closed** (done in v0.26.0; each criterion checked) | — |
 | 50 | First-run guidance | — | **Closed** (done in v0.26.0) | — |
-| 51 | `/forge` edits project code (design open) | Faur would take ownership of authored code | Proposed resolution: hand-off task for the developer's coding agent; `SKILL.md` guidance only | P3 |
+| 51 | `/forge` edits project code (design open) | Faur would take ownership of authored code | **Decided 2026-11-02:** Faur writes a hand-off task for the developer's coding agent and never edits authored code; `SKILL.md` guidance only | P3 |
 | 52 | Heuristic warnings for unsuitable skills | Code for a judgement the LLM makes from the preview | Reduced to `SKILL.md` guidance | P3 |
 | 53 | `forge: { model }` for maintenance turns | Builder config in the design record; Faur runs in the developer's Pi | **Closed** (not planned) | — |
 | 54 | Implied read tools; secret-path deny list; auto-approved read-only commands | Implicit capabilities; argv-parsing security; path rules ≠ isolation | Narrowed per user decision; regression test that the lead reads reports with no prompt and omitted tools stay omitted | P2 |
@@ -71,7 +71,7 @@ it, **—** closed or deferred.
 | 66 | One plan/apply path for generate, modify and change | Audit A, E, F | P0 |
 | 67 | Rename Pi Forge to Faur | Open-source plan | P1 (with #64) |
 | 68 | Public-alpha architecture acceptance tests | Deliverable F | P1 |
-| 69 | Change the system's name and description through /forge | #42 leftover | P3 |
+| 69 | Change the system's name and description through /faur | #42 leftover | P3 |
 | 70 | (Deferred) Protected integrations for secret-consuming tools | Successor of #55–#58 | — |
 
 ## Implementation order

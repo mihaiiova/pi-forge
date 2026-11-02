@@ -12,9 +12,9 @@ Line counts are for orientation only. Size is not a finding.
 ## 1. Current architecture
 
 Everything ships as one Pi package (`pi-forge`, pinned by every generated
-project). One extension entry, `extensions/forge/index.ts`, registers `/forge`
+project). One extension entry, `extensions/forge/index.ts`, registers `/faur`
 and, inside a trusted generated project, the agent runtime and the
-maintenance half of `/forge`.
+maintenance half of `/faur`.
 
 | Area | Modules (`skills/forge/`) | ≈Lines | Responsibility | Side effects |
 |---|---|---|---|---|
@@ -22,7 +22,7 @@ maintenance half of `/forge`.
 | Discovery | `discover.mjs`, `registry-skills.mjs`, `maintenance-fetch.mjs`, `forge.mjs` `runDiscover` | 460 | Models, local skills/MCP/agents, named CLIs, skills.sh, public docs | network (consented), `pi --list-models` |
 | Schema and validation | `schema.md`, `parse.mjs`, `validate.mjs`, `models.mjs`, `changes.mjs`, `yaml-loader.mjs` | 890 | `system.yaml` v1, strict validation, structured change operations | none |
 | Generation | `generate.mjs`, `runtime.mjs`, `mcp-gen.mjs`, `policy.mjs`, `agent-context.mjs`, `documents.mjs`, `workflow-skill.mjs`, `deps.mjs`, `skill-sources.mjs`, `asking.mjs`, `advisories.mjs`, `project-context.mjs` | 1,500 | Pure `generateProject(model, existing)` → file plan | none (pure) |
-| Modification and maintenance | `modify.mjs`, `diff.mjs`, `maintenance.mjs`, `maintenance-extension.mjs`, `maintenance-store.mjs`, `maintenance-secrets.mjs`, `maintenance-env.mjs`, `package-update.mjs`, `maintenance-rebuild.mjs`, `import.mjs` | 1,260 | Plan/apply changes, `/forge` tool `forge_plan`, env, sync to new release, import | writes project files, git fetch, npm |
+| Modification and maintenance | `modify.mjs`, `diff.mjs`, `maintenance.mjs`, `maintenance-extension.mjs`, `maintenance-store.mjs`, `maintenance-secrets.mjs`, `maintenance-env.mjs`, `package-update.mjs`, `maintenance-rebuild.mjs`, `import.mjs` | 1,260 | Plan/apply changes, `/faur` tool `forge_plan`, env, sync to new release, import | writes project files, git fetch, npm |
 | CLI | `forge.mjs` | 760 | `validate`, `generate`, `modify`, `change`, `discover`, `check-agent`, `setup`, `import`, skills search | writes project files |
 | Agent runtime | `agent-extension.mjs`, `permissions-extension.mjs`, `cli-tools.mjs`, `memory.mjs`, `workflow-approval.mjs` | 710 | Memory tool, MCP approval/boundary gate, declared command tools, `request_permission`, credential notice | executes declared commands, writes `.pi/MEMORY.md`, `system.yaml` (via approved change) |
 | Workflow execution | `workflow-runner.mjs`, launcher block in `runtime.mjs` | 220 | `./run --workflow`: validate, lock, run `pi -p`, timeout, cleanup, JSON result | processes, systemd scope, pi-subagents stop inbox |
@@ -64,7 +64,7 @@ Creation and revision apply changes through different code:
   (`forge.mjs:597`), so a user can apply half a plan and leave settings, MCP
   config and agent files inconsistent. It writes neither `build.json` nor
   `capabilities.json`.
-- `forge change` and `/forge` use `planChange`/`applyChange`
+- `forge change` and `/faur` use `planChange`/`applyChange`
   (`maintenance.mjs`): one plan, fingerprinted atomic writes, removal of
   intact scaffolds, conflict refusal, consistency check, `build.json`.
 
@@ -98,7 +98,7 @@ merge.
 ### C. Every agent loads all of Faur (principles 7, 8) — decided (2026-11-02)
 
 Every generated project pins `git:github.com/mihaiiova/pi-forge@vX`. That one
-package brings `/forge` design and maintenance, `forge_plan`, release sync,
+package brings `/faur` design and maintenance, `forge_plan`, release sync,
 the skills.sh client, the docs fetcher and the agent runtime. The product
 direction chose this deliberately ("one version for runtime and tooling",
 roadmap §6). It conflicts with "runtime dependency minimal" and with "the
@@ -106,7 +106,7 @@ minimal agent pays for nothing it doesn't use".
 
 **Decision (2026-11-02), superseding roadmap §6 "Distribution":** Faur is
 only the maker. Generated projects are ordinary Pi projects that run with
-`pi` from their directory, with no Faur package, `/forge` maintenance
+`pi` from their directory, with no Faur package, `/faur` maintenance
 extension or required launcher. Advanced agents may depend on existing Pi
 packages or project-owned tools, declared and pinned. Faur reopens and
 revises projects from the developer's own Pi. See §5 for the classification
@@ -202,7 +202,7 @@ do it there rather than separately.
 - Declared commands run without a shell and with approval by default.
 - Capability check states `verified now` / `last seen` / `not verifiable`
   (principle 11 already applied).
-- `/forge` revision cannot write except through a confirmed proposal.
+- `/faur` revision cannot write except through a confirmed proposal.
 
 ## 3. Target boundaries
 
@@ -273,7 +273,7 @@ package behavior still to be confirmed in stage 0.
 | R15 | Agent-context fallback for pre-`CAPABILITIES.md` projects | none current | — | Delete |
 | R16 | `./run --workflow`: validation, setup preflight, lock, timeout, systemd scope, pi-subagents cleanup, JSON line, exit codes (`workflow-runner.mjs`) | B, C; Revisor's caller MCP server | 1 + 4 | Invocation: `pi -p "/skill:<workflow> …"` (print mode expands skills, `workflow-print-mode.test.mjs`) or `--mode json`. Caller concerns (timeout, cancel, structured result, artifacts, progress) go to an optional caller-side adapter outside generated projects (#46 re-scoped), only where print/JSON mode is not enough. Setup preflight moves to Faur's check |
 | R17 | Headless approval blocking signal (`workflow-approval.mjs`, exit 3) | B, C | 4 | Part of the R10/R12 package (block without UI) plus the caller adapter's status mapping |
-| R18 | `/forge` maintenance, `forge_plan`, `/forge env`, `/forge permissions`, `/forge sync` inside the agent | every agent | — | Faur in the developer's Pi, operating on the project from outside. `/forge env set` becomes documentation or a Faur command |
+| R18 | `/faur` maintenance, `forge_plan`, `/faur env`, `/faur permissions`, `/faur sync` inside the agent | every agent | — | Faur in the developer's Pi, operating on the project from outside. `/faur env set` becomes documentation or a Faur command |
 | R19 | `.forge/build.json`, `.forge/capabilities.json`, `.forge/check.json` | Faur only | — | Faur metadata; location decided with `system.yaml`'s (stage 4) |
 
 Class 4 candidates are R10, R12, R13 and R17, plus the caller adapter in R16.

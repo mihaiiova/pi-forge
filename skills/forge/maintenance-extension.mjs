@@ -1,7 +1,7 @@
 /**
- * /forge inside a Forge project. Thin Pi adapter: command-owned authority,
+ * /faur inside a Forge project. Thin Pi adapter: command-owned authority,
  * model-owned proposals only. registerMaintenance returns the command handler;
- * the package extension registers /forge and routes to it.
+ * the package extension registers /faur and routes to it.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -24,7 +24,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
   let pending = null;
   // Set when a proposal was made in the current turn, so only that turn prompts.
   let proposedThisTurn = false;
-  // Where the "in /forge" status line is shown, to clear it when leaving.
+  // Where the "in /faur" status line is shown, to clear it when leaving.
   let statusUi = null;
   let savedTools = null;
   let planning = false;
@@ -53,10 +53,10 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
   });
   const tool = {
     name: 'forge_plan', label: 'Forge proposal',
-    description: 'Inspect the local declarative system, discover public skills (skills.sh), packages and MCP servers, available models and local CLIs, fetch public documentation, or preview structured changes. Cannot apply, install, authenticate or run anything. Only available during a direct /forge request.',
+    description: 'Inspect the local declarative system, discover public skills (skills.sh), packages and MCP servers, available models and local CLIs, fetch public documentation, or preview structured changes. Cannot apply, install, authenticate or run anything. Only available during a direct /faur request.',
     parameters,
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      if (!armed) throw new Error('Invoke /forge directly to authorize a maintenance proposal');
+      if (!armed) throw new Error('Invoke /faur directly to authorize a maintenance proposal');
       if (planning) throw new Error('A Forge proposal is already being computed');
       planning = true;
       try {
@@ -98,10 +98,10 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
           }
           value = documentSlice(doc, offset);
         } else if (params.action === 'propose') {
-          if (review) throw new Error('Review mode is read-only. Request a specific change with /forge before proposing edits.');
+          if (review) throw new Error('Review mode is read-only. Request a specific change with /faur before proposing edits.');
           pending = null;
           const ops = JSON.parse(params.operations ?? 'null');
-          if (ops?.some(o => o.op === 'reconcile')) throw new Error('Use /forge sync to regenerate the project');
+          if (ops?.some(o => o.op === 'reconcile')) throw new Error('Use /faur sync to regenerate the project');
           pending = await withSkillPreviews(planChange(root, ops), { fetcher: href => publicFetch(href) });
           proposedThisTurn = true;
           value = { ...publicChangePreview(root, pending), next: 'When this turn ends, Forge asks the person to apply, discuss or discard this proposal; you cannot apply it. Present the change; do not say whether it is applied or waiting.' };
@@ -125,12 +125,12 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     savedTools = null;
   };
   pi.registerTool({ ...tool, exposure: 'hidden' });
-  /** Stay in /forge: the person's next plain message continues the conversation. */
+  /** Stay in /faur: the person's next plain message continues the conversation. */
   const stay = (ctx) => {
     // A review is read-only for its first answer; replies may ask for changes.
     review = false;
     statusUi = ctx.ui;
-    ctx.ui.setStatus?.('forge', 'In /forge: reply to continue · /forge exit to leave');
+    ctx.ui.setStatus?.('forge', 'In /faur: reply to continue · /faur exit to leave');
   };
   /** What the prompt shows: the files a proposal writes and what it takes to load it. */
   const promptFor = (plan) => {
@@ -151,7 +151,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
   };
   // A revision turn that proposes a change ends with a prompt: discuss (the
   // default, so a stray Enter changes nothing), apply or discard. Only a
-  // direct /forge request arms the planner, the prompt is the approval, and a
+  // direct /faur request arms the planner, the prompt is the approval, and a
   // session without a UI never applies.
   pi.on('agent_end', async (_event, ctx) => {
     if (!armed) return;
@@ -172,10 +172,10 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     }
     if (choice === 'Discard') { hide(); tell(ctx, 'Discarded; nothing applied.'); return; }
     stay(ctx);
-    tell(ctx, 'Nothing applied. Reply to discuss or change the proposal; /forge exit leaves without changes.');
+    tell(ctx, 'Nothing applied. Reply to discuss or change the proposal; /faur exit leaves without changes.');
   });
   pi.on('tool_call', event => {
-    if (armed && event.toolName !== 'forge_plan') return { block: true, reason: 'Maintenance uses only forge_plan; operational tools are suspended while in /forge' };
+    if (armed && event.toolName !== 'forge_plan') return { block: true, reason: 'Maintenance uses only forge_plan; operational tools are suspended while in /faur' };
   });
   pi.on('session_start', (_event, ctx) => {
     // Report specialists that would start without their tools or skills.
@@ -222,8 +222,8 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     const section = (name, problems, fix) => problems === null ? `${name}: skipped until system.yaml is valid`
       : problems.length ? `${name}: ${problems.length} problem${problems.length === 1 ? '' : 's'}\n${problems.map(p => `- ${p}`).join('\n')}${fix ? `\n${fix}` : ''}` : `${name}: ok`;
     tell(ctx, [
-      section('Validation', result.validation, 'Describe the fix with /forge <request>.'),
-      section('Consistency', result.consistency, 'Run /forge sync to rebuild the generated files from system.yaml.'),
+      section('Validation', result.validation, 'Describe the fix with /faur <request>.'),
+      section('Consistency', result.consistency, 'Run /faur sync to rebuild the generated files from system.yaml.'),
       section('Launch check', result.launch),
       ...(result.advisories?.length ? [section('Advisories (non-blocking)', result.advisories)] : []),
       versions,
@@ -235,7 +235,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     let forge;
     try {
       const release = await checkRelease(root, updates);
-      forge = `${release.installed} (${release.newer ? `${release.latest} available: /forge sync` : 'newest release'})`;
+      forge = `${release.installed} (${release.newer ? `${release.latest} available: /faur sync` : 'newest release'})`;
     } catch (error) {
       let pin;
       try { pin = forgePin(root).tag; } catch { pin = 'not pinned'; }
@@ -249,7 +249,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
       ...(s.env.length ? [`Environment: ${s.env.map(e => `${e.name} (${e.set})`).join(', ')}`] : []),
       `Forge: ${forge}`,
       (() => { try { const last = readJson(root, '.forge/check.json'); return `Last capability check: ${last.timestamp} (${last.ok ? 'no missing capabilities' : 'problems found'}).`; } catch { return 'Last capability check: not run.'; } })(),
-      s.pendingRequests ? `${s.pendingRequests} pending permission request${s.pendingRequests === 1 ? '' : 's'}: /forge permissions review` : 'No pending permission requests.',
+      s.pendingRequests ? `${s.pendingRequests} pending permission request${s.pendingRequests === 1 ? '' : 's'}: /faur permissions review` : 'No pending permission requests.',
     ].join('\n'));
   };
   /** Move the pin to the newest release, or rebuild with this one when it is the newest. */
@@ -283,7 +283,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     const model = parsedModel(readText(root, '.pi/system.yaml'));
     if (!name) {
       const list = envStatus(root, model);
-      tell(ctx, list.length ? list.map(e => `${e.name}${e.secret ? ' (secret)' : ''}: ${e.set}`).join('\n') + '\nSet a value with /forge env set NAME, or use --file PATH for a declared integration secretsFile; then restart ./run.' : 'No integrations.env variables are declared.');
+      tell(ctx, list.length ? list.map(e => `${e.name}${e.secret ? ' (secret)' : ''}: ${e.set}`).join('\n') + '\nSet a value with /faur env set NAME, or use --file PATH for a declared integration secretsFile; then restart ./run.' : 'No integrations.env variables are declared.');
       return;
     }
     if (!ctx.hasUI) throw new Error('Interactive input is required to set a value');
@@ -306,17 +306,17 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     // authority. Review cannot reach Bash/write/edit, MCP or subagents.
     pi.setActiveTools(['forge_plan']);
     statusUi = ctx.ui;
-    ctx.ui?.setStatus?.('forge', 'In /forge: reply to continue · /forge exit to leave');
+    ctx.ui?.setStatus?.('forge', 'In /faur: reply to continue · /faur exit to leave');
     const workflow = readFileSync(new URL('./SKILL.md', import.meta.url), 'utf8').split('## Project maintenance workflow\n')[1];
-    pi.sendUserMessage(`${workflow}\n\nMode: ${review ? 'READ-ONLY REVIEW' : 'CHANGE PROPOSAL'}.\nUser request: ${request || 'review'}\n\nUse forge_plan inspect first. The command grants no Bash/write privileges. The person's replies continue this conversation until they apply or discard a proposal, or leave with /forge exit.`);
+    pi.sendUserMessage(`${workflow}\n\nMode: ${review ? 'READ-ONLY REVIEW' : 'CHANGE PROPOSAL'}.\nUser request: ${request || 'review'}\n\nUse forge_plan inspect first. The command grants no Bash/write privileges. The person's replies continue this conversation until they apply or discard a proposal, or leave with /faur exit.`);
   };
   return async (args, ctx) => {
     try {
       const request = (args ?? '').trim();
       if (request === 'exit') {
-        if (!armed) { tell(ctx, 'Not in /forge.'); return; }
+        if (!armed) { tell(ctx, 'Not in /faur.'); return; }
         hide();
-        tell(ctx, 'Left /forge; nothing applied.');
+        tell(ctx, 'Left /faur; nothing applied.');
         return;
       }
       if (request === 'check') return check(ctx);

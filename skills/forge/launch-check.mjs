@@ -5,7 +5,7 @@
  * what this project provides (the MCP tools Pi registered for connected
  * servers, tools registered by loaded extensions, installed skill
  * directories, background launch setup). Run at session start and by
- * /forge check so a broken specialist is reported before a workflow depends
+ * /faur check so a broken specialist is reported before a workflow depends
  * on it. MCP servers connect after session start, so their tools are checked
  * only when `mcpTools` is given.
  */
@@ -105,9 +105,9 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
     const file = existsSync(join(root, `.pi/agents/${agent.name}.md`)) ? readFileSync(join(root, `.pi/agents/${agent.name}.md`), 'utf8') : '';
     // Files generated before v0.11 used "[a, b]" lists, which pi-subagents reads
     // as the names "[a" and "b]", so none of those tools or skills resolve.
-    if (/^(tools|skills): \[/m.test(file.split('\n---')[0])) report('its agent file lists tools or skills as "[a, b]", which pi-subagents misreads (so they are missing); run /forge sync');
+    if (/^(tools|skills): \[/m.test(file.split('\n---')[0])) report('its agent file lists tools or skills as "[a, b]", which pi-subagents misreads (so they are missing); run /faur sync');
     if (needsBackground(tools)) {
-      if (!/\nasync: true\n/.test(file) || !forced) report('uses MCP or extension tools but is not set to run in the background, so they would be missing; run /forge sync');
+      if (!/\nasync: true\n/.test(file) || !forced) report('uses MCP or extension tools but is not set to run in the background, so they would be missing; run /faur sync');
     }
     for (const name of Array.isArray(agent.skills) ? agent.skills : []) {
       const kind = skillSourceKind(skills.get(name)?.source);
@@ -116,7 +116,7 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
     }
   }
   for (const issue of backgroundAskingIssues(model)) {
-    problems.push({ agent: issue.agent, problem: `${issue.message}${issue.fix ? ` Ask /forge to apply the suggested fix: tools ${JSON.stringify(issue.fix.value.tools)}.` : ''}` });
+    problems.push({ agent: issue.agent, problem: `${issue.message}${issue.fix ? ` Ask /faur to apply the suggested fix: tools ${JSON.stringify(issue.fix.value.tools)}.` : ''}` });
   }
   return { ok: problems.length === 0, problems };
 }

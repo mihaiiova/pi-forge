@@ -90,7 +90,7 @@ export function effectiveCapabilities(model, opts = {}) {
     // not assertable here (see notes).
     extensions: [...declared].sort(),
     maintenance: {
-      command: '/forge',
+      command: '/faur',
       proposalTool: 'forge_plan (hidden outside a direct maintenance request)',
       applicationAuthority: 'direct user command plus interactive confirmation',
       operationalToolExpansion: false,

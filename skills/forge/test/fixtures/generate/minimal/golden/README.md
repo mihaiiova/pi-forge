@@ -1,4 +1,4 @@
-<!-- forge:generated v1 sha256=740261f15a5da87e56f6f7893139be04e596ccac09efd0963ee4f66bd38cd9cf -->
+<!-- forge:generated v1 sha256=634909484bc7cf8398375fcdd20af39decc22c05b84f9c5406b25be93dc3f763 -->
 # seo-agent-system
 
 SEO analysis + article drafting
@@ -26,12 +26,12 @@ capabilities are enforced vs advisory.
 
 ## Maintain
 
-`/forge <request>` proposes a change; when the turn ends, Forge asks you
+`/faur <request>` proposes a change; when the turn ends, Forge asks you
 to discuss, apply or discard it. Replies continue the conversation until
-then; `/forge exit` leaves. `/forge review` is read-only.
-`/forge check` verifies the agent, `/forge status` summarizes it, and
-`/forge sync` moves to the newest Forge release after two confirmations.
-Roll back with git. `/forge permissions` lists the commands agents may run
+then; `/faur exit` leaves. `/faur review` is read-only.
+`/faur check` verifies the agent, `/faur status` summarizes it, and
+`/faur sync` moves to the newest Forge release after two confirmations.
+Roll back with git. `/faur permissions` lists the commands agents may run
 and adds, removes or reviews them; agents ask for a command they need with
 `request_permission`. Restart `./run` when the launcher or packages change.
 

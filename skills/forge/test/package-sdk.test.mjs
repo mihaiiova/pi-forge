@@ -33,19 +33,19 @@ test('Pi loads a generated project from the Forge package', async t => {
   try {
     await session.bindExtensions({ onError: error => { throw new Error(JSON.stringify(error)); } });
     const commands = session.extensionRunner.getRegisteredCommands().map(c => c.name);
-    assert.equal(commands.filter(name => name === 'forge').length, 1);
+    assert.equal(commands.filter(name => name === 'faur').length, 1);
     assert.deepEqual(commands.filter(name => /factory/.test(name)), [], 'no old command names');
     assert.ok(session.extensionRunner.getAllRegisteredTools().some(t => t.definition.name === 'memory'));
     assert.ok(session.extensionRunner.getAllRegisteredTools().some(t => t.definition.name === 'request_permission'));
     const notices = [];
-    const command = session.extensionRunner.getCommand('forge');
+    const command = session.extensionRunner.getCommand('faur');
     assert.match(command.description, /check \| status \| sync/);
     await command.handler('check', { hasUI: true, ui: { notify: message => notices.push(message) } });
-    assert.match(notices.join('\n'), /Validation/, 'inside a project /forge checks this agent');
+    assert.match(notices.join('\n'), /Validation/, 'inside a project /faur checks this agent');
   } finally { session.dispose(); }
 });
 
-test('outside a Forge project, /forge designs a new agent and has nothing to check', async t => {
+test('outside a Forge project, /faur designs a new agent and has nothing to check', async t => {
   const root = mkdtempSync(join(tmpdir(), 'forge-outside-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const binary = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim();
@@ -60,9 +60,9 @@ test('outside a Forge project, /forge designs a new agent and has nothing to che
   try {
     await session.bindExtensions({ onError: error => { throw new Error(JSON.stringify(error)); } });
     const commands = session.extensionRunner.getRegisteredCommands().map(c => c.name);
-    assert.deepEqual(commands.filter(name => name === 'forge' || /factory/.test(name)), ['forge']);
+    assert.deepEqual(commands.filter(name => name === 'faur' || /factory/.test(name)), ['faur']);
     const notices = [];
-    await session.extensionRunner.getCommand('forge').handler('status', { hasUI: true, cwd: root, ui: { notify: message => notices.push(message) } });
+    await session.extensionRunner.getCommand('faur').handler('status', { hasUI: true, cwd: root, ui: { notify: message => notices.push(message) } });
     assert.match(notices.join('\n'), /not a Forge project/i);
   } finally { session.dispose(); }
 });
