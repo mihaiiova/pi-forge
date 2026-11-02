@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { importSystem } from "../import.mjs";
 import { generateProject } from "../generate.mjs";
-import { modifyPlan } from "../modify.mjs";
 import { validateSystem } from "../validate.mjs";
 import { readFileSync } from "node:fs";
 
@@ -72,7 +71,7 @@ test("round-trip: modify adds an agent and preserves unrelated authored content"
     ...system,
     agents: [...system.agents, { name: "researcher", description: "Researches", tools: ["read"], model: "provider-a/model-medium", prompt: "Research.\n" }],
   };
-  const plan = modifyPlan(changed, existing);
+  const plan = generateProject(changed, existing);
 
   const researcher = plan.files.find((f) => f.path === ".pi/agents/researcher.md");
   assert.equal(researcher.action, "create", "the added agent is scaffolded");

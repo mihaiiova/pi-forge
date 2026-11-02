@@ -99,7 +99,7 @@ interview again; reuse the design and the conversation, then:
    sources, MCP servers and their scope, documents and deliveries, required
    credentials — and anything still unresolved.
 6. **Get explicit confirmation of that preview** before writing any file, then
-   run `forge generate <dir>`. "Build it" agrees to the design; it is not
+   run `forge generate <dir> --yes`. "Build it" agrees to the design; it is not
    approval to write files unseen.
 
 ## Technical decisions
@@ -233,7 +233,9 @@ first; the user decides.
   operational loadout is not broadened. Changes
   go through `system.yaml`, never direct settings/MCP edits. CLI equivalents:
   `forge change <dir> --operations <json-file> --dry-run`, then `--yes` after
-  approval. Existing `forge modify <dir> --dry-run` reconciliation is preserved.
+  approval. `forge generate` and `forge modify` use the same reconciliation
+  plan; after preview, existing projects require `--yes` or interactive approval.
+  Registry skill installs also require approval on a first build.
 - **Upgrade tooling** — `/faur status` reports whether a newer release tag
   exists; `/faur sync` first asks to run that release to compute a preview,
   then separately asks to apply the pin and file changes. Headless sessions can
@@ -453,14 +455,24 @@ user wants to pursue through a new /faur request.
 downloads and runs nothing. /faur sync proposes the newest tag, asks the human
 before fetching and running that release, previews the pin change and the files
 it generates, and applies only after a second approval. Pi installs the new
-pin; the human restarts ./run. On the newest release, /faur sync regenerates
+pin; the human restarts ./run. The reviewed Faur-managed file plan is applied
+first, then Pi's package update runs. Synchronous file-apply failures have
+best-effort rollback, not crash-atomic recovery. Package installation and its
+external side effects are outside that rollback: if it fails, the applied files
+remain and package state may be partial. From the project directory retry
+`pi update --extensions --approve` in the same Pi environment, then restart
+./run; alternatively review the current changes and package state before using
+git to revert. Never describe the whole sync as transactional. On the newest
+release, /faur sync regenerates
 the project with it instead: text agents read is rewritten directly; changes to
 what they can run or reach are shown and confirmed. /faur check validates
 system.yaml, compares the generated files with it and runs the launch check. A
 proposed change also rebuilds whatever this version generates differently, and
 its preview lists those files under reconciliation. After an approved change the
 human runs /reload (Pi reloads by itself after a sync rebuild); a restart of
-./run is needed only when the launcher or packages change. Rollback is git: restore the previous files and restart. Updates
+./run is needed only when the launcher or packages change. After reviewing the
+current changes, git can restore previous files; it cannot undo external
+package-install effects. Updates
 needing a new schema require a separate previewed model migration; never
 silently reverse later user edits. Discarding a proposal, /faur exit, or a
 new /faur request drops it.

@@ -18,7 +18,7 @@ import { configurationAdvisories } from './advisories.mjs';
  */
 import { createHash } from "node:crypto";
 import { splitModelRef } from "./models.mjs";
-import { authoredSkills } from "./skill-sources.mjs";
+import { authoredSkills, vendoredSkills, skillSourceKind } from "./skill-sources.mjs";
 import { workflowSkill } from "./workflow-skill.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
@@ -120,6 +120,12 @@ function parseMarked(content, style) {
   const match = firstLine.match(style === "html" ? MARKER_HTML_RE : MARKER_PLAIN_RE);
   if (!match) return null;
   return { hash: match[1], body };
+}
+
+/** A marker proves ownership only while its original content remains intact. */
+export function intactScaffold(content) {
+  const marked = parseMarked(content, 'trailing-html');
+  return marked !== null && sha256(marked.body) === marked.hash;
 }
 
 function derivedFile(path, desiredContent, existing) {
@@ -497,6 +503,15 @@ function skillFiles(model, existing) {
     const path = skillPath(skill);
     return authoredFile(path, "trailing-html", skillFileBody(skill, workflowBySkill), existing[path]);
   });
+}
+
+/** Identity inventory only; a listed path is not proof that it may be removed. */
+export function declarationInventory(model) {
+  return {
+    scaffolds: [...agentEntries(model).map(agentPath), ...skillEntries(model).map(skillPath)].sort(),
+    vendoredSkills: vendoredSkills(model).map(s => s.name).sort(),
+    registrySkills: (model.skills ?? []).filter(s => skillSourceKind(s.source) === 'registry').map(({ name, source }) => ({ name, source })).sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 /** Every project-relative path `generate` may write for a given model. */

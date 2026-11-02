@@ -1,15 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, symlinkSync, existsSync, chmodSync, realpathSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, symlinkSync, existsSync, chmodSync, realpathSync, cpSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync as requireResult } from 'node:child_process';
 import { loadYaml } from '../yaml-loader.mjs';
-import { generateProject } from '../generate.mjs';
+import { generateProject, managedPaths } from '../generate.mjs';
 import { changeModel } from '../changes.mjs';
 import { planChange, applyChange, inspectProject, rebuildPlan, changesReach } from '../maintenance.mjs';
-import { readJson, readText, json, atomicWrite, fingerprints } from '../maintenance-store.mjs';
+import { readJson, readText, json, atomicWrite, fingerprints, applyWrites } from '../maintenance-store.mjs';
 import { registerMaintenance } from '../maintenance-extension.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../../..');
@@ -72,6 +72,116 @@ function adapter(initialTools = ['read']) {
   }, sessionManager: { getBranch: () => [] }, modelRegistry: { getAvailable: () => [] } };
   return { pi, Type, ctx, events, tools, commands, messages, notices, dialogs, prompts, status, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
 }
+test('reconcile plans and builds a new project without existing settings', t => {
+  const root = mkdtempSync(join(tmpdir(), 'forge-new-plan-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, '.pi'));
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(model));
+  const plan = planChange(root, [{ op: 'reconcile' }], { piPackages: pkg.pi.packages });
+  assert.equal(readText(root, '.pi/settings.json'), null, 'planning does not write');
+  assert.deepEqual(plan.preview.reconciliation, []);
+  assert.equal(plan.preview.rebuilt, undefined, 'new files are not described as lost hand edits');
+  applyChange(root, plan, true);
+  assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'large');
+  assert.equal(readJson(root, '.forge/build.json').version, pkg.version);
+  assert.equal(inspectProject(root).consistency.ok, true);
+});
+
+test('generated files preserve existing modes and use regular creation modes without changing secret permissions', t => {
+  const root = mkdtempSync(join(tmpdir(), 'forge-generated-modes-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, '.pi'));
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(model));
+  writeFileSync(join(root, '.env'), 'TOKEN=private\n', { mode: 0o600 });
+  applyChange(root, planChange(root, [{ op: 'reconcile' }], { piPackages: pkg.pi.packages }), true);
+  for (const path of ['README.md', '.pi/settings.json', '.pi/mcp.json', '.pi/APPEND_SYSTEM.md', '.pi/CAPABILITIES.md']) {
+    assert.equal(statSync(join(root, path)).mode & 0o777, 0o666 & ~process.umask(), path);
+  }
+  assert.equal(statSync(join(root, 'run')).mode & 0o777, 0o755);
+  chmodSync(join(root, '.pi/settings.json'), 0o640);
+  applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), true);
+  assert.equal(statSync(join(root, '.pi/settings.json')).mode & 0o777, 0o640);
+  assert.equal(statSync(join(root, '.env')).mode & 0o777, 0o600);
+});
+
+test('reconcile identifies a manually removed declaration without deleting edited scaffolds', t => {
+  const root = project(t);
+  applyChange(root, planChange(root, [{ op: 'add', target: 'agent', name: 'reviewer', value: { model: 'fixture/small', prompt: 'Review.\n' } }]), true);
+  const systemPath = join(root, '.pi/system.yaml');
+  const doc = yaml.parse(readFileSync(systemPath, 'utf8'));
+  doc.agents = [];
+  writeFileSync(systemPath, yaml.stringify(doc));
+  const removed = planChange(root, [{ op: 'reconcile' }]);
+  assert.equal(removed.writes['.pi/agents/reviewer.md'], null);
+  const agent = join(root, '.pi/agents/reviewer.md');
+  writeFileSync(agent, readFileSync(agent, 'utf8') + 'Developer edit\n');
+  assert.throws(() => planChange(root, [{ op: 'reconcile' }]), /Authored removal conflict/);
+  assert.match(readFileSync(agent, 'utf8'), /Developer edit/);
+});
+
+test('reconcile preserves unlisted files when prior inventory is unavailable', t => {
+  const root = project(t);
+  mkdirSync(join(root, '.pi/agents'), { recursive: true });
+  writeFileSync(join(root, '.pi/agents/unlisted.md'), 'Developer content\n');
+  writeFileSync(join(root, '.forge/build.json'), json({ version: pkg.version }));
+  const plan = planChange(root, [{ op: 'reconcile' }]);
+  assert.match(plan.preview.inventoryWarning, /cannot identify declarations/);
+  applyChange(root, plan, true);
+  assert.equal(readFileSync(join(root, '.pi/agents/unlisted.md'), 'utf8'), 'Developer content\n');
+});
+
+test('reconcile refuses unsafe declaration inventory paths', t => {
+  const root = project(t);
+  const build = readJson(root, '.forge/build.json');
+  build.declarations.scaffolds.push('.pi/agents/../../outside.md');
+  writeFileSync(join(root, '.forge/build.json'), json(build));
+  assert.throws(() => planChange(root, [{ op: 'reconcile' }]), /Invalid declaration inventory/);
+});
+
+test('CLI generation matches a smaller project revised through change operations', t => {
+  const incremental = project(t);
+  const final = { ...model, agents: [{ name: 'reviewer', model: 'fixture/small', tools: ['read'], prompt: 'Review.\n' }] };
+  applyChange(incremental, planChange(incremental, [{ op: 'add', target: 'agent', name: 'reviewer', value: final.agents[0] }]), true);
+  const direct = mkdtempSync(join(tmpdir(), 'forge-direct-'));
+  t.after(() => rmSync(direct, { recursive: true, force: true }));
+  mkdirSync(join(direct, '.pi'));
+  writeFileSync(join(direct, '.pi/system.yaml'), yaml.stringify(final));
+  execFileSync(process.execPath, [forge, 'generate', direct], { stdio: 'pipe' });
+  for (const path of [...managedPaths(final), '.forge/build.json', '.forge/capabilities.json']) {
+    assert.deepEqual(readText(direct, path), readText(incremental, path), path);
+  }
+  assert.deepEqual(yaml.parse(readText(direct, '.pi/system.yaml')), yaml.parse(readText(incremental, '.pi/system.yaml')));
+});
+
+test('checked writes restore earlier changes if a later write fails', t => {
+  const root = mkdtempSync(join(tmpdir(), 'forge-rollback-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'original'), 'before');
+  chmodSync(join(root, 'original'), 0o640);
+  const writes = { original: 'after', 'new/inner/created': 'new', failure: 'no' };
+  const expected = fingerprints(root, Object.keys(writes));
+  assert.throws(() => applyWrites(root, writes, expected, true, { write: (dir, path, content) => {
+    if (path === 'failure') throw new Error('injected write failure');
+    atomicWrite(dir, path, content);
+  } }), /injected write failure/);
+  assert.equal(readFileSync(join(root, 'original'), 'utf8'), 'before');
+  assert.equal(existsSync(join(root, 'new')), false, 'new empty parent directories are rolled back');
+  assert.equal(existsSync(join(root, 'failure')), false);
+  assert.equal(statSync(join(root, 'original')).mode & 0o777, 0o640);
+});
+
+test('checked writes roll back when post-write verification fails', t => {
+  const root = mkdtempSync(join(tmpdir(), 'forge-rollback-postwrite-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'original'), 'before');
+  const writes = { original: 'after', created: 'new' };
+  assert.throws(() => applyWrites(root, writes, fingerprints(root, Object.keys(writes)), true, {
+    afterWrites: () => { throw new Error('post-write verification failed'); },
+  }), /post-write verification failed/);
+  assert.equal(readFileSync(join(root, 'original'), 'utf8'), 'before');
+  assert.equal(existsSync(join(root, 'created')), false);
+});
+
 test('structured changes preserve comments, add/update/remove all schema entities and reconcile capabilities', t => {
   const root = project(t);
   const operations = [
@@ -143,6 +253,17 @@ test('conflicts, stale previews, malformed references and infrastructure names c
   assert.deepEqual(readdirSync(outside), []);
 });
 
+test('a stale preview refuses before running a registry installer', t => {
+  const root = project(t);
+  const source = `skills:owner/repo/example@${'a'.repeat(40)}`;
+  const plan = planChange(root, [{ op: 'add', target: 'skill', name: 'example', value: { source } }]);
+  assert.equal(plan.skills.install.length, 1);
+  writeFileSync(join(root, '.pi/system.yaml'), readText(root, '.pi/system.yaml') + '# changed\n');
+  let calls = 0;
+  assert.throws(() => applyChange(root, plan, true, { run: () => { calls++; } }), /changed since preview/);
+  assert.equal(calls, 0);
+});
+
 test('an unsupported schema is only replaced by an explicit, drift-protected replacement', t => {
   const root = project(t);
   const legacy = { ...model, schema: 0 };
@@ -158,6 +279,8 @@ test('vendored skills must already be in the project and cannot be orphaned', t 
   const local = { op: 'add', target: 'skill', name: 'house-style', value: { source: '../shared/house-style' } };
   assert.throws(() => planChange(root, [local]), /Vendored skill not present in the project: house-style/);
   mkdirSync(join(root, '.pi/skills/house-style'), { recursive: true });
+  writeFileSync(join(root, '.pi/skills/house-style/SKILL.md'), '---\nname: different\n---\nWrite plainly.\n');
+  assert.throws(() => planChange(root, [local]), /declares name "different"/);
   writeFileSync(join(root, '.pi/skills/house-style/SKILL.md'), '---\nname: house-style\n---\nWrite plainly.\n');
   applyChange(root, planChange(root, [local, { op: 'add', target: 'agent', name: 'writer', value: { model: 'fixture/small', skills: ['house-style'] } }]), true);
   assert.match(readText(root, '.pi/agents/writer.md'), /skills:\n  - house-style\n/);
@@ -300,6 +423,32 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
 });
 
+test('approval dialog warns when reconciliation overwrites a hand-edited launcher', async t => {
+  const root = project(t);
+  writeFileSync(join(root, 'run'), readText(root, 'run') + '# developer edit\n');
+  const mock = adapter();
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
+  await mock.forge('change model', mock.ctx);
+  await mock.tools.forge_plan.execute('id', { action: 'propose', operations: json([{ op: 'assign', name: 'lead', model: 'fixture/small' }]) }, undefined, undefined, mock.ctx);
+  await mock.endTurn();
+  assert.match(mock.prompts[0].title, /generates run differently.*hand edit, which would be lost/);
+});
+
+test('registry skill approval names the installation and unsandboxed installer', async t => {
+  const root = project(t);
+  const mock = adapter();
+  const fetcher = async url => ({ text: url.includes('/git/trees/') ? JSON.stringify({ tree: [], truncated: false }) : '---\nname: example\ndescription: Example\n---\nUse this skill.\n' });
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root, { fetcher });
+  await mock.forge('add a registry skill', mock.ctx);
+  const source = `skills:owner/repo/example@${'a'.repeat(40)}`;
+  const result = await mock.tools.forge_plan.execute('id', { action: 'propose', operations: json([{ op: 'add', target: 'skill', name: 'example', value: { source } }]) }, undefined, undefined, mock.ctx);
+  assert.match(result.content[0].text, /Untrusted skill content/);
+  await mock.endTurn();
+  assert.match(mock.prompts[0].title, /Install registry skill example/);
+  assert.match(mock.prompts[0].title, /\.agents\/skills\/example\//);
+  assert.match(mock.prompts[0].title, /npx skills@.*not OS-sandboxed/);
+});
+
 test('/faur check shows document writer validation without verbose mode', async t => {
   const root = project(t);
   const invalid = { ...model, documents: [{ name: 'report', path: 'reports/report.md', writer: 'lead', sections: [{ heading: 'Summary' }] }] };
@@ -429,6 +578,7 @@ test('env variables are declared by proposal and their values set only by the us
   writeFileSync(join(root, '.env'), '# keep me\nOTHER=1\n');
   await command('env set GITHUB_PAT');
   assert.equal(readText(root, '.env'), '# keep me\nOTHER=1\nGITHUB_PAT=github_pat_secret_value\n');
+  assert.equal(statSync(join(root, '.env')).mode & 0o777, 0o600, 'setting a secret remains private');
   typed = 'rotated';
   await command('env set GITHUB_PAT');
   assert.equal(readText(root, '.env'), '# keep me\nOTHER=1\nGITHUB_PAT=rotated\n');

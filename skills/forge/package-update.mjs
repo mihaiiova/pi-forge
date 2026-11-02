@@ -174,7 +174,11 @@ export async function applyUpdate(root, plan, approved = false, { install = inst
   if (plan?.kind !== 'package-update') throw new Error('No Forge update previewed');
   try {
     const applied = await runRelease(plan.dir, root, ['apply', plan.digest]);
-    await install(root);
+    try {
+      await install(root);
+    } catch (error) {
+      throw new Error('The reviewed Faur-managed file plan was applied, but Pi package installation failed. Package state and external installer effects may be partial; sync is not transactional. From the project directory, retry `pi update --extensions --approve` in the same Pi environment, then restart ./run. If you instead want to revert, review the current changes and package state first; use git only after that review. Faur did not roll back the applied files.', { cause: error });
+    }
     return applied;
   } finally { discardUpdate(plan); }
 }

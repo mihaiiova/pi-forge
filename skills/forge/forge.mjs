@@ -30,21 +30,18 @@ import { fileURLToPath } from "node:url";
 import { parseSystem } from "./parse.mjs";
 import { validateSystem } from "./validate.mjs";
 import { generateProject, managedPaths } from "./generate.mjs";
-import { modifyPlan } from "./modify.mjs";
-import { effectiveCapabilities, checkCapabilities } from "./capabilities.mjs";
-import { indent, diffLines } from "./diff.mjs";
+import { indent } from "./diff.mjs";
 import { parseMcpFile, probeClis, scanSkills } from "./discover.mjs";
 import { loadYaml } from "./yaml-loader.mjs";
 import { importSystem } from "./import.mjs";
 import { parseModelList, unavailableModelWarnings } from "./models.mjs";
 import { vendoredSkills } from "./skill-sources.mjs";
-import { registrySkills, installedDir, installRegistrySkill, searchSkills, previewRegistrySkill, resolveRegistrySkill } from "./registry-skills.mjs";
+import { installedDir, searchSkills, previewRegistrySkill, resolveRegistrySkill } from "./registry-skills.mjs";
 import { planChange, applyChange, withSkillPreviews } from './maintenance.mjs';
-import { fingerprints, atomicWrite } from './maintenance-store.mjs';
+import { atomicWrite } from './maintenance-store.mjs';
 import { checkAgent, loadProjectTools, connectMcp } from './check.mjs';
 import { parsedModel } from './changes.mjs';
 import { unmetSetup, installSetup } from './setup.mjs';
-import { ensureSecretFiles, preflightSecretFiles } from './integration-secrets.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -56,7 +53,8 @@ Commands:
   check-agent <dir> [--connect]
                              report effective capabilities (no model calls);
                              --connect starts configured MCP servers
-  generate <dir> [--dry-run] generate the project from system.yaml
+  generate <dir> [--dry-run] [--yes]
+                             generate or reconcile; existing projects need approval
   discover [dir] [--cli <name>]...
                              print a read-only capability inventory as JSON;
                              probes only the CLIs named with --cli
@@ -187,48 +185,14 @@ function vendorPlan(dir, model) {
   return { copies, errors };
 }
 
-/** Registry skills not yet installed in the project's `.agents/skills/`. */
-function registryPlan(dir, model) {
-  return registrySkills(model).filter((skill) => !existsSync(join(resolve(dir), installedDir(skill.name), "SKILL.md")));
-}
-
 function printRegistryPlan(skills) {
   for (const skill of skills) console.log(`  ${pad("install")} ${installedDir(skill.name)}/ (skills CLI, ${skill.source})`);
-}
-
-function applyRegistryPlan(dir, skills) {
-  for (const skill of skills) {
-    installRegistrySkill(resolve(dir), skill);
-    console.log(`installed ${installedDir(skill.name)}/ from ${skill.source}`);
-  }
 }
 
 function printVendorPlan(copies) {
   for (const copy of copies) {
     const count = Object.keys(copy.files).length;
     console.log(`  ${pad("vendor")} ${copy.dest}/ (${count} file${count === 1 ? "" : "s"} from ${copy.source})`);
-  }
-}
-
-function applyVendorPlan(dir, copies) {
-  for (const copy of copies) {
-    for (const [rel, file] of Object.entries(copy.files)) {
-      const target = join(resolve(dir), copy.dest, rel);
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, file.content);
-      if (file.executable) chmodSync(target, 0o755);
-    }
-    console.log(`vendored ${copy.dest}/ from ${copy.source}`);
-  }
-}
-
-/** Context files plain Pi would load from the project and its parents (one per directory), which `./run` skips. */
-function skippedContextFiles(dir) {
-  const found = [];
-  for (let d = resolve(dir); ; d = dirname(d)) {
-    const file = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"].map((name) => join(d, name)).find((path) => existsSync(path));
-    if (file) found.push(relative(resolve(dir), file));
-    if (dirname(d) === d) return found;
   }
 }
 
@@ -409,84 +373,41 @@ function pad(action) {
   return action.padEnd(9, " ");
 }
 
-function printPlan(systemPath, dir, files, existing, label) {
-  console.log(`${label} for ${systemPath}:`);
-  if (!existsSync(join(resolve(dir), ".pi", "agents"))) {
-    console.log(`  ${pad("create")} .pi/agents/ (empty directory)`);
-  }
-  for (const f of files) {
-    if (f.action === "none") continue;
-    console.log(`  ${pad(f.action)} ${f.path}`);
-    if (f.action === "create") {
-      console.log(indent(f.content, "    + "));
-    } else if (f.action === "write") {
-      console.log(indent(f.diff ?? diffLines(existing[f.path] ?? "", f.content), "    "));
-    } else if (f.action === "conflict") {
-      console.log(f.reason ? `    (${f.reason})` : `    (user edit vs model change — proposed diff)`);
-      console.log(indent(f.diff ?? diffLines(existing[f.path] ?? "", f.desired ?? ""), "    "));
-    }
-  }
-}
-
-function runGenerate(dir, dryRun) {
+async function runReconcile(dir, dryRun, yes, command) {
   const { systemPath, error, normalized, ok, errors } = loadModel(dir);
-  if (error) {
-    fail(error);
-    return;
-  }
-  if (!ok) {
-    for (const e of errors) console.error(`error - ${e}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const existing = readExisting(dir, normalized);
-  const { files, warnings, errors: depErrors } = generateProject(normalized, existing, { piPackages: readPiPackages(), contextFiles: skippedContextFiles(dir) });
+  if (error) { fail(error); return; }
+  if (!ok) { failOnErrors(errors); return; }
+  const root = resolve(dir);
   const vendor = vendorPlan(dir, normalized);
-  if (failOnErrors([...depErrors, ...vendor.errors])) return;
-  printWarnings(warnings);
+  if (failOnErrors(vendor.errors)) return;
+  const plan = await withSkillPreviews(planChange(root, [{ op: 'reconcile' }], {
+    piPackages: readPiPackages(), vendorCopies: vendor.copies,
+  }));
+  printWarnings(plan.preview.warnings);
   warnUnavailableModels(normalized);
-  const changes = files.filter((f) => f.action === "create" || f.action === "write");
-  const conflicts = files.filter((f) => f.action === "conflict");
-
-  if (dryRun) {
-    printPlan(systemPath, dir, files, existing, "Planned changes (dry run — nothing written)");
-    printVendorPlan(vendor.copies);
-    printRegistryPlan(registryPlan(dir, normalized));
-    process.exitCode = 0;
-    return;
+  console.log(`${dryRun ? 'Planned changes (dry run — nothing written)' : 'Preview of changes to apply'} for ${systemPath}:`);
+  for (const file of plan.preview.files) {
+    console.log(`  ${pad(file.action)} ${file.path}`);
+    if (file.diff) console.log(indent(file.diff, '    '));
   }
-
-  try { preflightSecretFiles(resolve(dir), normalized); } catch (error) { fail(error.message); return; }
-  for (const f of changes) {
-    const target = join(resolve(dir), f.path);
-    writeGenerated(target, f);
-    console.log(`wrote ${f.path} (${f.action})`);
+  printVendorPlan(vendor.copies);
+  printRegistryPlan(plan.skills.install);
+  if (plan.preview.skills) console.log(JSON.stringify(plan.preview.skills, null, 2));
+  if (plan.preview.inventoryWarning) console.error(`warning - ${plan.preview.inventoryWarning}`);
+  if (plan.preview.rebuilt) console.error(`warning - ${plan.preview.rebuilt}`);
+  if (dryRun) return;
+  // A first build is implicit approval only when it executes no registry CLI.
+  // Reconciliation and registry execution always need explicit approval.
+  const firstBuild = !existsSync(join(root, '.forge/build.json')) && !existsSync(join(root, '.pi/settings.json'));
+  const createsOnly = plan.preview.files.every(file => file.action === 'create');
+  let approved = yes || (command === 'generate' && firstBuild && createsOnly && !plan.skills.install.length && !plan.skills.remove.length);
+  if (!approved && process.stdin.isTTY) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    approved = await new Promise(resolve => rl.question('Apply the entire plan? [y/N] ', answer => resolve(/^y(es)?$/i.test(answer.trim()))));
+    rl.close();
   }
-  try { ensureSecretFiles(resolve(dir), normalized); } catch (error) { fail(error.message); return; }
-  applyVendorPlan(dir, vendor.copies);
-  try { applyRegistryPlan(dir, registryPlan(dir, normalized)); } catch (err) { fail(err.message); return; }
-  mkdirSync(join(resolve(dir), ".pi", "agents"), { recursive: true });
-
-  // Write the deterministic effective-capability manifest and verify the
-  // just-generated config matches the model (defense against drift).
-  const settingsFile = files.find((f) => f.path === ".pi/settings.json");
-  const mcpFile = files.find((f) => f.path === ".pi/mcp.json");
-  const settingsJson = settingsFile ? JSON.parse(settingsFile.content) : {};
-  const mcpJson = mcpFile ? JSON.parse(mcpFile.content) : {};
-  const caps = effectiveCapabilities(normalized, { piPackages: readPiPackages() });
-  mkdirSync(join(resolve(dir), ".forge"), { recursive: true });
-  writeFileSync(join(resolve(dir), ".forge", "capabilities.json"), `${JSON.stringify(caps, null, 2)}\n`, "utf-8");
-  const check = checkCapabilities(normalized, { settings: settingsJson, mcpJson }, { piPackages: readPiPackages() });
-  for (const e of check.errors) console.error(`warning - ${e}`);
-
-  const version = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')).version;
-  const fileFingerprints = fingerprints(resolve(dir), managedPaths(normalized));
-  writeFileSync(join(resolve(dir), '.forge', 'build.json'), `${JSON.stringify({ version, fingerprints: fileFingerprints }, null, 2)}\n`);
-  for (const c of conflicts) {
-    console.error(`conflict - ${c.path}: user edit vs model change; not applied. Proposed:\n${c.desired}`);
-  }
-  process.exitCode = 0;
+  if (!approved) { fail('Not approved — nothing written. Use --yes or approve interactively.'); return; }
+  console.log(`Applied. ${applyChange(root, plan, true)}`);
 }
 
 function runImport(dir) {
@@ -551,84 +472,6 @@ function runImport(dir) {
   process.exitCode = 0;
 }
 
-async function runModify(dir, dryRun, yes) {
-  const { systemPath, error, normalized, ok, errors } = loadModel(dir);
-  if (error) {
-    fail(error);
-    return;
-  }
-  if (!ok) {
-    for (const e of errors) console.error(`error - ${e}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const existing = readExisting(dir, normalized);
-  const { files, conflicts, warnings, errors: depErrors } = modifyPlan(normalized, existing, { piPackages: readPiPackages(), contextFiles: skippedContextFiles(dir) });
-  const vendor = vendorPlan(dir, normalized);
-  if (failOnErrors([...depErrors, ...vendor.errors])) return;
-  printWarnings(warnings);
-  warnUnavailableModels(normalized);
-  const changes = files.filter((f) => f.action === "create" || f.action === "write");
-
-  // Always preview the full planned diff before touching anything.
-  printPlan(systemPath, dir, files, existing, dryRun
-    ? "Planned changes (dry run — nothing written)"
-    : "Preview of changes to apply");
-  printVendorPlan(vendor.copies);
-  const installs = registryPlan(dir, normalized);
-  printRegistryPlan(installs);
-
-  if (dryRun) {
-    process.exitCode = 0;
-    return;
-  }
-
-  if (!yes && !process.stdin.isTTY) {
-    console.error("error - non-interactive without --yes: no changes applied (preview only). Use --dry-run or --yes.");
-    process.exitCode = 0;
-    return;
-  }
-
-  try { preflightSecretFiles(resolve(dir), normalized); } catch (error) { fail(error.message); return; }
-  const apply = (f) => {
-    const target = join(resolve(dir), f.path);
-    writeGenerated(target, f);
-    console.log(`wrote ${f.path} (${f.action})`);
-  };
-
-  if (yes) {
-    for (const f of changes) apply(f);
-    applyVendorPlan(dir, vendor.copies);
-    try { applyRegistryPlan(dir, installs); } catch (err) { fail(err.message); return; }
-  } else {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    for (const f of changes) {
-      const answer = await new Promise(resolve => rl.question(`Apply ${f.path}? [y/N] `, resolve));
-      if (/^y(es)?$/i.test(answer.trim())) apply(f);
-      else console.log(`skipped ${f.path}`);
-    }
-    for (const copy of vendor.copies) {
-      const answer = await new Promise(resolve => rl.question(`Vendor ${copy.dest}/ from ${copy.source}? [y/N] `, resolve));
-      if (/^y(es)?$/i.test(answer.trim())) applyVendorPlan(dir, [copy]);
-      else console.log(`skipped ${copy.dest}/`);
-    }
-    for (const skill of installs) {
-      const answer = await new Promise(resolve => rl.question(`Install ${installedDir(skill.name)}/ from ${skill.source} with the skills CLI? [y/N] `, resolve));
-      if (!/^y(es)?$/i.test(answer.trim())) { console.log(`skipped ${installedDir(skill.name)}/`); continue; }
-      try { applyRegistryPlan(dir, [skill]); } catch (err) { console.error(`error - ${err.message}`); process.exitCode = 1; }
-    }
-    rl.close();
-  }
-
-  try { ensureSecretFiles(resolve(dir), normalized); } catch (error) { fail(error.message); return; }
-  mkdirSync(join(resolve(dir), ".pi", "agents"), { recursive: true });
-
-  for (const c of conflicts) {
-    console.error(`conflict - ${c.path}: user edit vs model change; not applied. Proposed:\n${c.desired}`);
-  }
-  process.exitCode = 0;
-}
 
 async function main(argv) {
   const [command, dir, ...rest] = argv;
@@ -684,7 +527,7 @@ async function main(argv) {
       process.stderr.write(USAGE);
       return;
     }
-    runGenerate(dir, dryRun);
+    await runReconcile(dir, dryRun, rest.includes("--yes"), "generate");
     if (!dryRun && !process.exitCode) {
       const model = parsedModel(readFileSync(join(resolve(dir), '.pi/system.yaml'), 'utf8'));
       for (const step of unmetSetup(resolve(dir), model)) console.error(`warning - setup ${step.owner}: ${step.description}; fix: ${step.install}`);
@@ -717,7 +560,7 @@ async function main(argv) {
       process.stderr.write(USAGE);
       return;
     }
-    await runModify(dir, dryRun, rest.includes("--yes"));
+    await runReconcile(dir, dryRun, rest.includes("--yes"), "modify");
     return;
   }
 
@@ -736,8 +579,7 @@ async function main(argv) {
       rl.close();
     }
     if (!approved) { console.log('Not approved — nothing written.'); return; }
-    applyChange(root, plan, true);
-    console.log('Applied. Restart ./run.');
+    console.log(`Applied. ${applyChange(root, plan, true)}`);
     return;
   }
 

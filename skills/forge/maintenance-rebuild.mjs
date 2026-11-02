@@ -6,13 +6,15 @@
  * maintenance-rebuild.mjs <project-dir> plan|apply <digest>, JSON on stdout.
  */
 import { resolve } from 'node:path';
-import { rebuildPlan, applyChange } from './maintenance.mjs';
+import { rebuildPlan, applyChange, withSkillPreviews } from './maintenance.mjs';
 import { digest, json } from './maintenance-store.mjs';
 const [dir, mode, expected] = process.argv.slice(2);
 try {
   const root = resolve(dir ?? '');
-  const plan = rebuildPlan(root);
-  const id = digest(json(plan.writes));
+  const plan = await withSkillPreviews(rebuildPlan(root));
+  // Bind approval to the exact fetched SKILL.md as well as planned writes.
+  const skillHashes = Object.fromEntries(Object.entries(plan.skillPreviews ?? {}).map(([name, preview]) => [name, preview.skillMdSha256]));
+  const id = digest(json({ writes: plan.writes, skillHashes }));
   const restart = plan.restart;
   if (mode === 'plan') console.log(json({ ...plan.rebuild, restart, digest: id, preview: plan.preview }));
   else if (mode === 'apply') {

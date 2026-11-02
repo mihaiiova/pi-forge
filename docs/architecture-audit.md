@@ -7,6 +7,19 @@ gated tests skipped). The generated output is audited separately in
 [generated-agent-audit.md](generated-agent-audit.md); backlog dispositions are
 in [backlog-review.md](backlog-review.md).
 
+> **2026-11-02 update (#66):** Sections A, E and F below record the v0.26.0
+> findings, not the current implementation. `generate`, `modify`, and `change`
+> now use `planChange`/`applyChange`; the per-file modify loop and
+> `modify.mjs` are removed. Scaffold markers determine ownership; build
+> metadata records declaration identities rather than ownership fingerprints.
+> `checkProject` lives in `check.mjs`, and the validation tolerance path is gone.
+> Apply rollback is best-effort for synchronous failures, not crash-safe.
+> Release sync applies the reviewed managed-file plan before Pi package update;
+> package installation and external effects are outside that rollback. If it
+> fails, the applied files remain and package state may be partial. Retry
+> `pi update --extensions --approve` from the project in the same Pi environment,
+> or review changes and package state before using git to revert.
+
 Line counts are for orientation only. Size is not a finding.
 
 ## 1. Current architecture

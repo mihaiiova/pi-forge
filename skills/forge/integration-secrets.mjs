@@ -118,7 +118,7 @@ export function preflightSecretFiles(root, model) {
 }
 
 /** Create absent files exclusively, without modifying existing files or following symlinks. */
-export function ensureSecretFiles(root, model) {
+export function ensureSecretFiles(root, model, { onCreate = () => {} } = {}) {
   for (const path of new Set(integrationSecrets(model))) {
     if (!validSecretsPath(path)) throw new Error(`Invalid integration secretsFile: ${path}`);
     const target = safePath(root, path);
@@ -128,8 +128,12 @@ export function ensureSecretFiles(root, model) {
     if (inGit === 0 && git(['check-ignore', '-q', '--', path]) !== 0) throw new Error(`Integration secretsFile ${path} is tracked or not ignored by git`);
     mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
     safePath(root, path);
-    try { closeSync(openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)); }
+    let fd;
+    try { fd = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
+    if (fd !== undefined) {
+      try { onCreate(path); } finally { closeSync(fd); }
+    }
     const problem = secretFileProblem(root, path);
     if (problem) throw new Error(`Integration secretsFile ${path}: ${problem}`);
   }

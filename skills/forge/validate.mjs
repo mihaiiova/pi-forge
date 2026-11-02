@@ -164,7 +164,7 @@ function collectNames(list, path, errors) {
  * @returns {{ ok: boolean, errors: string[] }} result; `ok` is true when there
  *   are no errors.
  */
-export function validateSystem(doc, { tolerate = [] } = {}) {
+export function validateSystem(doc) {
   const errors = [];
 
   if (!isPlainObject(doc)) {
@@ -663,12 +663,10 @@ export function validateSystem(doc, { tolerate = [] } = {}) {
     }
   }
 
-  // A subagent that can reach a tool that asks the user. `tolerate` lists
-  // issues already in the file being changed, so a project can still be
-  // revised (and repaired) after the rule was introduced.
+  // Background subagents cannot answer tool approval prompts.
   if (isPlainObject(doc) && errors.length === 0) {
     for (const issue of backgroundAskingIssues(doc)) {
-      if (!tolerate.includes(issue.message)) errors.push(`document.agents[${issue.index}] ${issue.message}`);
+      errors.push(`document.agents[${issue.index}] ${issue.message}`);
     }
   }
 

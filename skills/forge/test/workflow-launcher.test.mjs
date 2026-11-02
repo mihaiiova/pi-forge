@@ -110,7 +110,7 @@ test('trusted workflow credentials reach Pi and child tools without entering the
   const { root, env } = fixture(t);
   const model = join(root, '.pi/system.yaml');
   writeFileSync(model, readFileSync(model, 'utf8') + '\nintegrations:\n  env:\n    - name: TEST_LOGIN\n      secret: true\n    - name: FILE_ONLY\n      secret: true\n');
-  const generated = spawnSync(process.execPath, [forge, 'generate', root], { encoding: 'utf8' });
+  const generated = spawnSync(process.execPath, [forge, 'generate', root, '--yes'], { encoding: 'utf8' });
   assert.equal(generated.status, 0, generated.stderr);
   writeFileSync(join(root, '.env'), 'TEST_LOGIN=file-value\nFILE_ONLY=from-file\nUNDECLARED=not-loaded\n');
   writeFileSync(join(root, 'bin/pi'), `#!/usr/bin/env node
@@ -216,14 +216,15 @@ test('the runner comes from the installed Forge package, not a copy in the proje
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('a project Forge tolerates (a background specialist that can reach an approval) still runs', t => {
+test('a background specialist that can reach an approval is rejected', t => {
   const { root, env } = fixture(t);
   const path = join(root, '.pi/system.yaml');
   writeFileSync(path, readFileSync(path, 'utf8')
     .replace('    tools: [read]\n    prompt: Research.', '    tools: [read, cli:list-files]\n    prompt: Research.')
     + 'integrations:\n  cli:\n    - name: list-files\n      command: ls\n');
   const result = spawnSync(join(root, 'run'), ['--workflow', 'report'], { env, encoding: 'utf8' });
-  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+  assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`);
+  assert.match(result.stdout, /configuration_error.*background/);
 });
 
 test('a recovered tool error is counted, while a failed or empty run is an error', t => {

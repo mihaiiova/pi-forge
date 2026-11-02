@@ -2,8 +2,14 @@ import { readFileSync, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { parsedModel } from './changes.mjs';
-import { checkProject } from './maintenance.mjs';
-import { atomicWrite, json } from './maintenance-store.mjs';
+import { atomicWrite, json, readText, readJson } from './maintenance-store.mjs';
+import { loadYaml } from './yaml-loader.mjs';
+import { validateSystem } from './validate.mjs';
+import { checkCapabilities } from './capabilities.mjs';
+import { launchCheck } from './launch-check.mjs';
+import { unmetSetup } from './setup.mjs';
+import { integrationSecrets, secretFileProblem } from './integration-secrets.mjs';
+import { configurationAdvisories } from './advisories.mjs';
 import { cliEntries } from './cli-tools.mjs';
 import { probeClis } from './discover.mjs';
 import { skillSourceKind } from './skill-sources.mjs';
@@ -13,6 +19,22 @@ import { leadTools } from './asking.mjs';
 import { orchestratorTools } from './project-context.mjs';
 
 const BUILTIN = new Set(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']);
+
+/** Check model validity, generated configuration and launch prerequisites. */
+export function checkProject(root, { registeredTools, mcpTools } = {}) {
+  const doc = loadYaml().parse(readText(root, '.pi/system.yaml') ?? '');
+  const validation = validateSystem(doc).errors;
+  if (validation.length) return { ok: false, validation, consistency: null, launch: null, advisories: [] };
+  const piPackages = readJson(root, '.pi/settings.json').packages ?? [];
+  const consistency = checkCapabilities(doc, { settings: readJson(root, '.pi/settings.json'), mcpJson: readJson(root, '.pi/mcp.json') }, { piPackages }).errors;
+  const launch = launchCheck(root, doc, { registeredTools, mcpTools }).problems.map(p => `${p.agent}: ${p.problem}`);
+  for (const step of unmetSetup(root, doc)) launch.push(`${step.owner}: setup ${step.description}; fix: ${step.install}${step.needsRoot ? ' (run manually; needs root)' : ''}`);
+  for (const path of new Set(integrationSecrets(doc))) {
+    const problem = secretFileProblem(root, path);
+    if (problem) launch.push(`Integration secretsFile ${path}: ${problem}`);
+  }
+  return { ok: !consistency.length && !launch.length, validation, consistency, launch, advisories: configurationAdvisories(doc) };
+}
 
 /**
  * Pi's shell commands read project MCP servers only for a saved trust

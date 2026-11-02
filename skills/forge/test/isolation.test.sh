@@ -80,7 +80,7 @@ pass "A: dependency selection emits only the declared runtime primitives"
 
 # A4: regeneration is idempotent (this proves idempotency, NOT session resume).
 first="$(node -e 'const s=require(process.argv[1]); process.stdout.write(JSON.stringify(s.packages))' "$work/.pi/settings.json")"
-node "$forge" generate "$work" >/dev/null 2>&1
+node "$forge" generate "$work" --yes >/dev/null 2>&1
 second="$(node -e 'const s=require(process.argv[1]); process.stdout.write(JSON.stringify(s.packages))' "$work/.pi/settings.json")"
 [[ "$first" == "$second" ]] || fail "A: regeneration drifted the packages list"
 pass "A: regeneration is idempotent (no config drift)"

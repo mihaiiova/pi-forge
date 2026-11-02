@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateProject } from "../generate.mjs";
-import { modifyPlan } from "../modify.mjs";
+import { diffLines } from "../diff.mjs";
 
 const baseModel = {
   schema: 1,
@@ -39,7 +39,7 @@ test("add-agent: a new agents[] entry produces a create", () => {
     ],
   };
 
-  const { files } = modifyPlan(model, existing);
+  const { files } = generateProject(model, existing);
   const entry = byPath(files, ".pi/agents/article-writer.md");
 
   assert.equal(entry.action, "create");
@@ -54,16 +54,18 @@ test("change-model: agent and orchestrator model changes produce writes with dif
     agents: [{ ...baseModel.agents[0], model: "b/medium" }],
   };
 
-  const { files } = modifyPlan(model, existing);
+  const { files } = generateProject(model, existing);
 
   const agent = byPath(files, ".pi/agents/seo-analyst.md");
   assert.equal(agent.action, "write");
-  assert.ok(agent.diff.includes("b/medium") && agent.diff.includes("c/small"),
+  const agentDiff = diffLines(existing[agent.path], agent.content);
+  assert.ok(agentDiff.includes("b/medium") && agentDiff.includes("c/small"),
     "agent diff shows the model ref change");
 
   const settings = byPath(files, ".pi/settings.json");
   assert.equal(settings.action, "write");
-  assert.ok(settings.diff.includes('"defaultProvider": "a"') && settings.diff.includes('"defaultProvider": "d"'),
+  const settingsDiff = diffLines(existing[settings.path], settings.content);
+  assert.ok(settingsDiff.includes('"defaultProvider": "a"') && settingsDiff.includes('"defaultProvider": "d"'),
     "settings diff shows the primary-session model change");
 });
 
@@ -73,7 +75,7 @@ test("preserve-unrelated-edit: hand-authored file and unknown settings key survi
   const parsedSettings = JSON.parse(existing[".pi/settings.json"]);
   existing[".pi/settings.json"] = JSON.stringify({ ...parsedSettings, theme: "dark" });
 
-  const { files } = modifyPlan(baseModel, existing);
+  const { files } = generateProject(baseModel, existing);
 
   assert.equal(byPath(files, "README.md").action, "none", "user-authored README untouched");
 
@@ -93,21 +95,23 @@ test("conflict-detection: user edit + model change on an authored file is a conf
     orchestrator: { ...baseModel.orchestrator, prompt: "New prompt.\n" },
   };
 
-  const { files, conflicts } = modifyPlan(model, existing);
+  const { files } = generateProject(model, existing);
+  const conflicts = files.filter(f => f.action === 'conflict');
   const append = byPath(files, ".pi/APPEND_SYSTEM.md");
 
   assert.equal(append.action, "conflict");
   assert.ok(conflicts.includes(append), "conflict is surfaced in the conflicts list");
   assert.equal(append.content, userEdited, "conflict must not overwrite the user edit");
-  assert.ok(append.diff.length > 0, "conflict carries a diff (user vs model)");
+  assert.ok(diffLines(existing[append.path], append.desired).length > 0, "conflict can be diffed against the proposed content");
 });
 
 test('modify previews missing gitignore entries without changing existing rules', () => {
   const existing = baseline();
   existing['.gitignore'] = 'node_modules\n.env\n';
-  const file = byPath(modifyPlan(baseModel, existing).files, '.gitignore');
+  const file = byPath(generateProject(baseModel, existing).files, '.gitignore');
   assert.equal(file.action, 'write');
-  assert.match(file.diff, /\+ # forge: required ignores/);
-  assert.match(file.diff, /\+ \.forge\//);
+  const diff = diffLines(existing[file.path], file.content);
+  assert.match(diff, /\+ # forge: required ignores/);
+  assert.match(diff, /\+ \.forge\//);
   assert.equal(existing['.gitignore'], 'node_modules\n.env\n');
 });

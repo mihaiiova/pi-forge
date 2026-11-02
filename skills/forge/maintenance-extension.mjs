@@ -5,7 +5,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inspectProject, planChange, applyChange, publicChangePreview, withSkillPreviews, rebuildPlan, checkProject, projectStatus } from './maintenance.mjs';
+import { inspectProject, planChange, applyChange, publicChangePreview, withSkillPreviews, rebuildPlan, projectStatus } from './maintenance.mjs';
+import { checkProject } from './check.mjs';
 import { searchSkills, resolveRegistrySkill } from './registry-skills.mjs';
 import { checkRelease, proposeUpdate, previewUpdate, applyUpdate, discardUpdate, forgePin } from './package-update.mjs';
 import { json, readText, readJson } from './maintenance-store.mjs';
@@ -136,6 +137,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
   const promptFor = (plan) => {
     const files = [...new Set(['.pi/system.yaml', ...(plan.preview?.files ?? []).map(f => f.path)])];
     const surface = plan.preview?.executionSurface ?? {};
+    const skills = plan.preview?.skills;
     const reach = [
       ...(surface.addedPackages?.length ? [`adds packages: ${surface.addedPackages.join(', ')}`] : []),
       ...(surface.changedMcp?.length ? [`changes MCP servers: ${surface.changedMcp.join(', ')}`] : []),
@@ -145,7 +147,11 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     return [
       'Apply this change?', '',
       `Files: ${files.join(', ')}`,
+      ...(plan.preview?.rebuilt ? [plan.preview.rebuilt] : []),
       ...reach.map(r => `Also ${r}.`),
+      ...(skills?.install ?? []).map(s => `Install registry skill ${s.name} from ${s.source} into ${s.into}`),
+      ...(skills?.remove ?? []).map(path => `Remove registry skill ${path}`),
+      ...(skills ? [skills.how] : []),
       plan.restart ? 'Takes effect after restarting ./run.' : 'Takes effect after /reload.',
     ].join('\n');
   };
@@ -193,7 +199,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
    * reach is shown and confirmed first.
    */
   const rebuild = async (ctx) => {
-    const plan = rebuildPlan(root);
+    const plan = await withSkillPreviews(rebuildPlan(root), { fetcher: href => publicFetch(href) });
     const name = plan.rebuild.version ? `Forge ${plan.rebuild.version}` : 'this Forge version';
     if (plan.rebuild.unchanged) return { message: `Already built with ${name}; nothing to rebuild.` };
     if (!plan.rebuild.automatic) {
@@ -274,7 +280,8 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     }));
     if (!run) { tell(ctx, 'Cancelled; the new release was not downloaded or run.'); return; }
     const plan = await previewUpdate(root, proposal, true);
-    if (!await ctx.ui.confirm(`Apply Forge ${proposal.tag}?`, json(plan.preview))) { discardUpdate(plan); tell(ctx, 'Cancelled; nothing applied.'); return; }
+    const syncPreview = { ...plan.preview, syncOrder: 'Apply the reviewed Faur-managed file plan, then run pi update --extensions --approve. Pi package installation and its external side effects are not transactional and cannot be rolled back by Faur.' };
+    if (!await ctx.ui.confirm(`Apply Forge ${proposal.tag}?`, json(syncPreview))) { discardUpdate(plan); tell(ctx, 'Cancelled; nothing applied.'); return; }
     const applied = await applyUpdate(root, plan, true, updates.install ? { install: updates.install } : {});
     tell(ctx, `Updated to Forge ${proposal.tag}${applied.changed?.length ? `; rebuilt ${applied.changed.join(', ')}` : ''}. Restart ./run to load it.`);
   };

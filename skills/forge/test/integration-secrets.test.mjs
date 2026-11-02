@@ -35,11 +35,14 @@ test('reserved secret paths and git control components reject case-insensitive a
 test('secrets files are exclusive, private, explicitly selected and reject symlinks', t => {
   const root = mkdtempSync(join(tmpdir(), 'forge-secrets-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  ensureSecretFiles(root, model);
+  const created = [];
+  ensureSecretFiles(root, model, { onCreate: path => created.push(path) });
+  assert.deepEqual(created, ['private/keys.env']);
   const file = join(root, 'private/keys.env');
   assert.equal(lstatSync(file).mode & 0o777, 0o600);
   writeFileSync(file, 'OTHER=existing\n');
-  ensureSecretFiles(root, model);
+  ensureSecretFiles(root, model, { onCreate: path => created.push(path) });
+  assert.deepEqual(created, ['private/keys.env'], 'existing secrets are not reported as new');
   assert.equal(readFileSync(file, 'utf8'), 'OTHER=existing\n');
   setEnvValue(root, model, 'TEST_KEY', 'example', 'private/keys.env');
   assert.equal(readFileSync(file, 'utf8'), 'OTHER=existing\nTEST_KEY=example\n');
@@ -162,7 +165,7 @@ test('directory-only ignore does not protect a secret file and generation is ide
   writeFileSync(join(root, '.pi/system.yaml'), 'schema: 1\nname: test\norchestrator:\n  name: lead\n  model: p/m\nintegrations:\n  mcp:\n    - name: example\n      config: { command: example }\n      secretsFile: private/keys.env\n');
   const cli = new URL('../forge.mjs', import.meta.url).pathname;
   for (let i = 0; i < 2; i++) {
-    const result = spawnSync(process.execPath, [cli, 'generate', root], { encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [cli, 'generate', root, '--yes'], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     const ignore = readFileSync(join(root, '.gitignore'), 'utf8');
     assert.equal(ignore.split('\n').filter(line => line === '/private/keys.env').length, 1);
@@ -229,7 +232,7 @@ test('nested .pi negations fail before generation or modification without integr
     writeFileSync(join(root, '.pi/.gitignore'), '!state.json   \n');
     writeFileSync(join(root, '.gitignore'), '.pi/state.json\n');
     assert.notEqual(spawnSync('git', ['check-ignore', '-q', '--', '.pi/state.json'], { cwd: root }).status, 0);
-    const result = spawnSync(process.execPath, [new URL('../forge.mjs', import.meta.url).pathname, command, root, ...(command === 'modify' ? ['--yes'] : [])], { encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [new URL('../forge.mjs', import.meta.url).pathname, command, root, '--yes'], { encoding: 'utf8' });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Required ignore .pi\/state.json: .pi\/\.gitignore contains negation rules/);
     assert.equal(readFileSync(join(root, '.pi/.gitignore'), 'utf8'), '!state.json   \n');

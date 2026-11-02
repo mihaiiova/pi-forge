@@ -12,8 +12,10 @@
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, rmSync, lstatSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { safePath } from './maintenance-store.mjs';
 import { fetchDocument } from './maintenance-fetch.mjs';
 import { REGISTRY_SOURCE_RE } from './skill-sources.mjs';
 
@@ -97,7 +99,8 @@ function runCli(root, args, run) {
 }
 
 function lockEntry(root, name) {
-  try { return JSON.parse(readFileSync(join(root, 'skills-lock.json'), 'utf8'))?.skills?.[name] ?? null; } catch { return null; }
+  const file = safePath(root, 'skills-lock.json');
+  try { return JSON.parse(readFileSync(file, 'utf8'))?.skills?.[name] ?? null; } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
 /**
@@ -114,7 +117,7 @@ export function installRegistrySkill(root, skill, { expectedSha256, run = execFi
   } catch (error) {
     throw new Error(`skills CLI could not install "${skill.name}" from ${parsed.url}: ${String(error.stderr || error.message).trim().split('\n').slice(-3).join(' ')}`);
   }
-  const file = join(root, installedDir(skill.name), 'SKILL.md');
+  const file = safePath(root, `${installedDir(skill.name)}/SKILL.md`);
   const problem = !existsSync(file) ? `nothing was installed at ${installedDir(skill.name)}/ (the skill's own name may differ; declare it under that name)`
     : lockEntry(root, skill.name)?.ref !== parsed.ref ? `skills-lock.json does not record commit ${parsed.ref}`
     : expectedSha256 && sha256(readFileSync(file, 'utf8')) !== expectedSha256 ? 'the installed SKILL.md differs from the previewed one'
@@ -130,4 +133,110 @@ export function removeRegistrySkill(root, name, { run = execFileSync } = {}) {
     runCli(root, ['remove', name, '--agent', 'pi', '-y'], run);
   } catch { /* fall back to removing the copy directly */ }
   rmSync(join(root, installedDir(name)), { recursive: true, force: true });
+}
+
+/** Capture only affected skill trees and the shared lock; reject symlinks and
+ * special files instead of following them outside the project. */
+export function registrySnapshot(root, names) {
+  const entries = {};
+  const visit = (rel) => {
+    const path = safePath(root, rel);
+    let info;
+    try { info = lstatSync(path); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    if (info.isDirectory()) {
+      entries[rel] = { directory: true, mode: info.mode & 0o7777 };
+      for (const name of readdirSync(path).sort()) visit(`${rel}/${name}`);
+    } else if (info.isFile()) {
+      entries[rel] = { content: readFileSync(path), mode: info.mode & 0o7777 };
+    } else throw new Error(`Unsupported registry skill path: ${rel}`);
+  };
+  for (const name of [...new Set(names)].sort()) visit(installedDir(name));
+  visit('skills-lock.json');
+  return entries;
+}
+
+/** Stable structural signature catches added files and permission changes too. */
+export function registrySignature(snapshot) {
+  return JSON.stringify(Object.entries(snapshot).map(([path, entry]) => [path, entry.mode, entry.directory ? 'directory' : sha256(entry.content)]));
+}
+
+/** Run the skills CLI in a temporary project; return only checked file changes.
+ * The CLI is not OS-sandboxed: staging prevents normal project-local writes,
+ * not arbitrary behavior by the CLI or downloaded code. */
+export function stageRegistrySkills(root, skills, expected, previews, { run } = {}) {
+  const names = [...new Set([...skills.install.map(s => s.name), ...skills.remove])].sort();
+  const before = registrySnapshot(root, names);
+  if (registrySignature(before) !== expected) throw new Error('Registry skills changed since preview; preview again');
+  const stage = mkdtempSync(join(tmpdir(), 'forge-registry-'));
+  try {
+    for (const [path, entry] of Object.entries(before)) {
+      const target = join(stage, path);
+      if (entry.directory) { mkdirSync(target, { recursive: true, mode: entry.mode }); chmodSync(target, entry.mode); }
+      else { mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, entry.content, { mode: entry.mode }); chmodSync(target, entry.mode); }
+    }
+    // Reinstall the old pinned source in a clean project. Only an exact tree
+    // match authorizes deleting or replacing the existing developer-owned copy.
+    for (const skill of skills.verify ?? []) {
+      const verification = mkdtempSync(join(tmpdir(), 'forge-registry-verify-'));
+      try {
+        installRegistrySkill(verification, skill, run ? { run } : {});
+        const parsed = parseRegistrySource(skill.source);
+        const lock = lockEntry(verification, skill.name);
+        if (lock?.source !== `${parsed.owner}/${parsed.repo}`) throw new Error(`Registry verification source mismatch: ${skill.name}`);
+        const original = Object.fromEntries(Object.entries(before).filter(([path]) => path === installedDir(skill.name) || path.startsWith(`${installedDir(skill.name)}/`)));
+        const pristine = Object.fromEntries(Object.entries(registrySnapshot(verification, [skill.name])).filter(([path]) => path !== 'skills-lock.json'));
+        if (registrySignature(original) !== registrySignature(pristine)) throw new Error(`Registry skill ${skill.name} differs from its pinned source; preserve or remove it explicitly`);
+      } finally { rmSync(verification, { recursive: true, force: true }); }
+    }
+    const replaced = new Set((skills.verify ?? []).map(s => s.name));
+    for (const skill of skills.install.filter(s => replaced.has(s.name))) {
+      removeRegistrySkill(stage, skill.name, run ? { run } : {});
+      if (lockEntry(stage, skill.name) !== null) throw new Error(`skills CLI did not remove ${skill.name} from skills-lock.json`);
+    }
+    for (const skill of skills.install) {
+      const hash = previews?.[skill.name]?.skillMdSha256;
+      if (!hash) throw new Error(`Registry skill ${skill.name} has not been previewed`);
+      installRegistrySkill(stage, skill, { expectedSha256: hash, ...(run ? { run } : {}) });
+    }
+    for (const name of skills.remove) {
+      if (existsSync(safePath(stage, installedDir(name)))) {
+        removeRegistrySkill(stage, name, run ? { run } : {});
+        if (lockEntry(stage, name) !== null) throw new Error(`skills CLI did not remove ${name} from skills-lock.json`);
+      } else {
+        // The developer already removed the copy; the CLI may not recognize a
+        // lock-only entry. Remove only this previously declared skill's entry.
+        const path = safePath(stage, 'skills-lock.json');
+        if (existsSync(path)) {
+          const lock = JSON.parse(readFileSync(path, 'utf8'));
+          if (lock.skills && Object.hasOwn(lock.skills, name)) {
+            delete lock.skills[name];
+            writeFileSync(path, JSON.stringify(lock, null, 2) + '\n');
+          }
+        }
+      }
+    }
+    const after = registrySnapshot(stage, names);
+    const lock = snapshot => {
+      const data = snapshot['skills-lock.json']?.content;
+      return data ? JSON.parse(data.toString('utf8')) : { skills: {} };
+    };
+    const { skills: originalLock = {}, ...originalMetadata } = lock(before);
+    const { skills: updatedLock = {}, ...updatedMetadata } = lock(after);
+    if (before['skills-lock.json'] && JSON.stringify(originalMetadata) !== JSON.stringify(updatedMetadata)) throw new Error('skills CLI changed unrelated lock metadata');
+    for (const name of new Set([...Object.keys(originalLock), ...Object.keys(updatedLock)])) {
+      if (!names.includes(name) && JSON.stringify(originalLock[name]) !== JSON.stringify(updatedLock[name])) throw new Error(`skills CLI changed unrelated lock entry: ${name}`);
+    }
+    const writes = {}, modes = {};
+    for (const path of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      const old = before[path], next = after[path];
+      if (old && next && !!old.directory !== !!next.directory) throw new Error(`skills CLI changed path type: ${path}`);
+      if (old?.directory && next?.directory && old.mode !== next.mode) throw new Error(`skills CLI changed existing directory mode: ${path}`);
+      if (old?.directory || next?.directory) continue;
+      if (!next) writes[path] = null;
+      else if (!old || old.mode !== next.mode || !old.content.equals(next.content)) { writes[path] = next.content; modes[path] = next.mode; }
+    }
+    const removeDirs = Object.keys(before).filter(path => before[path].directory && !after[path]).sort((a, b) => b.length - a.length);
+    const createDirs = Object.keys(after).filter(path => after[path].directory && !before[path]).sort((a, b) => a.length - b.length).map(path => ({ path, mode: after[path].mode }));
+    return { writes, modes, removeDirs, createDirs };
+  } finally { rmSync(stage, { recursive: true, force: true }); }
 }

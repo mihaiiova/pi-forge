@@ -50,7 +50,7 @@ pass "settings.json carries orchestrator model + defaultTools"
 
 # ── idempotent re-run is a no-op ─────────────────────────────────
 before="$(find "$work" -type f -exec sha256sum {} \; | sort | sha256sum)"
-node "$forge" generate "$work" >/dev/null
+node "$forge" generate "$work" --yes >/dev/null
 after="$(find "$work" -type f -exec sha256sum {} \; | sort | sha256sum)"
 [[ "$before" == "$after" ]] || fail "re-running generate was not a no-op"
 pass "re-running generate is a no-op"
@@ -242,7 +242,7 @@ cmp -s "$vd/shared/house-style/SKILL.md" "$vd/project/.pi/skills/house-style/SKI
 [[ -x "$vd/project/.pi/skills/house-style/scripts/check.sh" ]] || fail "vendored script lost its executable bit"
 grep -Pzq 'skills:\n  - house-style\n' "$vd/project/.pi/agents/writer.md" || fail "agent skills not emitted"
 printf 'Local edit.\n' >> "$vd/project/.pi/skills/house-style/SKILL.md"
-node "$forge" generate "$vd/project" >/dev/null 2>&1
+node "$forge" generate "$vd/project" --yes >/dev/null 2>&1
 grep -q 'Local edit.' "$vd/project/.pi/skills/house-style/SKILL.md" || fail "regeneration overwrote the vendored copy"
 pass "forge generate vendors user-supplied skills once and never overwrites the copy"
 
@@ -263,7 +263,7 @@ printf 'provider    model        context\nprovider-a  model-large  1M\n'
 SH
 chmod +x "$vd/bin/pi"
 sed -i 's/^name: other-name$/name: house-style/' "$vd/shared/house-style/SKILL.md"
-out="$(PATH="$vd/bin:$PATH" node "$forge" generate "$vd/project" 2>&1)" || fail "an unavailable model must not fail generation"
+out="$(PATH="$vd/bin:$PATH" node "$forge" generate "$vd/project" --yes 2>&1)" || fail "an unavailable model must not fail generation"
 grep -q 'warning - writer uses model "provider-b/model-small", which is not in this machine' <<<"$out" || fail "unavailable model not warned"
 if grep -q 'lead uses model' <<<"$out"; then fail "an available model was warned"; fi
 out="$(PATH="$vd/bin:$PATH" node "$forge" validate "$vd/project" 2>&1)" || fail "validate failed on an unavailable model"
@@ -282,11 +282,11 @@ node "$forge" generate "$existing" --dry-run > "$work/ignore-preview"
 grep -q '+ # forge: required ignores' "$work/ignore-preview" || fail 'missing gitignore block in dry-run'
 grep -q '+ .forge/' "$work/ignore-preview" || fail 'missing .forge/ in dry-run'
 [[ "$(cat "$existing/.gitignore")" == $'node_modules\n.env' ]] || fail 'dry-run changed gitignore'
-node "$forge" generate "$existing" >/dev/null
+node "$forge" generate "$existing" --yes >/dev/null
 git -C "$existing" check-ignore -q .env || fail '.env not ignored'
 git -C "$existing" check-ignore -q .forge/pi-home/auth.json || fail 'credentials not ignored'
 cp "$existing/.gitignore" "$work/ignore-after"
-node "$forge" generate "$existing" >/dev/null
+node "$forge" generate "$existing" --yes >/dev/null
 cmp -s "$work/ignore-after" "$existing/.gitignore" || fail 'gitignore append not idempotent'
 pass 'generation previews and protects existing repository secrets'
 

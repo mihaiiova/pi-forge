@@ -363,6 +363,17 @@ The Forge package itself is the first entry of the derived `packages`
 list, pinned to the release that generated the project. Maintenance
 change proposals delete removed agent/skill scaffolds only when intact, reject
 authored conflicts, and require separately confirmed drift reconciliation.
+The build record's declaration inventory identifies previously declared paths;
+it does not establish ownership. An intact inline marker is required before an
+inventoried scaffold removed by a manual model edit may be deleted. Removed
+vendored skills require explicit resolution. For registry skill removal or
+replacement, the inventory records the previous pinned source, not ownership
+hashes. Before applying, the skills CLI installs that source in a temporary
+project; the complete installed tree, including modes, must match before the
+existing copy may be removed or replaced. A missing source identity, unavailable
+source, mismatched lock or edited tree is refused. The CLI is not OS-sandboxed.
+If an older build has no inventory, unlisted files are preserved; a locked,
+installed skill missing from the model is refused as ambiguous.
 
 `system.yaml` is parsed with the **`yaml`** package (v2.8.3), pinned in
 `pi.packages` and resolved from the Pi package install dir by

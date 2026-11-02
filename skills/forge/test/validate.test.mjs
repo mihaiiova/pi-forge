@@ -293,11 +293,7 @@ test("validateSystem rejects tools that ask the user in a background subagent", 
   assert.equal(cli.length, 1);
   assert.match(cli[0], /"filer" runs in the background, .*: command file-issue\./, "a command that asks, not one that doesn't");
 
-  const tolerated = withMcp(listed, ["read", "mcp:openseo"]).map((e) => e.replace(/^document\.agents\[\d+\] /, ""));
-  assert.deepEqual(validateSystem(validDoc({
-    agents: [...base.agents, { name: "researcher", model: "provider-a/m", tools: ["read", "mcp:openseo"] }],
-    integrations: { ...base.integrations, mcp: [{ name: "openseo", config: { url: "http://localhost:3002/mcp", ...listed } }] },
-  }), { tolerate: tolerated }).errors, [], "issues a project already has can be tolerated");
+  assert.equal(withMcp(listed, ["read", "mcp:openseo"]).length, 1, "existing invalid approval configurations are rejected too");
 });
 
 test("validateSystem rejects MCP exposure keys: Forge derives them", () => {
