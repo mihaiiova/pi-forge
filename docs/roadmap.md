@@ -8,13 +8,14 @@ architecture review is recorded in
 [generated-agent-audit.md](generated-agent-audit.md) and
 [backlog-review.md](backlog-review.md).
 
-## Status (2026-11-02)
+## Status (2026-11-03)
 
 - **Shipped:** #25 and #41 (v0.19.0); #27 and #28 (v0.20.0); #34 and #32
   (v0.21.0); browsing without asking (v0.22.0); the discuss/apply/discard
   prompt (v0.23.0); permission guidance (v0.24.0); trusted-run credential
   documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
-  (v0.28.0); #66 (v0.29.0).
+  (v0.28.0); #66 (v0.29.0); regenerating projects that installed packages
+  (v0.29.1).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
