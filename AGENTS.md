@@ -108,9 +108,15 @@ stages its removal. Do not add to that runtime.
   small generic package with native configuration. Such a package never reads
   `system.yaml`.
 - **Isolation wording**: plain `pi` inherits the user's global Pi
-  configuration and is not hermetic. `run` isolates Pi configuration, not the
-  OS. Trusted runs share credentials with every tool in the run; they are not
-  protected integrations.
+  configuration and is not hermetic. `run` isolates the Pi agent directory
+  (settings, packages, MCP servers, instructions, logins), not the OS: skills
+  in `~/.agents/skills` and `AGENTS.md` files in parent directories still
+  load (architecture audit §5, stage 0). Trusted runs share credentials with
+  every tool in the run; they are not protected integrations.
+- **MCP**: generated projects use Pi's built-in MCP and never pin an MCP
+  extension. A global extension that registers `/mcp` (such as
+  `pi-mcp-adapter`) replaces it for plain `pi`; Faur's check reports that,
+  and MCP exposure settings are then not enforced.
 
 ## Before writing a spec or a feature
 
