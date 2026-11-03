@@ -20,13 +20,14 @@ architecture review is recorded in
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
   projects become ordinary Pi projects that run with `pi` without Faur
-  (#59). Since v0.30.0 projects start with `pi`, pin Forge only for declared
-  commands and MCP approvals, and run workflows with `pi -p`; the rest of the
+  (#59). Since v0.30.0 projects start with `pi` and run workflows with
+  `pi -p`; since #63 they never pin Faur (pi-commands and
+  pi-permission-system cover commands and approvals). The rest of the
   migration is staged below.
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
-     → #61 (done 2026-11-03) → #62 (done 2026-11-03; TOaD moves next) → #63 → #64, then #67 (rename to Faur).
+     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (remaining: design record and drift reconcile; projects already pin no Faur), then #67 (rename to Faur).
   2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   3. #68, the public-alpha gate (harness early, criteria pass as issues land).
   4. Composition and evidence: #29, #30, #31, #35, #40.

@@ -63,18 +63,18 @@ node "$forge" generate "$work" >/dev/null 2>&1
 [[ -f "$work/.pi/skills/draft/SKILL.md" ]] || fail "A: draft skill not generated"
 pass "A: deterministic generation produces the declared project tree"
 
-# A2: undeclared host capabilities are excluded from generated config. The
-# Forge itself appears only as its pinned release.
-node -e 'const s=require(process.argv[1]); const p=(s.packages||[]).filter(p=>!/^git:github\.com\/mihaiiova\/pi-forge@v\d+\.\d+\.\d+$/.test(p)); if(p.length===(s.packages||[]).length||p.some(p=>/pi-config|pi-forge|pi-web-access|yaml/.test(p))) process.exit(1)' "$work/.pi/settings.json" \
-  || fail "A: runtime packages carry the host forge/pi-web-access/yaml or lack the pinned release"
+# A2: undeclared host capabilities are excluded from generated config, and
+# the project never pins Faur.
+node -e 'const s=require(process.argv[1]); if((s.packages||[]).some(p=>/pi-config|pi-forge|pi-web-access|yaml/.test(p))) process.exit(1)' "$work/.pi/settings.json" \
+  || fail "A: runtime packages carry Faur, the host forge, pi-web-access or yaml"
 node -e 'const m=require(process.argv[1]); const n=Object.keys(m.mcpServers||{}); if(n.some(x=>x==="owlie"||x==="cloudflare")) process.exit(1)' "$work/.pi/mcp.json" \
   || fail "A: global MCP servers leaked into .pi/mcp.json"
 node -e 'const s=require(process.argv[1]); const t=s.defaultTools||[]; if(t.includes("web_search")||t.includes("fetch_content")) process.exit(1)' "$work/.pi/settings.json" \
   || fail "A: orchestrator defaultTools leaks web tools"
 pass "A: undeclared skills/MCP/web/packages are excluded from generated config"
 
-# A3: dependency selection emits only the pinned Forge and the runtime primitives.
-node -e 'const s=require(process.argv[1]); const v=require(process.argv[2]).version; const e=[`git:github.com/mihaiiova/pi-forge@v${v}`,"npm:pi-subagents@0.83.1"]; if(JSON.stringify(s.packages)!==JSON.stringify(e)) process.exit(1)' "$work/.pi/settings.json" "$here/../../../package.json" \
+# A3: dependency selection emits only the runtime packages the design uses.
+node -e 'const s=require(process.argv[1]); const e=["npm:pi-subagents@0.83.1"]; if(JSON.stringify(s.packages)!==JSON.stringify(e)) process.exit(1)' "$work/.pi/settings.json" \
   || fail "A: runtime primitives missing or extra packages present"
 pass "A: dependency selection emits only the declared runtime primitives"
 

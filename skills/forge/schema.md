@@ -156,9 +156,13 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   `exposure` and `toolExposure` are rejected: Forge derives them. Codemode is
   not enabled automatically (`autoEnableCodemode: false`), since it would reach
   every server's tools. Pi names each tool `mcp__<server>__<tool>`. An
-  orchestrator with `mcp` in its tools (or without `tools`) gets every
-  server's usable tools; without it, it can call none, while its specialists
-  still get their `mcp:` selections. OAuth servers need no credentials in the
+  orchestrator with `mcp` in its tools (or without `tools`) is told about every
+  server's usable tools; without it, it is told it has none, while its
+  specialists get their `mcp:` selections. That is advisory: nothing stops
+  the orchestrator calling an MCP tool. `approveTools` is enforced by
+  `@gotgenes/pi-permission-system`, pinned and configured
+  (`.pi/extensions/pi-permission-system/config.json`) when declared: each
+  listed tool asks before every call, and is refused without a UI. OAuth servers need no credentials in the
   config: sign in with `/mcp` (inside `./run`, which a design with MCP servers
   gets so that a user-level `/mcp` extension cannot replace Pi's built-in
   MCP). Duplicate `name`s are rejected.
@@ -183,18 +187,18 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   `approve: true` asks the user before each run (Allow once / Allow for this
   session / Deny); without a UI (a headless run, or a background subagent)
   such a call fails instead of running. Duplicate `name`s are rejected.
+  [pi-commands](https://github.com/mihaiiova/pi-commands) runs them: the
+  project pins it and gets a generated `.pi/commands.json`; Faur takes no part
+  at run time.
 
   An agent gets a command by listing `cli:<name>` in its `tools` (or an
   enforced policy rule's `tools`); every `cli:` reference must name a declared
   entry. In Pi the tool is `cli_<name>` (hyphens become underscores). The
   orchestrator gets the commands its `tools` list, or all of them when its
   `tools` is omitted; a subagent gets exactly the ones in its allowlist, and
-  runs in the background. `/faur permissions` (list, add, remove, review)
-  edits these declarations through the normal preview. The orchestrator can
-  also ask for a command it has no tool for with `request_permission`: the
-  user allows it once, saves it here, or denies it; in a headless run the
-  request waits in `.forge/permission-requests.json` for
-  `/faur permissions review`.
+  runs in the background. `/faur permissions` (list, add, remove) edits these
+  declarations through the normal preview. An agent that needs a command it
+  has no tool for says so; adding one is a design change made through Faur.
 
   ```yaml
   integrations:

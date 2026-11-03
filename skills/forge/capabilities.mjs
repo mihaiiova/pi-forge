@@ -66,8 +66,9 @@ export function effectiveCapabilities(model, opts = {}) {
       name: skill.name,
       source: skillSourceKind(skill.source) ?? "authored",
     })),
-    // Declared command shapes and who may run them (enforced: the Forge
-    // extension registers each only for these agents).
+    // Declared command shapes and who may run them (enforced: pi-commands
+    // registers lead commands only in the lead, and the subagent allowlists
+    // pick theirs).
     commands: cliEntries(model).map((entry) => ({
       name: entry.name,
       command: [entry.command, ...(entry.args ?? [])].join(" "),
@@ -90,7 +91,7 @@ export function effectiveCapabilities(model, opts = {}) {
       proposalTool: 'forge_plan (hidden outside a direct maintenance request)',
       applicationAuthority: 'direct user command plus interactive confirmation',
       operationalToolExpansion: false,
-      dependencies: runtimeNeeds(model).forge ? 'the Forge package pinned in .pi/settings.json' : 'Faur installed in the developer\'s Pi; the project pins no Forge package',
+      dependencies: "Faur installed in the developer's Pi; the project pins no Faur package",
     },
     notes: [
       "subagent tools are enforced by pi-subagents allowlists (a child lacks unlisted tools)",

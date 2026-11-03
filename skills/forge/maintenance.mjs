@@ -8,7 +8,7 @@ import { effectiveCapabilities, checkCapabilities } from './capabilities.mjs';
 import { diffLines } from './diff.mjs';
 import { setupSteps } from './setup.mjs';
 import { configurationAdvisories } from './advisories.mjs';
-import { cliEntries, readRequests } from './cli-tools.mjs';
+import { cliEntries } from './cli-tools.mjs';
 import { envStatus } from './maintenance-env.mjs';
 import { redacted, redactForModel, assertNoNewSecrets } from './maintenance-secrets.mjs';
 import { vendoredSkills } from './skill-sources.mjs';
@@ -91,7 +91,7 @@ export function projectStatus(root) {
     name: model.name, description: model.description,
     agents: [{ name: model.orchestrator.name, role: 'orchestrator', model: caps.orchestratorModel }, ...(model.agents ?? []).map(a => ({ name: a.name, model: a.model ?? caps.orchestratorModel }))],
     mcpServers: caps.mcpServers.map(s => s.name), commands: cliEntries(model).map(c => c.name), skills: (model.skills ?? []).map(s => s.name),
-    env: envStatus(root, model), pendingRequests: readRequests(root).length,
+    env: envStatus(root, model),
   };
 }
 /** Whether applying `writes` needs a new process: a new launcher, or packages to install. */

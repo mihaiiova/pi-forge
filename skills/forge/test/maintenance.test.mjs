@@ -52,16 +52,6 @@ function snapshot(root) {
     return [p.slice(root.length + 1), readFileSync(p, 'utf8')];
   }));
 }
-/** A release remote whose newest tag is this version. */
-function releaseRemote(t) {
-  const base = mkdtempSync(join(tmpdir(), 'forge-remote-'));
-  t.after(() => rmSync(base, { recursive: true, force: true }));
-  const git = (...args) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false', ...args], { cwd: base });
-  git('init', '--quiet');
-  git('commit', '--quiet', '--allow-empty', '-m', 'release');
-  git('tag', `v${pkg.version}`);
-  return `file://${base}`;
-}
 function adapter(initialTools = ['read']) {
   const events = {}, tools = {}, commands = {}, messages = [], notices = [];
   let active = [...initialTools];
@@ -636,34 +626,36 @@ test('inspect summarizes subagent launches and the latest failure diagnostic onl
 test('/faur sync on a project that pins no Forge package rebuilds it with this Faur', async t => {
   const root = project(t);
   const mock = adapter();
-  mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   const run = async (request) => { mock.notices.length = 0; await mock.forge(request, mock.ctx); return mock.notices.map(n => n[0]).join('\n'); };
-  assert.match(await run('sync'), new RegExp(`pins no Forge package\\. Already built with Forge ${pkg.version}; nothing to rebuild`));
+  assert.match(await run('sync'), new RegExp(`pins no Faur package\\. Already built with Forge ${pkg.version}; nothing to rebuild`));
   olderSection(root);
-  assert.match(await run('sync'), /pins no Forge package\. Rebuilt with Forge [^:]+: \.pi\/APPEND_SYSTEM\.md/);
-  assert.match(await run('status'), /Forge: not pinned; the project runs on Pi alone/);
+  assert.match(await run('sync'), /pins no Faur package\. Rebuilt with Forge [^:]+: \.pi\/APPEND_SYSTEM\.md/);
+  assert.match(await run('status'), /Faur: not pinned; the project runs on Pi and its own packages/);
 });
 
-test('/faur sync on the newest release rebuilds: text directly, reach changes after confirmation', async t => {
+test('/faur sync rebuilds with this Faur: text directly, reach changes (such as dropping an old Faur pin) after confirmation', async t => {
   const root = project(t, pinnedModel);
   const mock = adapter();
-  mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   const run = async (request, ctx = mock.ctx) => { mock.notices.length = 0; await mock.forge(request, ctx); return mock.notices.map(n => n[0]).join('\n'); };
-  assert.match(await run('sync'), new RegExp(`v${pkg.version} is the newest release[\\s\\S]*Already built with Forge ${pkg.version}; nothing to rebuild`));
+  assert.match(await run('sync'), new RegExp(`Already built with Forge ${pkg.version}; nothing to rebuild`));
   olderSection(root);
   assert.match(await run('sync'), new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/APPEND_SYSTEM\\.md\\.`), 'no confirmation for text');
   assert.doesNotMatch(readText(root, '.pi/APPEND_SYSTEM.md'), /Older wording/);
-  writeFileSync(join(root, 'run'), readText(root, 'run') + '# custom launcher\n');
+  // A project from v0.30.0 or earlier still pins Forge; the rebuild drops it.
+  const settings = JSON.parse(readText(root, '.pi/settings.json'));
+  writeFileSync(join(root, '.pi/settings.json'), json({ ...settings, packages: ['git:github.com/mihaiiova/pi-forge@v0.30.0', ...settings.packages] }));
+  assert.match(await run('status'), /Faur: still pinned as git:github\.com\/mihaiiova\/pi-forge@v0\.30\.0, from an earlier release/);
   const write = process.stderr.write;
   let stderr = '';
   process.stderr.write = text => { stderr += text; return true; };
   try { await run('sync', { ...mock.ctx, hasUI: false }); } finally { process.stderr.write = write; }
-  assert.match(stderr, /Syncing needs interactive confirmation; nothing was fetched or run/);
-  assert.match(await run('sync'), /Cancelled; nothing rebuilt\./, 'declined');
-  assert.match(readText(root, 'run'), /custom launcher/);
+  assert.match(stderr, /Syncing needs interactive confirmation; nothing was changed/);
+  assert.match(await run('sync'), /Cancelled; nothing rebuilt\./, 'a package change asks first');
   mock.approve();
-  assert.match(await run('sync'), new RegExp(`Rebuilt with Forge ${pkg.version}: run\\.`));
-  assert.doesNotMatch(readText(root, 'run'), /custom launcher/);
+  assert.match(await run('sync'), /still pinned git:github\.com\/mihaiiova\/pi-forge@v0\.30\.0\. Rebuilt with Forge [^:]+: \.pi\/settings\.json/);
+  assert.ok(!JSON.parse(readText(root, '.pi/settings.json')).packages.some(p => p.includes('pi-forge')), 'the pin is gone');
 });
 
 test('applied changes and rebuilds reload Pi unless the launcher or packages change', async t => {
@@ -676,7 +668,7 @@ test('applied changes and rebuilds reload Pi unless the launcher or packages cha
   const mock = adapter();
   const reloads = [];
   mock.ctx.reload = async () => { reloads.push('reload'); };
-  mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   olderSection(root);
   await mock.forge('sync', mock.ctx);
   assert.deepEqual(reloads, ['reload']);
@@ -702,22 +694,17 @@ test('/faur check verifies the agent without a model turn', async t => {
   assert.deepEqual(mock.dialogs, []);
 });
 
-test('/faur status shows the agents, the Forge pin, newer releases and pending requests', async t => {
+test('/faur status shows the agents and the capabilities, and that no Faur is pinned', async t => {
   const root = project(t, pinnedModel);
-  writeFileSync(join(root, '.forge/permission-requests.json'), json([{ name: 'list-files', command: 'ls', args: ['-la'], reason: 'Look around', requestedAt: '2026-10-29T00:00:00.000Z' }]));
   const mock = adapter();
-  mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   await mock.forge('status', mock.ctx);
   const [text] = mock.notices.at(-1);
   assert.match(text, /maintenance-test/);
   assert.match(text, /lead \(orchestrator\): fixture\/large/);
-  assert.match(text, new RegExp(`Forge: v${pkg.version} \\(newest release\\)`));
-  assert.match(text, /1 pending permission request[\s\S]*\/faur permissions review/);
-  const offline = adapter();
-  offline.forge = registerMaintenance(offline.pi, offline.Type, root, { updates: { remote: 'file:///nonexistent/forge.git' } });
-  await offline.forge('status', offline.ctx);
-  assert.match(offline.notices.at(-1)[0], new RegExp(`Forge: v${pkg.version} \\(could not check for newer releases`));
-  assert.deepEqual([...mock.messages, ...offline.messages], [], 'no model turn');
+  assert.match(text, /Commands: hello/);
+  assert.match(text, /Faur: not pinned/);
+  assert.doesNotMatch(text, /pending permission request/);
 });
 
 test('change and rebuild preview missing gitignore safety entries', t => {
@@ -815,7 +802,7 @@ test('/faur status reports the last capability check and build version', async t
   const root = project(t);
   const a = adapter();
   a.pi.getAllTools = () => [{ name: 'read' }];
-  const command = registerMaintenance(a.pi, a.Type, root, { updates: { fetch: async () => { throw new Error('offline'); } } });
+  const command = registerMaintenance(a.pi, a.Type, root);
   await command('check', a.ctx);
   const report = JSON.parse(readFileSync(join(root, '.forge/check.json'), 'utf8'));
   assert.equal(report.versions.build, pkg.version);

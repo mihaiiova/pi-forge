@@ -5,9 +5,10 @@
  *
  * A generated system is self-contained by declaration, not by wholesale
  * package inheritance. It pins only what its declarations use (`runtimeNeeds`):
- * the Forge package while the design needs its runtime, `pi-subagents` for
- * specialists (MCP is Pi's built-in), and whatever the model explicitly
- * declares. A minimal agent pins nothing. The forge's own dev-only
+ * `pi-commands` for declared commands, `@gotgenes/pi-permission-system` for
+ * MCP tools that ask before each call, `pi-subagents` for specialists (MCP is
+ * Pi's built-in), and whatever the model explicitly declares. It never pins
+ * Faur. A minimal agent pins nothing. The forge's own dev-only
  * packages (web access, the YAML parser, question helpers) and any git pin are
  * never emitted; local-path and secret-shaped entries are rejected.
  */
@@ -18,12 +19,14 @@ import { mcpApprovals } from './mcp-gen.mjs';
 import { leadTools } from './asking.mjs';
 
 const PACKAGE = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-const VERSION = PACKAGE.version;
 /** This Forge release's own pins, used for a primitive the caller does not pin. */
 const OWN_PACKAGES = Array.isArray(PACKAGE.pi?.packages) ? PACKAGE.pi.packages : [];
-/** The Forge package source; generated projects pin it to a release tag. */
+/** The Forge package source. Projects from before v0.31.0 pin it; new ones never do. */
 export const FORGE_SOURCE = 'git:github.com/mihaiiova/pi-forge';
-const FORGE_PACKAGE = `${FORGE_SOURCE}@v${VERSION}`;
+/** Declared commands: named tools without a shell, per-run approval (`.pi/commands.json`). */
+export const COMMANDS_PACKAGE = 'git:github.com/mihaiiova/pi-commands@v0.1.0';
+/** MCP tools that ask before each call, refused without a UI (`.pi/extensions/pi-permission-system/config.json`). */
+export const PERMISSIONS_PACKAGE = 'npm:@gotgenes/pi-permission-system@42.0.0';
 const LOCAL_PATH_RE = /^(file:|link:|\/|\.\.?\/)/;
 const RUNTIME_PRIMITIVES = ["pi-subagents"];
 /** Packages that replace a Pi built-in the generated system relies on. */
@@ -70,18 +73,17 @@ function declaredSpecError(spec) {
 }
 
 /**
- * Which runtime packages a design uses. The Forge runtime registers declared
- * commands (and request_permission), asks before approved MCP calls and keeps
- * MCP away from a lead declared without it; a design with none of these runs
- * on Pi alone. Workflows are skills Pi runs itself (`pi -p "/skill:…"`). pi-subagents serves declared
- * specialists and a lead that lists the `subagent` tool.
+ * Which runtime packages a design uses: pi-commands for declared commands,
+ * the permission system for MCP `approveTools`, pi-subagents for declared
+ * specialists or a lead that lists the `subagent` tool. Everything else,
+ * workflows included, runs on Pi alone.
  */
 export function runtimeNeeds(model) {
   const lead = leadTools(model);
-  const servers = Array.isArray(model?.integrations?.mcp) ? model.integrations.mcp.length : 0;
   const agents = Array.isArray(model?.agents) ? model.agents.length : 0;
   return {
-    forge: cliEntries(model).length > 0 || mcpApprovals(model).length > 0 || (servers > 0 && !lead.includes('mcp')),
+    commands: cliEntries(model).length > 0,
+    approvals: mcpApprovals(model).length > 0,
     subagents: agents > 0 || lead.includes('subagent'),
   };
 }
@@ -89,15 +91,15 @@ export function runtimeNeeds(model) {
 /**
  * @param {string[]} [piPackages] the forge's own `pi.packages` (`npm:<name>@<version>`).
  * @param {string[]} [declared] the model's declared `packages` (npm:/git: specs).
- * @param {{ forge?: boolean, subagents?: boolean }} [needs] from `runtimeNeeds`;
- *   both default to true.
+ * @param {{ commands?: boolean, approvals?: boolean, subagents?: boolean }} [needs]
+ *   from `runtimeNeeds`; `subagents` defaults to true, the others to false.
  * @returns {{ packages: string[], errors: string[] }} primitives first, then declared;
  *   `errors` is non-empty when a required primitive is missing/unpinned or a
  *   declared spec is invalid/conflicting (never silently incomplete).
  */
-export function runtimePackages(piPackages, declared = [], { forge = true, subagents = true } = {}) {
+export function runtimePackages(piPackages, declared = [], { commands = false, approvals = false, subagents = true } = {}) {
   const errors = [];
-  const pins = forge ? [FORGE_PACKAGE] : [];
+  const pins = [...(commands ? [COMMANDS_PACKAGE] : []), ...(approvals ? [PERMISSIONS_PACKAGE] : [])];
 
   // The caller's pins (a project's current ones) win; a primitive the project
   // does not pin yet, such as pi-subagents for a first specialist, takes this

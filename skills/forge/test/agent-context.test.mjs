@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { loadYaml } from '../yaml-loader.mjs';
 import { generateProject } from '../generate.mjs';
 import { planChange } from '../maintenance.mjs';
-import { registerAgent } from '../agent-extension.mjs';
 import { capabilitySection, staleMentions } from '../agent-context.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -53,7 +52,7 @@ test("each agent's section lists exactly what it has", () => {
   assert.match(lead, /`github-issues` \(only `mcp__github_issues__list_issues`, `mcp__github_issues__issue_write`\) — asks the user before: issue_write/, 'includeTools are declared directly');
   assert.match(lead, /`cli_create_issue` — Open an issue: `gh issue create --title \{title\}`; the user approves each run/);
   assert.match(lead, /\*\*Specialists\*\* \(delegate with the subagent tool\):\n  - `seo` — Finds search opportunities\n  - `quiet`/);
-  assert.match(lead, /ask with request_permission/);
+  assert.doesNotMatch(lead, /request_permission/);
   const seo = capabilitySection(model, 'seo');
   assert.match(seo, /`openseo` \(only `mcp__openseo__get_report`\) — SEO data\n/, 'approval shown only for the selected tool');
   assert.doesNotMatch(seo, /github-issues|cli_create_issue|Specialists/);
@@ -129,10 +128,9 @@ test('the change preview carries stale mentions so the proposal can fix them', (
   assert.equal(fixed.preview.staleMentions, undefined);
 });
 
-test('the lead mentions request_permission only when the Forge runtime that provides it is pinned', () => {
-  assert.match(capabilitySection(model, 'lead'), /ask with request_permission/);
-  const plain = { schema: 1, name: 'p', orchestrator: { name: 'lead', model: 'fixture/large', tools: ['read'] } };
-  assert.doesNotMatch(capabilitySection(plain, 'lead'), /request_permission/);
+test('no agent is told about request_permission: a missing capability is reported, then added through Faur', () => {
+  assert.doesNotMatch(capabilitySection(model, 'lead'), /request_permission/);
+  assert.match(capabilitySection(model, 'lead'), /If a task needs something not listed, say what is missing\. Don't work around a missing capability\./);
 });
 
 test("settings keep Pi's built-in MCP on and the user's other extension entries", () => {
@@ -142,19 +140,4 @@ test("settings keep Pi's built-in MCP on and the user's other extension entries"
   const existing = { '.pi/settings.json': JSON.stringify({ extensions: ['-builtin:mcp', './my-ext.ts'] }) };
   const merged = JSON.parse(generateProject(model, existing, { piPackages: pkg.pi.packages }).files.find((f) => f.path === '.pi/settings.json').content);
   assert.deepEqual(merged.extensions, ['./my-ext.ts']);
-});
-
-test('the runtime no longer injects prompts or notices at session start', t => {
-  const root = project(t, { ...model, orchestrator: { ...model.orchestrator, model: 'deepseek/chat' } });
-  const events = {};
-  const pi = { registerTool() {}, registerCommand() {}, on(n, cb) { (events[n] ??= []).push(cb); }, getActiveTools: () => [], setActiveTools() {} };
-  const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map(k => [k, v => v]));
-  registerAgent(pi, Type, root);
-  const notices = [];
-  const ctx = { hasUI: true, ui: { notify: text => notices.push(text) }, modelRegistry: { getProviderAuthStatus: () => ({ configured: false }) } };
-  for (const cb of events.session_start ?? []) cb({}, ctx);
-  assert.deepEqual(notices, []);
-  let prompt = 'BASE';
-  for (const cb of events.before_agent_start ?? []) prompt = cb({ systemPrompt: prompt })?.systemPrompt ?? prompt;
-  assert.equal(prompt, 'BASE', 'Pi loads the prompt and capability section from .pi/APPEND_SYSTEM.md');
 });

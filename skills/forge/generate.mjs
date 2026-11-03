@@ -28,9 +28,10 @@ import { workflowSkill } from "./workflow-skill.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
 import { buildRuntimePlan, needsIsolation } from "./runtime.mjs";
-import { runtimeNeeds } from "./deps.mjs";
+import { runtimeNeeds, COMMANDS_PACKAGE, PERMISSIONS_PACKAGE } from "./deps.mjs";
 import { integrationSecrets, gitignoreSafety, REQUIRED_IGNORES } from './integration-secrets.mjs';
-import { cliRef, cliToolName } from "./cli-tools.mjs";
+import { cliRef, cliToolName, cliEntries, cliAgents } from "./cli-tools.mjs";
+import { mcpApprovals } from "./mcp-gen.mjs";
 import { capabilitySection } from "./agent-context.mjs";
 import { documentInstructions } from "./documents.mjs";
 
@@ -78,6 +79,31 @@ export const GENERATED_PATHS = [
 
 const hasMcp = (model) => Array.isArray(model?.integrations?.mcp) && model.integrations.mcp.length > 0;
 const hasEnv = (model) => Array.isArray(model?.integrations?.env) && model.integrations.env.length > 0;
+/** pi-commands' configuration: the declared commands. */
+export const COMMANDS_CONFIG = ".pi/commands.json";
+/** pi-permission-system's project configuration: MCP tools that ask. */
+export const PERMISSIONS_CONFIG = ".pi/extensions/pi-permission-system/config.json";
+
+/** `.pi/commands.json`: each declared command, and whether the lead may run it. */
+function commandsConfig(model) {
+  const lead = isPlainObject(model.orchestrator) ? model.orchestrator.name : undefined;
+  const effective = (agent) => enforcedAgentTools(agent.name, model.policies, agent.tools);
+  return `${JSON.stringify({ commands: cliEntries(model).map((c) => ({
+    name: c.name,
+    ...(isNonEmptyString(c.description) ? { description: c.description } : {}),
+    command: c.command,
+    args: Array.isArray(c.args) ? c.args : [],
+    approve: c.approve !== false,
+    lead: cliAgents(model, c.name, effective).includes(lead),
+  })) }, null, 2)}\n`;
+}
+
+/** The permission system's rules: every MCP tool in `approveTools` asks;
+ * everything else is allowed, as without the package. */
+function permissionsConfig(model) {
+  const rules = Object.fromEntries(mcpApprovals(model).map(({ server, pattern }) => [`${server}:${pattern}`, "ask"]));
+  return `${JSON.stringify({ permission: { "*": "allow", mcp: { "*": "allow", ...rules } } }, null, 2)}\n`;
+}
 
 /** Markers around the derived section of `.pi/APPEND_SYSTEM.md`. The end
  * marker fingerprints the section, so a hand edit is detected. */
@@ -257,9 +283,9 @@ function buildSettings(model, existingText, packages) {
     else delete out.subagents;
   }
 
-  // Commands reach the orchestrator through the Forge extension, which
-  // registers only the ones it lists; defaultTools bounds Pi's own tools.
-  // MCP reach is set by exposure and the launcher, not by defaultTools.
+  // Commands reach the orchestrator through pi-commands, which registers
+  // only those marked for the lead; defaultTools bounds Pi's own tools.
+  // MCP reach is set by exposure, not by defaultTools.
   const tools = Array.isArray(orchestrator.tools)
     ? orchestrator.tools.filter((tool) => !cliRef(tool) && tool !== "mcp" && !tool.startsWith("mcp:"))
     : undefined;
@@ -362,11 +388,17 @@ function policySection(model) {
       enforcedLines.push(`- MCP server \`${rule.mcp}\` hides tools: ${rule.hide.join(", ")}`);
     }
   }
+  // Each enforced rule names what enforces it.
+  const commands = cliEntries(model);
+  if (commands.length) enforcedLines.push(`- Declared commands run without a shell, with only their {placeholders} filled in; ${commands.some((c) => c.approve !== false) ? "those that ask need your approval for each run and are refused without a UI" : "none asks before running"} (pi-commands, \`${COMMANDS_PACKAGE}\`).`);
+  for (const { server, pattern } of mcpApprovals(model)) enforcedLines.push(`- MCP \`${server}\` tools matching \`${pattern}\` ask before each call and are refused without a UI (pi-permission-system, \`${PERMISSIONS_PACKAGE}\`).`);
   lines.push(...(enforcedLines.length ? enforcedLines : ["None declared."]));
   // A tool allowlist limits which tools an agent calls, not what a shell reaches.
   if (enforcedLines.length) lines.push("", "An agent with `bash` or a shell-like command can still reach anything your user account can.");
+  const leadWithoutMcp = Array.isArray(model.integrations?.mcp) && model.integrations.mcp.length && Array.isArray(model.orchestrator?.tools) && !model.orchestrator.tools.includes("mcp");
+  const notes = [...advisory, ...(leadWithoutMcp ? [`\`${model.orchestrator.name}\` is told it has no MCP tools; it is not prevented from calling them, and its specialists have them anyway.`] : [])];
   lines.push("", "### Advisory (guidance — not enforced)", "");
-  lines.push(...(advisory.length ? advisory.map((line) => `- ${line}`) : ["None declared."]));
+  lines.push(...(notes.length ? notes.map((line) => `- ${line}`) : ["None declared."]));
   lines.push("");
   return lines.join("\n");
 }
@@ -374,7 +406,6 @@ function policySection(model) {
 function readmeBody(model, packages) {
   const name = typeof model.name === "string" ? model.name : "";
   const description = typeof model.description === "string" ? model.description : "";
-  const forge = runtimeNeeds(model).forge;
   return [
     `# ${name}`,
     "",
@@ -438,22 +469,12 @@ function readmeBody(model, packages) {
     ] : []),
     '## Maintain',
     '',
-    ...(forge ? [
-      '`/faur <request>` proposes a change; when the turn ends, Forge asks you',
-      'to discuss, apply or discard it. Replies continue the conversation until',
-      'then; `/faur exit` leaves. `/faur review` is read-only.',
-      '`/faur check` verifies the agent, `/faur status` summarizes it, and',
-      '`/faur sync` moves to the newest Forge release after two confirmations.',
-      'Roll back with git. `/faur permissions` lists the commands agents may run',
-      'and adds, removes or reviews them; agents ask for a command they need with',
-      '`request_permission`. Restart Pi when the launcher or packages change.',
-    ] : [
-      'This project runs on Pi alone and pins no Faur package. Maintain it from',
-      'your own Pi with Faur installed: run `pi` in this folder and use',
-      '`/faur <request>` to propose a change (discuss, apply or discard it when the',
-      'turn ends), `/faur check` to verify the agent and `/faur status` to',
-      'summarize it. Without Faur, edit the files directly; roll back with git.',
-    ]),
+    'This project runs on Pi alone and pins no Faur package. Maintain it from',
+    'your own Pi with Faur installed: run `pi` in this folder and use',
+    '`/faur <request>` to propose a change (discuss, apply or discard it when the',
+    'turn ends), `/faur check` to verify the agent, `/faur status` to summarize',
+    'it and `/faur permissions` to list, add or remove declared commands. Without',
+    'Faur, edit the files directly; roll back with git. Restart Pi when packages change.',
     '',
     policySection(model),
   ].join("\n");
@@ -584,6 +605,8 @@ export function managedPaths(model) {
   if (hasMcp(model)) paths.push(".pi/mcp.json");
   if (hasEnv(model)) paths.push(".env.example");
   if (needsIsolation(model)) paths.push("run");
+  if (cliEntries(model).length) paths.push(COMMANDS_CONFIG);
+  if (mcpApprovals(model).length) paths.push(PERMISSIONS_CONFIG);
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
   for (const skill of skillEntries(model)) paths.push(skillPath(skill));
   if (backgroundAgents(model).length > 0) paths.push(SUBAGENT_CONFIG);
@@ -617,6 +640,8 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
     authoredFile("README.md", "html", readmeBody(model, plan.packages), existing["README.md"]),
     gitignoreFile(existing[".gitignore"], model),
     ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
+    ...(cliEntries(model).length ? [derivedFile(COMMANDS_CONFIG, commandsConfig(model), existing[COMMANDS_CONFIG])] : []),
+    ...(mcpApprovals(model).length ? [derivedFile(PERMISSIONS_CONFIG, permissionsConfig(model), existing[PERMISSIONS_CONFIG])] : []),
     ...(plan.launcherScript ? [{ ...derivedFile("run", plan.launcherScript, existing["run"]), executable: true }] : []),
     ...subagentConfig,
     ...agentFiles(model, existing),

@@ -407,6 +407,66 @@ file.
   moves to `pi -p` (next step). The isolated `run` loading no user package,
   MCP server or instruction rests on stage 0 (D) and `isolation.test.sh` (C).
 
+### Stage 3 trial: `@gotgenes/pi-permission-system` 42.0.0 (2026-11-03, #63)
+
+Real Pi 1.5.0 with the package as a project package
+(`.pi/extensions/pi-permission-system/config.json`), the stub MCP server and the
+scripted model (lab under the scratch directory; same helpers as stage 0).
+
+- **Headless `ask`: blocked.** `"projsrv:projsrv_secret": "ask"` refuses the call
+  without a UI with `requires approval, but no interactive UI is available`,
+  naming tool, rule and server; the server never receives it.
+- **Interactive `ask`: asks.** Over RPC mode the package shows a select dialog
+  (`Permission Required`, tool, surface, rule); `Yes` runs the call, `No`
+  refuses it.
+- **Project-wide `deny` reaches the lead and background specialists** (their
+  MCP tools are removed before they start), **not foreground specialists**,
+  which do not load the parent's extensions.
+- **Per-agent rules do not work for a project install.** pi-subagents 0.83.1
+  adds the package to a child only when the agent file has `permission:`
+  frontmatter, and looks for it only in the user-level agent directory
+  (`child-tool-plan.js` `resolvePermissionSystemExtension`). Installed in the
+  project, the first child runs ungated; once the package has written its log
+  folder under the agent directory, every launch fails with `Permission-system
+  package manifest is missing`. So the lead's MCP boundary (lead denied,
+  specialists allowed, R11) cannot be expressed with this package as a project
+  dependency.
+
+Consequences: `approveTools` (R10, R17) maps to the package's `ask` rules.
+Background specialists get the same rules, so an approved call stays the
+lead's, as the validator already requires. A foreground specialist would
+bypass them, so designs with approvals keep forced background launches (R8),
+which only `run`'s isolated home applies. R11 needs the declared-commands
+package (it knows parent from child) or becomes advisory.
+
+### Stage 3 results (2026-11-03, #63)
+
+- Nothing of Faur runs in a generated agent, and projects never pin Faur (most
+  of #64's "no project pin"). `agent-extension.mjs`, the run-time half of
+  `permissions-extension.mjs` (now `permissions-command.mjs`: list, add,
+  remove) and the command runner in `cli-tools.mjs` are deleted.
+- **Declared commands (R12):** [pi-commands](https://github.com/mihaiiova/pi-commands)
+  v0.1.0, the one new package: named tools without a shell, `{placeholder}`
+  values that cannot become options, per-run approval refused without a UI,
+  configured by the generated `.pi/commands.json` (`lead` marks the commands
+  the main session gets). It has no dependency on Faur and its own tests,
+  including a real-Pi headless run.
+- **MCP approvals (R10, R17):** `@gotgenes/pi-permission-system` 42.0.0,
+  configured by the generated `.pi/extensions/pi-permission-system/config.json`
+  (`"<server>:<pattern>": "ask"`).
+- **Lead MCP boundary (R11):** removed, decided 2026-11-03. It was not a
+  security boundary (specialists have the tools, and the lead delegates to
+  them); the generated README lists it under advisory.
+- **`request_permission` and pending requests (R13):** removed. An agent that
+  lacks a command says so; adding one is a design change through Faur.
+- `/faur sync` rebuilds with the running Faur; a pin left by v0.30.0 or
+  earlier is dropped after confirmation. `maintenance-rebuild.mjs` stays, so
+  those older pinned releases can still sync forward.
+- Proof: `headless-workflow.test.mjs` installs both packages from GitHub and
+  npm into a generated project and runs real Pi headless: the gated command
+  and the gated MCP call are refused with no side effect, `request_permission`
+  does not exist, and a workflow with MCP runs with no Faur.
+
 **Upstream proposal, draft (not filed).**
 
 > **Let a project ignore user-level resources.** A trusted project often
@@ -440,7 +500,7 @@ workflow runner) moves before the runner is removed.
 | 0. Verify (done 2026-11-03) | Confirm the "verify" rows: global-resource merging (including the `pi-mcp-adapter` conflict) in plain and isolated mode, pi-subagents project configuration, existing packages for R9/R10/R12, Pi structured or JSON output for R16. Draft the upstream Pi proposal for ignoring user-level resources | nothing | Stage 0 results above; `skills/forge/test/pi-lab/stage0.sh` reproduces them |
 | 1. Native prompt and output (done 2026-11-03, #61) | Capability section and context load natively; output is pay-per-use (no `pi-subagents` without specialists; no empty `mcp.json`, `.env.example`, `data/knowledge/`) | R2, R3, R14, R15, `projectContext` | The minimal agent runs with plain `pi` and no Faur installed |
 | 2. Launch and headless (done 2026-11-03, #62) | `run` optional and minimal; documented environment; workflows invoked with `pi -p`; Faur's check reports host-config conflicts and setup | R1 (as requirement), R4, R5, R16 runner after Revisor migrates | Marketing agent without approvals or commands runs headless with plain `pi`; isolated mode excludes global packages, proven with the `pi-mcp-adapter` conflict |
-| 3. Enforcement without Faur | Approvals, declared commands, headless blocking from an existing or one new generic package; first run the R10 candidates against the lab's stub server | R10–R13, R17 from Faur | B and C run with plain `pi`; enforcement tests (approval asks, blocks headless; commands run without a shell) pass without Faur installed |
+| 3. Enforcement without Faur (done 2026-11-03, #63) | Approvals, declared commands, headless blocking from an existing or one new generic package; first run the R10 candidates against the lab's stub server | R10–R13, R17 from Faur | B and C run with plain `pi`; enforcement tests (approval asks, blocks headless; commands run without a shell) pass without Faur installed |
 | 4. Faur as maker | Faur runs only in the developer's Pi; projects pin no Faur; `system.yaml` is the design record with drift reconcile (reuse `import`, generate, diff); metadata location decided; rename to Faur | R6, R18, R19 relocation | Generate → edit native files by hand → reopen with Faur → adopt → revise again, with no manual edit lost |
 
 The end-to-end acceptance test for the migration: generate a project, remove

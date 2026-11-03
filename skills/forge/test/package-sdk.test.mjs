@@ -41,21 +41,18 @@ test('the minimal agent runs on Pi alone: its prompt and generated section load 
   } finally { session.dispose(); }
 });
 
-test('Pi loads a generated project from the Forge package', async t => {
+test('Faur installed in the developer\'s Pi maintains a generated project and adds no tool to its agent', async t => {
   const root = mkdtempSync(join(tmpdir(), 'forge-sdk-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, '.pi'));
-  // One declared command: a design that needs the Forge runtime, so it pins the package.
-  const minimal = readFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), 'utf8');
-  writeFileSync(join(root, '.pi/system.yaml'), minimal.replace('tools: [read, grep, find, ls]', 'tools: [read, grep, find, ls, "cli:hello"]') + 'integrations:\n  cli:\n    - name: hello\n      command: echo\n      args: [hi]\n      approve: false\n');
+  copyFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), join(root, '.pi/system.yaml'));
   execFileSync(process.execPath, [join(repo, 'skills/forge/forge.mjs'), 'generate', root], { stdio: 'ignore' });
-  const binary = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim();
-  const sdk = await import(pathToFileURL(resolve(dirname(realpathSync(binary)), '../index.js')).href);
-  const agentDir = join(root, '.forge/pi-home');
+  const sdk = await sdkModule();
+  // Faur is a user-level package, as in the developer's own Pi; the project pins nothing.
+  const agentDir = join(root, 'home');
   mkdirSync(agentDir, { recursive: true });
-  writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ packages: [repo], defaultTools: ['read'] }));
-  const generatedSettings = readFileSync(join(root, '.pi/settings.json'));
-  writeFileSync(join(root, '.pi/settings.json'), JSON.stringify({ packages: [repo], defaultTools: ['read'] }));
+  writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ packages: [repo] }));
+  assert.equal(JSON.parse(readFileSync(join(root, '.pi/settings.json'), 'utf8')).packages, undefined);
   const settingsManager = sdk.SettingsManager.create(root, agentDir, { projectTrusted: true });
   const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true });
   const oldCwd = process.cwd();
@@ -65,18 +62,20 @@ test('Pi loads a generated project from the Forge package', async t => {
   t.after(() => { process.chdir(oldCwd); if (child !== undefined) process.env.PI_SUBAGENT_CHILD = child; });
   await loader.reload();
   assert.deepEqual(loader.getExtensions().errors, []);
-  const { session } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: loader, settingsManager, sessionManager: sdk.SessionManager.inMemory(root), tools: ['read'] });
+  const { session } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: loader, settingsManager, sessionManager: sdk.SessionManager.inMemory(root) });
   try {
     await session.bindExtensions({ onError: error => { throw new Error(JSON.stringify(error)); } });
     const commands = session.extensionRunner.getRegisteredCommands().map(c => c.name);
     assert.equal(commands.filter(name => name === 'faur').length, 1);
     assert.deepEqual(commands.filter(name => /factory/.test(name)), [], 'no old command names');
-    assert.ok(session.extensionRunner.getAllRegisteredTools().some(t => t.definition.name === 'request_permission'));
+    const tools = session.extensionRunner.getAllRegisteredTools().map(t => t.definition.name);
+    assert.ok(!tools.includes('request_permission') && !tools.includes('memory') && !tools.some(n => n.startsWith('cli_')), 'Faur adds nothing the agent runs');
+    assert.deepEqual(session.getActiveToolNames().sort(), ['find', 'grep', 'ls', 'read']);
     const notices = [];
     const command = session.extensionRunner.getCommand('faur');
     assert.match(command.description, /check \| status \| sync/);
     await command.handler('check', { hasUI: true, ui: { notify: message => notices.push(message) } });
-    assert.match(notices.join('\n'), /Validation/, 'inside a project /faur checks this agent');
+    assert.match(notices.join('\n'), /All checks passed|No missing capabilities/, 'inside a project /faur checks this agent');
   } finally { session.dispose(); }
 });
 

@@ -172,8 +172,8 @@ first; the user decides.
   placeholders, nothing runs through a shell, and by default the user
   approves each run. Check the CLI is
   installed with `forge discover --cli <name>`. After generation,
-  `/faur permissions` manages these, and the orchestrator can ask for a
-  missing one with `request_permission`.
+  `/faur permissions` manages these. pi-commands runs them in the project;
+  an agent that lacks one says so, and the user adds it through `/faur`.
 - **Capabilities and permissions:** what each agent may touch is the user's
   call; the forge adds no restrictions of its own. When an agent would
   publish, send, delete or otherwise change something outside the project (a
@@ -219,9 +219,8 @@ first; the user decides.
   `~/.agents/skills/` (and `.agents/skills/` in the project and its parents)
   and parent-folder `AGENTS.md` files load for the orchestrator;
   subagents get only the skills listed for them.
-- **Maintain** — a system whose design needs the agent runtime pins the
-  Forge package, which also provides `/faur` inside it; any other system is
-  maintained from a Faur installed in the user's own Pi. `/faur <request>`
+- **Maintain** — a generated system never pins Faur; it is maintained from a
+  Faur installed in the user's own Pi. `/faur <request>`
   inspects, discovers and previews a structured model change; when the turn
   ends, Forge prompts the human to discuss, apply or discard it, and plain
   replies continue the conversation until then (`/faur exit` leaves). `/faur review`
@@ -449,21 +448,11 @@ user wants to pursue through a new /faur request.
 
 ## Forge tooling lifecycle
 
-/faur status reports the pinned release and the newest release tag; it
-downloads and runs nothing. /faur sync proposes the newest tag, asks the human
-before fetching and running that release, previews the pin change and the files
-it generates, and applies only after a second approval. Pi installs the new
-pin; the human restarts Pi. The reviewed Faur-managed file plan is applied
-first, then Pi's package update runs. Synchronous file-apply failures have
-best-effort rollback, not crash-atomic recovery. Package installation and its
-external side effects are outside that rollback: if it fails, the applied files
-remain and package state may be partial. From the project directory retry
-`pi update --extensions --approve` in the same Pi environment, then restart
-Pi; alternatively review the current changes and package state before using
-git to revert. Never describe the whole sync as transactional. On the newest
-release, /faur sync regenerates
-the project with it instead: text agents read is rewritten directly; changes to
-what they can run or reach are shown and confirmed. /faur check validates
+Generated projects pin no Faur, so there is no release to move. /faur status
+says whether a project still pins Forge from an earlier release (v0.30.0 or
+before). /faur sync regenerates the project with the Faur running it: text
+agents read is rewritten directly; changes to what they can run or reach,
+including dropping an old Forge pin, are shown and confirmed. /faur check validates
 system.yaml, compares the generated files with it and runs the launch check. A
 proposed change also rebuilds whatever this version generates differently, and
 its preview lists those files under reconciliation. After an approved change the

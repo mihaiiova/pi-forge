@@ -15,7 +15,9 @@ const server = join(import.meta.dirname, 'fixtures/mcp/server.mjs');
 const pi = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim();
 const ai = pathToFileURL(resolve(dirname(realpathSync(pi)), '../../node_modules/@earendil-works/pi-ai/dist/index.js')).href;
 
-/** Generate a project from `yaml`, script the model, and point any Forge pin at this checkout. */
+/** Generate a project from `yaml`, script the model, and install its pinned
+ * runtime packages (pi-commands from GitHub, pi-permission-system from npm).
+ * Returns null when they cannot be installed (no network). */
 function project(t, yaml, responses, waitFor) {
   const root = mkdtempSync(join(tmpdir(), 'forge-headless-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -36,11 +38,17 @@ export default pi => {
  });
 };`);
   const settings = JSON.parse(readFileSync(join(root, '.pi/settings.json'), 'utf8'));
-  // A pinned Forge release would need GitHub; this checkout is the same code.
-  if (settings.packages?.some(p => p.startsWith('git:github.com/mihaiiova/pi-forge@'))) settings.packages = [repo, ...settings.packages.filter(p => !p.startsWith('git:'))];
+  assert.ok(!(settings.packages ?? []).some(p => p.includes('pi-forge')), 'projects never pin Faur');
   settings.extensions = [provider];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings));
-  const env = { ...process.env, PI_OFFLINE: '1' };
+  const home = existsSync(join(root, 'run')) ? join(root, '.forge/pi-home') : join(root, '.home');
+  // Pi installs missing project packages at start-up, so a run with packages
+  // needs the network once; without packages it runs offline.
+  if (settings.packages?.length) {
+    const install = spawnSync('pi', ['update', '--extensions', '--approve'], { cwd: root, env: { ...process.env, PI_CODING_AGENT_DIR: home }, encoding: 'utf8', timeout: 300000, input: '' });
+    if (install.status !== 0) return null;
+  }
+  const env = { ...process.env, ...(settings.packages?.length ? {} : { PI_OFFLINE: '1' }) };
   delete env.PI_SUBAGENT_CHILD;
   return { root, env };
 }
@@ -88,6 +96,7 @@ function blocked(t, tool, input) {
   const called = join(tmpdir(), `forge-called-${process.pid}-${Math.random().toString(36).slice(2)}`);
   t.after(() => rmSync(called, { force: true }));
   const info = project(t, approvals(called), `fauxAssistantMessage([fauxToolCall(${JSON.stringify(tool)},${JSON.stringify(input)})]), fauxAssistantMessage('done')`, tool.startsWith('mcp__') ? tool : null);
+  if (!info) { t.skip('the pinned runtime packages could not be installed (network)'); return null; }
   const run = headless(info);
   assert.equal(run.status, 0, `the run itself succeeds: ${run.stderr}`);
   assert.equal(run.text, 'done');
@@ -95,20 +104,22 @@ function blocked(t, tool, input) {
   return { ...run, ...info };
 }
 
-test('a headless declared command that needs approval is refused, and nothing runs', t => {
-  const { toolResults } = blocked(t, 'cli_make_file', {});
-  assert.ok(toolResults.some(r => /make-file needs the user's approval for each run/.test(r)), toolResults.join('\n'));
+test('a headless declared command that needs approval is refused by pi-commands, and nothing runs', t => {
+  const result = blocked(t, 'cli_make_file', {});
+  if (!result) return;
+  assert.ok(result.toolResults.some(r => /make-file needs the user's approval for each run, which this session can't ask for; nothing ran/.test(r)), result.toolResults.join('\n'));
 });
 
-test('a headless request_permission queues the request and runs nothing', t => {
-  const { root } = blocked(t, 'request_permission', { name: 'create-directory', command: 'mkdir', args: ['created'], reason: 'Need a directory' });
-  assert.equal(existsSync(join(root, 'created')), false);
-  assert.match(readFileSync(join(root, '.forge/permission-requests.json'), 'utf8'), /create-directory/);
+test('a headless MCP call that needs approval is refused by pi-permission-system, and nothing runs', t => {
+  const result = blocked(t, 'mcp__seo__run_audit', {});
+  if (!result) return;
+  assert.ok(result.toolResults.some(r => /pi-permission-system.*mcp__seo__run_audit.*requires approval, but no interactive UI is available/.test(r)), result.toolResults.join('\n'));
 });
 
-test('a headless MCP call that needs approval is refused, and nothing runs', t => {
-  const { toolResults } = blocked(t, 'mcp__seo__run_audit', {});
-  assert.ok(toolResults.some(r => /seo: run_audit needs the user's approval/.test(r)), toolResults.join('\n'));
+test('no Faur tool reaches the agent: request_permission does not exist', t => {
+  const result = blocked(t, 'request_permission', { name: 'x', command: 'touch', args: ['x'], reason: 'r' });
+  if (!result) return;
+  assert.ok(result.toolResults.some(r => /Tool request_permission not found/.test(r)), result.toolResults.join('\n'));
 });
 
 test('a workflow without commands or approvals runs headless with pi -p and no Faur', t => {

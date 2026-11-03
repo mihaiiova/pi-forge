@@ -5,23 +5,15 @@
  * its `{placeholders}`; the command runs directly (no shell), so a value can't
  * add commands, pipes or redirections. `{name:file}` writes the value to a
  * temporary file and passes its path (for options like `--body-file`).
- * Agents reach an entry through `cli:<name>` in their tools, registered in Pi
- * as `cli_<name>`. Anything not declared can only run through an explicit
- * per-call permission request.
+ * Agents reach an entry through `cli:<name>` in their tools; pi-commands
+ * registers it in Pi as `cli_<name>` from the generated .pi/commands.json and
+ * runs it. This module is design-time only: shapes, names and grants.
  */
-import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { atomicWrite, readText } from './maintenance-store.mjs';
 
 export const PLACEHOLDER_RE = /^\{([a-z][a-z0-9_]*)(?::(file))?\}$/;
 /** Arguments that look like a placeholder but aren't one ("{Title}", "--title={title}").
  * Any other braces are literal, e.g. a --jq or --template format string. */
 export const isMisplacedPlaceholder = (arg) => !PLACEHOLDER_RE.test(arg) && (/^\{[^{}\s]*\}$/.test(arg) || /=\{[a-z][a-z0-9_]*(?::file)?\}$/.test(arg));
-export const REQUESTS_FILE = '.forge/permission-requests.json';
-const TIMEOUT_MS = 5 * 60 * 1000;
-const OUTPUT_CHARS = 50000;
 
 /** The Pi tool name for a declared command. */
 export const cliToolName = (name) => `cli_${String(name).replace(/-/g, '_')}`;
@@ -106,19 +98,6 @@ export function splitCommandLine(line) {
   return words;
 }
 
-/** What one call will run, for the person approving it: the command line,
- * with each file placeholder's content shown below it. */
-export function describeCall({ command, args }, values) {
-  const given = values && typeof values === 'object' ? values : {};
-  const line = formatCommand(command, (Array.isArray(args) ? args : []).map((arg) => {
-    const match = arg.match(PLACEHOLDER_RE);
-    return match ? (match[2] === 'file' ? `<${match[1]} file>` : String(given[match[1]] ?? arg)) : arg;
-  }));
-  const files = placeholders(args).filter((p) => p.file && typeof given[p.name] === 'string')
-    .map((p) => `\n<${p.name} file>:\n${given[p.name].length > 2000 ? `${given[p.name].slice(0, 2000)}\n[… ${given[p.name].length - 2000} more characters]` : given[p.name]}`);
-  return line + files.join('');
-}
-
 /** Throws when a command shape is malformed (used for agent proposals). */
 export function checkShape({ name, command, args }) {
   if (typeof name !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) throw new Error('name must be kebab-case, e.g. create-issue');
@@ -126,79 +105,6 @@ export function checkShape({ name, command, args }) {
   if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) throw new Error('args must be an array of strings');
   const bad = args.find(isMisplacedPlaceholder);
   if (bad !== undefined) throw new Error(`"${bad}": a placeholder must be a whole argument, lowercase: "{name}" is a value you supply; "{name:file}" writes your text to a temporary file and passes its path`);
-}
-
-/**
- * The exact argv for one call. Every placeholder needs a string value; a value
- * for a plain placeholder may not start with "-", so it can't become an option.
- * File placeholders are written under `dir`; without one, values are only checked.
- */
-export function buildArgv(args, values, dir) {
-  const given = values && typeof values === 'object' ? values : {};
-  const wanted = placeholders(args);
-  const unknown = Object.keys(given).filter((k) => !wanted.some((p) => p.name === k));
-  if (unknown.length) throw new Error(`Unknown values: ${unknown.join(', ')} (this command takes ${wanted.map((p) => p.name).join(', ') || 'none'})`);
-  const files = {};
-  for (const p of wanted) {
-    const value = given[p.name];
-    if (typeof value !== 'string') throw new Error(`Missing value for {${p.name}}`);
-    if (value.includes('\0')) throw new Error(`{${p.name}} contains a NUL character`);
-    if (!p.file && value.startsWith('-')) throw new Error(`{${p.name}} may not start with "-"`);
-    if (p.file && dir) {
-      files[p.name] = join(dir, `${p.name}.txt`);
-      writeFileSync(files[p.name], value, { mode: 0o600 });
-    }
-  }
-  return (Array.isArray(args) ? args : []).map((arg) => {
-    const match = arg.match(PLACEHOLDER_RE);
-    return match ? (match[2] === 'file' ? files[match[1]] : given[match[1]]) : arg;
-  });
-}
-
-const clip = (s) => (s.length > OUTPUT_CHARS ? `${s.slice(0, OUTPUT_CHARS)}\n[… ${s.length - OUTPUT_CHARS} more characters]` : s);
-
-/**
- * Run one call of a command shape in the project. Never uses a shell, and
- * doesn't block Pi while it runs: the abort signal and a timeout stop it.
- * Output beyond the shown limit is counted, not kept.
- */
-export async function runCommand(root, { command, args }, values, { signal, timeoutMs = TIMEOUT_MS } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'forge-cli-'));
-  try {
-    const argv = buildArgv(args, values, dir);
-    const line = formatCommand(command, argv.map((a) => (a.startsWith(dir) ? `<${a.slice(dir.length + 1)}>` : a)));
-    const result = await new Promise((done) => {
-      const out = { stdout: '', stderr: '' };
-      let stopped = null;
-      const child = spawn(command, argv, { cwd: root, shell: false, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
-      for (const stream of ['stdout', 'stderr']) {
-        child[stream].setEncoding('utf8');
-        child[stream].on('data', (chunk) => { out[stream] = out[stream].length > OUTPUT_CHARS * 2 ? out[stream] : out[stream] + chunk; });
-      }
-      const stop = (why) => { if (!stopped) { stopped = why; child.kill('SIGTERM'); } };
-      const timer = setTimeout(() => stop(`timed out after ${Math.round(timeoutMs / 1000)}s`), timeoutMs);
-      const onAbort = () => stop('cancelled');
-      signal?.addEventListener('abort', onAbort, { once: true });
-      if (signal?.aborted) onAbort();
-      child.on('error', (error) => { clearTimeout(timer); done({ error, ...out }); });
-      child.on('close', (code, sig) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); done({ code, signal: sig, stopped, ...out }); });
-    });
-    if (result.error) return { ok: false, text: `${line}\nCould not run: ${result.error.code === 'ENOENT' ? `${command} is not installed or not on PATH` : result.error.message}` };
-    const parts = [`${line}\n${result.stopped ? `stopped: ${result.stopped}. It had started, so it may have had effects; check before running it again.` : `exit ${result.code ?? result.signal}`}`];
-    if (result.stdout) parts.push(clip(result.stdout.trimEnd()));
-    if (result.stderr) parts.push(`stderr:\n${clip(result.stderr.trimEnd())}`);
-    return { ok: !result.stopped && result.code === 0, text: parts.join('\n') };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/** Permission requests waiting for the user (from headless sessions). */
-export function readRequests(root) {
-  try { const list = JSON.parse(readText(root, REQUESTS_FILE) ?? '[]'); return Array.isArray(list) ? list : []; } catch { return []; }
-}
-export function writeRequests(root, list) {
-  atomicWrite(root, REQUESTS_FILE, `${JSON.stringify(list, null, 2)}\n`);
 }
 
 /**

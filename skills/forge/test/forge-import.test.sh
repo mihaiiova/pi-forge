@@ -71,7 +71,7 @@ node "$forge" generate "$gen" >/dev/null
 node -e '
 const s = require(process.argv[1]);
 const version = require(process.argv[2]).version;
-const expect = [`git:github.com/mihaiiova/pi-forge@v${version}`, "npm:pi-subagents@0.83.1"];
+const expect = ["npm:pi-subagents@0.83.1"]; // never Faur; specialists bring pi-subagents
 if (JSON.stringify(s.packages) !== JSON.stringify(expect)) {
   console.error("packages = " + JSON.stringify(s.packages));
   process.exit(1);

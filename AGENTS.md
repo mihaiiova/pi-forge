@@ -89,9 +89,11 @@ that only advanced systems need. The minimal agent in
 
 Decided 2026-11-02: **Faur is a Pi extension that creates and maintains
 ordinary Pi projects. The generated project is the product, Pi is its runtime,
-Faur is only the maker.** Today's code still ships an agent runtime inside
-the Faur package; [docs/architecture-audit.md §5](docs/architecture-audit.md#5-runtime-dependencies-and-the-migration)
-stages its removal. Do not add to that runtime.
+Faur is only the maker.** Since #63 nothing of Faur runs inside a generated
+agent: projects never pin Faur, declared commands come from
+[pi-commands](https://github.com/mihaiiova/pi-commands) and MCP approvals from
+`@gotgenes/pi-permission-system`, each pinned by need and configured natively.
+Do not add run-time code to Faur.
 
 - **Faur** (`skills/forge/`, `extensions/forge/`): discover, validate,
   generate, diff, apply, reconcile, check. Pure functions where possible

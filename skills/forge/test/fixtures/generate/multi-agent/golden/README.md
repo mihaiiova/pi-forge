@@ -1,4 +1,4 @@
-<!-- forge:generated v1 sha256=7d97fe8e9ad3a714e8449d2c7f4d906ed34fdb781a6a1e11030cce153b0a8fd3 -->
+<!-- forge:generated v1 sha256=26f377b25c5d922c7d00335c21c87a37eb496f8e9a7e78b8dbb8b025f65a1947 -->
 # seo-agent-system
 
 SEO analysis + article drafting with specialist subagents
@@ -38,8 +38,9 @@ capabilities are enforced vs advisory.
 This project runs on Pi alone and pins no Faur package. Maintain it from
 your own Pi with Faur installed: run `pi` in this folder and use
 `/faur <request>` to propose a change (discuss, apply or discard it when the
-turn ends), `/faur check` to verify the agent and `/faur status` to
-summarize it. Without Faur, edit the files directly; roll back with git.
+turn ends), `/faur check` to verify the agent, `/faur status` to summarize
+it and `/faur permissions` to list, add or remove declared commands. Without
+Faur, edit the files directly; roll back with git. Restart Pi when packages change.
 
 ## Policy
 

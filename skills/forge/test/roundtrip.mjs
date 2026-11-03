@@ -27,10 +27,8 @@ const DETECTED = {
   mcpServers: { cloudflare: { command: "npx", args: ["cloudflare-mcp", "--stdio"] } },
 };
 
-const PINS = [
-  `git:github.com/mihaiiova/pi-forge@v${VERSION}`,
-  "npm:pi-subagents@0.83.1",
-  ];
+// Generated projects never pin Faur; specialists bring pi-subagents.
+const PINS = ["npm:pi-subagents@0.83.1"];
 
 test("round-trip: import → generate preserves each agent's model, skills and MCP", () => {
   const { system } = importSystem(SETTINGS, DETECTED);

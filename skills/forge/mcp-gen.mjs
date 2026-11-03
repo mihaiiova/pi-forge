@@ -12,8 +12,9 @@
  *   - without it the server's tools are `deferred`: the orchestrator loads them
  *     with tool_search, so a large server does not fill its context.
  * Specialists receive exactly their `mcp:` selections from pi-subagents,
- * whatever the exposure. `approveTools` is enforced by the agent runtime's
- * `tool_call` gate. Secrets are always `${ENV}` references declared in the
+ * whatever the exposure. `approveTools` is enforced by pi-permission-system's
+ * `tool_call` gate, configured by the generated
+ * `.pi/extensions/pi-permission-system/config.json`. Secrets are always `${ENV}` references declared in the
  * model; `system.yaml` is authoritative, so an undeclared server never
  * survives regeneration.
  */

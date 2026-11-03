@@ -8,7 +8,6 @@ import { resolve } from 'node:path';
 import { inspectProject, planChange, applyChange, publicChangePreview, withSkillPreviews, rebuildPlan, projectStatus } from './maintenance.mjs';
 import { checkProject } from './check.mjs';
 import { searchSkills, resolveRegistrySkill } from './registry-skills.mjs';
-import { checkRelease, proposeUpdate, previewUpdate, applyUpdate, discardUpdate, forgePin } from './package-update.mjs';
 import { FORGE_SOURCE } from './deps.mjs';
 import { json, readText, readJson } from './maintenance-store.mjs';
 import { fetchDocument, documentSlice, checkUrl, fetchJson } from './maintenance-fetch.mjs';
@@ -17,13 +16,13 @@ import { probeClis } from './discover.mjs';
 import { parsedModel } from './changes.mjs';
 import { launchCheck } from './launch-check.mjs';
 import { checkAgent } from './check.mjs';
-import { registerAgent } from './agent-extension.mjs';
+import { permissionsCommand } from './permissions-command.mjs';
 import { unmetSetup, installSetup } from './setup.mjs';
 
 /** The environment variable Pi reads for a provider's API key, when it has a common one. */
 const PROVIDER_ENV = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', openrouter: 'OPENROUTER_API_KEY', google: 'GEMINI_API_KEY' };
 
-export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, updates = {} } = {}) {
+export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } = {}) {
   let armed = false;
   let review = false;
   let pending = null;
@@ -197,9 +196,9 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     } catch { /* an invalid model is reported by the commands that use it */ }
   });
   pi.on('session_shutdown', () => { armed = false; pending = null; });
-  // What agents use while working comes from the pinned Forge package, when
-  // the design needs one.
-  const permissions = registerAgent(pi, Type, root);
+  // Nothing here runs at agent run time: declared commands come from
+  // pi-commands, MCP approvals from pi-permission-system, both pinned by need.
+  const permissions = permissionsCommand(root);
   /**
    * Regenerate from system.yaml with this version. Text agents read is
    * rewritten without asking; anything that changes what they can run or
@@ -253,68 +252,40 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     return providers.filter(provider => !ctx.modelRegistry.getProviderAuthStatus(provider).configured)
       .map(provider => `- credentials: provider ${provider} has none in this Pi. Use /login ${provider}${PROVIDER_ENV[provider] ? ` or set ${PROVIDER_ENV[provider]}` : ''} before running the agent (inside ./run for its own login).`).join('\n');
   };
-  /** The pinned Forge release tag, or null for a project that runs on Pi alone. */
-  const pinnedTag = () => {
-    const packages = (() => { try { return readJson(root, '.pi/settings.json').packages ?? []; } catch { return []; } })();
-    return packages.some(p => (typeof p === 'string' ? p : p?.source)?.startsWith(`${FORGE_SOURCE}@`)) ? forgePin(root).tag : null;
+  /** A Forge pin left from a release before v0.31.0, or null. */
+  const legacyPin = () => {
+    let packages = [];
+    try { packages = readJson(root, '.pi/settings.json').packages ?? []; } catch { /* reported by check */ }
+    return packages.map(p => (typeof p === 'string' ? p : p?.source)).find(p => p?.startsWith(`${FORGE_SOURCE}@`)) ?? null;
   };
   const status = async (ctx) => {
     const s = projectStatus(root);
-    let forge;
-    if (pinnedTag() === null) forge = 'not pinned; the project runs on Pi alone. /faur sync rebuilds it with this Faur.';
-    else try {
-      const release = await checkRelease(root, updates);
-      forge = `${release.installed} (${release.newer ? `${release.latest} available: /faur sync` : 'newest release'})`;
-    } catch (error) {
-      let pin;
-      try { pin = forgePin(root).tag; } catch { pin = 'not pinned'; }
-      forge = `${pin} (could not check for newer releases: ${error.message})`;
-    }
+    const pin = legacyPin();
     const list = items => items.join(', ') || 'none';
     tell(ctx, [
       `${s.name}: ${s.description}`,
       `Agents:\n${s.agents.map(a => `- ${a.name}${a.role ? ` (${a.role})` : ''}: ${a.model}`).join('\n')}`,
       `MCP servers: ${list(s.mcpServers)}\nCommands: ${list(s.commands)}\nSkills: ${list(s.skills)}`,
       ...(s.env.length ? [`Environment: ${s.env.map(e => `${e.name} (${e.set})`).join(', ')}`] : []),
-      `Forge: ${forge}`,
+      pin ? `Faur: still pinned as ${pin}, from an earlier release; /faur sync rebuilds the project with this Faur, without the pin.` : 'Faur: not pinned; the project runs on Pi and its own packages. /faur sync rebuilds it with this Faur.',
       (() => { try { const last = readJson(root, '.forge/check.json'); return `Last capability check: ${last.timestamp} (${last.ok ? 'no missing capabilities' : 'problems found'}).`; } catch { return 'Last capability check: not run.'; } })(),
-      s.pendingRequests ? `${s.pendingRequests} pending permission request${s.pendingRequests === 1 ? '' : 's'}: /faur permissions review` : 'No pending permission requests.',
     ].join('\n'));
   };
-  /** Move the pin to the newest release, or rebuild with this one when it is the newest. */
+  /**
+   * Rebuild the project with this Faur. Projects pin no Faur, so there is no
+   * pin to move; one left by an earlier release is dropped by the rebuild,
+   * which shows that package change and asks first.
+   */
   const sync = async (ctx) => {
-    // Every approval comes from the human's dialog; a headless session can
-    // grant none, so it stops before contacting the remote.
-    if (!ctx.hasUI) throw new Error('Syncing needs interactive confirmation; nothing was fetched or run');
+    if (!ctx.hasUI) throw new Error('Syncing needs interactive confirmation; nothing was changed');
     await ctx.waitForIdle();
     hide();
     pending = null;
-    if (pinnedTag() === null) {
-      // No pin to move: the Faur running this command is the one that builds it.
-      const { message, plan } = await rebuild(ctx);
-      const text = `This project pins no Forge package. ${message}`;
-      if (plan?.applied && !plan.restart) { await reload(ctx, text); return; }
-      tell(ctx, text);
-      return;
-    }
-    const proposal = await proposeUpdate(root, updates);
-    if (proposal.kind === 'current') {
-      const { message, plan } = await rebuild(ctx);
-      const text = `Forge ${proposal.installed} is the newest release. ${message}`;
-      if (plan?.applied && !plan.restart) { await reload(ctx, text); return; }
-      tell(ctx, text);
-      return;
-    }
-    const run = await ctx.ui.confirm(`Run Forge ${proposal.tag} to preview the update?`, json({
-      pin: { from: proposal.from, to: proposal.to }, commit: proposal.commit, changes: proposal.changes,
-      note: `Approving downloads ${proposal.tag} at this commit and runs its generator on this project to compute the preview. Nothing is written; applying asks separately.`,
-    }));
-    if (!run) { tell(ctx, 'Cancelled; the new release was not downloaded or run.'); return; }
-    const plan = await previewUpdate(root, proposal, true);
-    const syncPreview = { ...plan.preview, syncOrder: 'Apply the reviewed Faur-managed file plan, then run pi update --extensions --approve. Pi package installation and its external side effects are not transactional and cannot be rolled back by Faur.' };
-    if (!await ctx.ui.confirm(`Apply Forge ${proposal.tag}?`, json(syncPreview))) { discardUpdate(plan); tell(ctx, 'Cancelled; nothing applied.'); return; }
-    const applied = await applyUpdate(root, plan, true, updates.install ? { install: updates.install } : {});
-    tell(ctx, `Updated to Forge ${proposal.tag}${applied.changed?.length ? `; rebuilt ${applied.changed.join(', ')}` : ''}. Restart Pi to load it.`);
+    const pin = legacyPin();
+    const { message, plan } = await rebuild(ctx);
+    const text = `${pin ? `This project still pinned ${pin}. ` : 'This project pins no Faur package. '}${message}`;
+    if (plan?.applied && !plan.restart) { await reload(ctx, text); return; }
+    tell(ctx, text);
   };
   /** Values are typed by the human and written straight to .env; they never pass through the model, a tool result or the session. */
   const env = async (ctx, name, destination = '.env') => {

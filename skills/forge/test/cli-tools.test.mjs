@@ -10,10 +10,8 @@ import { generateProject } from '../generate.mjs';
 import { changeModel } from '../changes.mjs';
 import { effectiveCapabilities, checkCapabilities } from '../capabilities.mjs';
 import { launchCheck } from '../launch-check.mjs';
-import { registerPermissions } from '../permissions-extension.mjs';
-import {
-  buildArgv, cliToolName, describeCall, grantOps, placeholders, readRequests, revokeOps, runCommand, splitCommandLine,
-} from '../cli-tools.mjs';
+import { permissionsCommand } from '../permissions-command.mjs';
+import { cliToolName, grantOps, placeholders, revokeOps, splitCommandLine } from '../cli-tools.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(resolve(here, '../../../package.json'), 'utf8'));
@@ -77,44 +75,10 @@ test('integrations.cli validates shapes and cli: references', () => {
   assert.ok(errors([{ name: 'y', command: 'gh' }]).some((e) => e.includes('references "cli:x" but integrations.cli declares no "x"')));
 });
 
-test('argv keeps each value one argument, writes file values and refuses option-like values', (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'forge-argv-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const args = ['issue', 'create', '--title', '{title}', '--body-file', '{body:file}'];
-  assert.deepEqual(placeholders(args), [{ name: 'title', file: false }, { name: 'body', file: true }]);
-  const argv = buildArgv(args, { title: 'A; rm -rf / && echo $(x)', body: '# Body\n' }, dir);
-  assert.equal(argv[3], 'A; rm -rf / && echo $(x)');
-  assert.equal(readFileSync(argv[5], 'utf8'), '# Body\n');
-  assert.throws(() => buildArgv(args, { title: '--repo=evil', body: '' }, dir), /may not start with "-"/);
-  assert.throws(() => buildArgv(args, { title: 'x' }, dir), /Missing value for \{body\}/);
-  assert.throws(() => buildArgv(args, { title: 'x', body: 'y', extra: 'z' }, dir), /Unknown values: extra/);
-  assert.match(describeCall({ command: 'gh', args }, { title: 'Hi there', body: 'Text' }), /^gh issue create --title 'Hi there' --body-file '<body file>'\n<body file>:\nText$/);
-});
-
 test('command lines split like a shell without expanding anything', () => {
   assert.deepEqual(splitCommandLine(`gh issue create --title {title} --label "needs review" --body-file {body:file} 'a $HOME'`),
     ['gh', 'issue', 'create', '--title', '{title}', '--label', 'needs review', '--body-file', '{body:file}', 'a $HOME']);
   assert.throws(() => splitCommandLine('gh "open'), /Unclosed quote/);
-});
-
-test('commands run without a shell and report output and exit status', async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'forge-run-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const ok = await runCommand(root, { command: 'node', args: [...echoArg, '{title}'] }, { title: '$(touch pwned); `id`' });
-  assert.equal(ok.ok, true);
-  assert.match(ok.text, /exit 0\n\$\(touch pwned\); `id`$/);
-  assert.equal(existsSync(join(root, 'pwned')), false);
-  const failed = await runCommand(root, { command: 'node', args: ['-e', 'process.exit(3)'] }, {});
-  assert.equal(failed.ok, false);
-  assert.match(failed.text, /exit 3/);
-  assert.match((await runCommand(root, { command: 'no-such-program-xyz', args: [] }, {})).text, /not installed or not on PATH/);
-  const slow = await runCommand(root, { command: 'node', args: ['-e', 'setTimeout(() => {}, 10000)'] }, {}, { timeoutMs: 200 });
-  assert.equal(slow.ok, false);
-  assert.match(slow.text, /stopped: timed out after 0s\. It had started, so it may have had effects/);
-  const controller = new AbortController();
-  const pending = runCommand(root, { command: 'node', args: ['-e', 'setTimeout(() => {}, 10000)'] }, {}, { signal: controller.signal });
-  controller.abort();
-  assert.match((await pending).text, /stopped: cancelled/);
 });
 
 test('generated agents get cli_ tools and run in the background; defaultTools keeps Pi tools only', () => {
@@ -166,94 +130,11 @@ test('launch check reports a missing command once per agent, and approval a suba
   assert.ok(launchCheck(root, model, { probe: () => true }).problems.some((p) => p.agent === 'writer' && /misreads/.test(p.problem)));
 });
 
-test('the orchestrator gets only its commands; a subagent process gets all, bounded by its allowlist', (t) => {
-  const root = project(t);
-  const lead = adapter();
-  const permissions = registerPermissions(lead.pi, lead.Type, root);
-  assert.deepEqual(Object.keys(lead.tools).sort(), [cliToolName('echo-title'), 'request_permission']);
-  assert.equal(typeof permissions, 'function', '/faur permissions');
-  assert.deepEqual(lead.commands, {}, 'no command of its own');
-  process.env.PI_SUBAGENT_CHILD = '1';
-  t.after(() => { delete process.env.PI_SUBAGENT_CHILD; });
-  const child = adapter();
-  assert.equal(registerPermissions(child.pi, child.Type, root), undefined);
-  assert.deepEqual(Object.keys(child.tools).sort(), ['cli_echo_title', 'cli_show_body', 'cli_unused']);
-});
-
-test('approval: allow once, allow for session, deny, and fail closed without a UI', async (t) => {
-  const root = project(t);
-  const mock = adapter({ choices: [0, 1, 2] });
-  registerPermissions(mock.pi, mock.Type, root);
-  const run = (title, ctx = mock.ctx) => mock.tools.cli_echo_title.execute('id', { title }, undefined, undefined, ctx);
-  const once = await run('first');
-  assert.equal(once.isError, undefined);
-  assert.match(once.content[0].text, /first$/);
-  assert.match(mock.asked[0].title, /node -e .* first/);
-  assert.equal((await run('second')).isError, undefined, 'allowed for the session');
-  assert.equal((await run('third')).isError, undefined, 'no prompt again this session');
-  assert.equal(mock.asked.length, 2);
-  const denying = adapter({ choices: [2] });
-  registerPermissions(denying.pi, denying.Type, root);
-  assert.match((await denying.tools.cli_echo_title.execute('id', { title: 'x' }, undefined, undefined, denying.ctx)).content[0].text, /denied/);
-  const headless = adapter({ hasUI: false });
-  registerPermissions(headless.pi, headless.Type, root);
-  const blocked = await headless.tools.cli_echo_title.execute('id', { title: 'x' }, undefined, undefined, headless.ctx);
-  assert.equal(blocked.isError, true);
-  assert.match(blocked.content[0].text, /needs the user's approval/);
-  assert.match((await run('--flag')).content[0].text, /may not start with "-"/);
-});
-
-test('a headless permission request is saved for review; nothing runs', async (t) => {
-  const root = project(t);
-  const mock = adapter({ hasUI: false });
-  registerPermissions(mock.pi, mock.Type, root);
-  const result = await mock.tools.request_permission.execute('id', { name: 'make-file', command: 'touch', args: ['{path}'], values: { path: 'made' }, reason: 'Need a marker file' }, undefined, undefined, mock.ctx);
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /pending request/);
-  assert.equal(existsSync(join(root, 'made')), false);
-  assert.deepEqual(readRequests(root).map((r) => [r.name, r.command, r.args, r.reason]), [['make-file', 'touch', ['{path}'], 'Need a marker file']]);
-});
-
-test('an interactive request can run once, or be saved through the preview and run', async (t) => {
-  const root = project(t);
-  const echoArg = ['-e', "process.stdout.write(String(process.argv[1]))"];
-  const once = adapter({ choices: [0] });
-  registerPermissions(once.pi, once.Type, root);
-  const ran = await once.tools.request_permission.execute('id', { name: 'say', command: 'node', args: [...echoArg, '{word}'], values: { word: 'hello' }, reason: 'Say hello' }, undefined, undefined, once.ctx);
-  assert.match(ran.content[0].text, /hello$/);
-  assert.equal(yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8')).integrations.cli.some((c) => c.name === 'say'), false);
-
-  const always = adapter({ choices: [1] });
-  registerPermissions(always.pi, always.Type, root);
-  const saved = await always.tools.request_permission.execute('id', { name: 'say', command: 'node', args: [...echoArg, '{word}'], values: { word: 'again' }, reason: 'Say hello' }, undefined, undefined, always.ctx);
-  assert.match(saved.content[0].text, /again\nSaved as cli_say/);
-  assert.match(always.asked[1].title, /Save the command "say"/);
-  const doc = yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8'));
-  assert.deepEqual(doc.integrations.cli.find((c) => c.name === 'say'), { command: 'node', args: [...echoArg, '{word}'], description: 'Say hello', name: 'say' });
-  assert.ok(doc.orchestrator.tools.includes('cli:say'));
-  assert.match(JSON.parse(readFileSync(join(root, '.forge/capabilities.json'), 'utf8')).commands.map((c) => c.name).join(), /say/);
-
-  const stale = await always.tools.request_permission.execute('id', { name: 'say2', command: 'node', args: [...echoArg, '{other}'], reason: 'x' }, undefined, undefined, always.ctx);
-  assert.match(stale.content[0].text, /already declared as cli_say.*after \/reload/);
-
-  const again = adapter();
-  registerPermissions(again.pi, again.Type, root);
-  assert.match((await again.tools.request_permission.execute('id', { name: 'say2', command: 'node', args: [...echoArg, '{word}'], reason: 'x' }, undefined, undefined, again.ctx)).content[0].text, /already declared as cli_say/);
-});
-
-test('reader file placeholder warning accompanies request errors', async t => {
-  const root = project(t);
-  const mock = adapter();
-  registerPermissions(mock.pi, mock.Type, root);
-  const result = await mock.tools.request_permission.execute('id', { name: 'read-report', command: 'cat', args: ['{path:file}'], reason: 'Read report' }, undefined, undefined, mock.ctx);
-  assert.match(result.content[0].text, /not a path to an existing file/);
-});
-
-test('/faur permissions adds, lists, reviews and removes commands', async (t) => {
+test('/faur permissions adds, lists and removes commands as previewed design changes', async (t) => {
   const root = project(t);
   // Asking before each run, for a subagent: routed to the orchestrator.
   const mock = adapter({ choices: [0, 0] });
-  const permissions = registerPermissions(mock.pi, mock.Type, root);
+  const permissions = permissionsCommand(root);
   const command = (args) => permissions(args, mock.ctx);
   mock.inputs.push('create-issue', 'gh issue create --repo o/r --title {title} --body-file {body:file}', 'writer');
   await command('add');
@@ -269,44 +150,24 @@ test('/faur permissions adds, lists, reviews and removes commands', async (t) =>
   // Or kept for the subagent, without asking.
   const quiet = adapter({ choices: [0, 1] });
   quiet.inputs.push('list-issues', 'gh issue list --repo o/r', 'writer');
-  await registerPermissions(quiet.pi, quiet.Type, root)('add', quiet.ctx);
+  await permissionsCommand(root)('add', quiet.ctx);
   doc = yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8'));
   assert.equal(doc.integrations.cli.find((c) => c.name === 'list-issues').approve, false);
   assert.ok(doc.agents[0].tools.includes('cli:list-issues'));
   assert.match(readFileSync(join(root, '.pi/agents/writer.md'), 'utf8'), /cli_list_issues/);
 
-  const headless = adapter({ hasUI: false });
-  registerPermissions(headless.pi, headless.Type, root);
-  await headless.tools.request_permission.execute('id', { name: 'list-files', command: 'ls', args: ['-la'], reason: 'Look around' }, undefined, undefined, headless.ctx);
-  // A request that can't be saved stays pending; the review keeps going.
-  await headless.tools.request_permission.execute('id', { name: 'echo-title', command: 'node', args: ['-p', '1'], reason: 'Name clash' }, undefined, undefined, headless.ctx);
-  const reviewer = adapter({ choices: [0, 0] });
-  await registerPermissions(reviewer.pi, reviewer.Type, root)('review', reviewer.ctx);
-  assert.deepEqual(readRequests(root).map((r) => r.name), ['echo-title']);
-  assert.match(reviewer.notices.find((n) => n.level === 'error').m, /echo-title: .*already exists; kept for later/);
-  doc = yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8'));
-  assert.ok(doc.integrations.cli.some((c) => c.name === 'list-files'));
-  assert.ok(doc.orchestrator.tools.includes('cli:list-files'));
+  // pi-commands gets the change through the regenerated .pi/commands.json.
+  const config = JSON.parse(readFileSync(join(root, '.pi/commands.json'), 'utf8'));
+  assert.deepEqual(config.commands.find((c) => c.name === 'list-issues'), { name: 'list-issues', command: 'gh', args: ['issue', 'list', '--repo', 'o/r'], approve: false, lead: false });
+  assert.equal(config.commands.find((c) => c.name === 'create-issue').lead, true);
 
   const declining = adapter({ confirm: false });
-  await registerPermissions(declining.pi, declining.Type, root)('remove create-issue', declining.ctx);
+  await permissionsCommand(root)('remove create-issue', declining.ctx);
   assert.ok(yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8')).integrations.cli.some((c) => c.name === 'create-issue'), 'declined preview changes nothing');
   await command('remove create-issue');
   doc = yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8'));
   assert.equal(doc.integrations.cli.some((c) => c.name === 'create-issue'), false);
   assert.equal(doc.orchestrator.tools.includes('cli:create-issue'), false);
-});
-
-test('without a UI, a command that needs approval is refused and nothing runs', async t => {
-  const root = project(t);
-  const child = process.env.PI_SUBAGENT_CHILD;
-  delete process.env.PI_SUBAGENT_CHILD;
-  t.after(() => { if (child !== undefined) process.env.PI_SUBAGENT_CHILD = child; });
-  const mock = adapter({ hasUI: false });
-  registerPermissions(mock.pi, mock.Type, root);
-  const result = await mock.tools.cli_echo_title.execute('id', { title: 'x' }, undefined, undefined, mock.ctx);
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /echo-title needs the user's approval for each run, which this session can't ask for\. Run it from an interactive session\./);
 });
 
 test('capability check reports CLI presence without executing commands', async t => {

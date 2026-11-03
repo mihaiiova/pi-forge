@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildRuntimePlan, launcherScript, envNames, needsIsolation, AGENT_DIR } from "../runtime.mjs";
-import { expectedForgePin } from './version-helper.mjs';
+import { COMMANDS_PACKAGE } from '../deps.mjs';
 
 const PI_PACKAGES = ["npm:pi-subagents@0.83.1", "npm:pi-web-access@0.27.0"];
 const withMcp = { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } };
@@ -11,7 +11,7 @@ test("buildRuntimePlan derives the agent dir, packages, and warnings", () => {
   assert.equal(plan.agentDir, ".forge/pi-home");
   assert.deepEqual(plan.packages, ["npm:foo@1.0.0"], "nothing the design does not use");
   const commands = buildRuntimePlan({ orchestrator: { name: "l", tools: ["read", "subagent", "cli:x"] }, integrations: { cli: [{ name: "x", command: "echo" }] } }, { piPackages: PI_PACKAGES });
-  assert.deepEqual(commands.packages, [expectedForgePin, "npm:pi-subagents@0.83.1"]);
+  assert.deepEqual(commands.packages, [COMMANDS_PACKAGE, "npm:pi-subagents@0.83.1"]);
   assert.deepEqual(buildRuntimePlan({ orchestrator: { name: "l", tools: ["read"] }, workflows: [{ name: "w" }] }, { piPackages: PI_PACKAGES }).packages, [], "workflows run on Pi alone");
   assert.deepEqual(plan.errors, []);
   assert.deepEqual(plan.warnings, [], "no warning that does not apply");

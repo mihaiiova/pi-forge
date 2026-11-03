@@ -193,10 +193,12 @@ is generated from `system.yaml` into a "What you can use" section, so removing
 an integration also removes it from what agents are told. The section is part of
 the generated project (each agent file, and after the orchestrator's prompt in
 `.pi/APPEND_SYSTEM.md`, between markers), so it changes when the system is
-regenerated, never because the Forge tooling was updated. The same holds for
-the runtime agents use when the design needs one (command tools,
-`request_permission`, MCP approvals): it comes from the Forge version that
-last built the project, recorded in `.forge/build.json`. A change that removes
+regenerated, never because the Forge tooling was updated. What agents use at
+run time comes from Pi and the packages the project pins, never from Faur:
+[pi-commands](https://github.com/mihaiiova/pi-commands) for declared commands
+and `@gotgenes/pi-permission-system` for MCP tools that ask, each only when
+declared. The Faur version that last built the project is recorded in
+`.forge/build.json`. A change that removes
 a capability lists any prompt, workflow or policy that still mentions it, and
 `/faur review` flags prompts that describe specific tools.
 
@@ -218,11 +220,12 @@ integrations:
 Give it to an agent with `cli:create-issue` in its `tools`. Commands run
 without a shell, with your own CLI logins. In a running system:
 
-- `/faur permissions` lists commands and who may run them; `add`, `remove
-  <name>` and `review` change them through a preview you confirm.
-- When the orchestrator needs a command it has no tool for, it asks with
-  `request_permission`: allow once, always (saved to `system.yaml`), or deny.
-  In a headless run the request waits for `/faur permissions review`.
+- `/faur permissions` lists commands and who may run them; `add` and `remove
+  <name>` change them through a preview you confirm.
+- An agent that needs a command it has no tool for says so; you add it with
+  `/faur permissions add` or a `/faur` request.
+- The project pins [pi-commands](https://github.com/mihaiiova/pi-commands),
+  which runs them from the generated `.pi/commands.json`.
 
 ### Running and maintaining a generated system
 
@@ -252,11 +255,11 @@ Inside it, `/faur` is the one command:
 |---|---|
 | `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Forge prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. Without a request, or with `review`, the first answer is a read-only review. |
 | `/faur check` | Validate `system.yaml`, compare the generated files with it, and run the launch check. |
-| `/faur status` | Agents and models, capabilities, the pinned Forge release and whether a newer one exists, and pending permission requests. |
-| `/faur sync` | Move to the newest Forge release after two confirmations (below), or rebuild with the current one. |
+| `/faur status` | Agents and models, capabilities, and whether the project still pins Forge from an earlier release. |
+| `/faur sync` | Rebuild the project with this Faur: text directly, changes to what agents can run or reach after a confirmation. |
 
 Lower-level: `/faur env [set NAME]` and `/faur permissions [add | remove
-<name> | review]`. Headless sessions never apply a change.
+<name>]`. Headless sessions never apply a change.
 While preparing a change, the maintainer can read public documentation (for
 example an MCP server's README and releases) to verify versions, tools and
 auth, and can declare the environment variables an integration needs. You set
@@ -291,40 +294,20 @@ modes, processes or path rules do not hide values from same-user code (see the
 is deferred until an agent needs it, and will be claimed only with
 adversarial evidence.
 
-#### The Forge package: pin, update, roll back
+#### No Faur in the project
 
-A generated project whose design needs the Forge runtime pins one Forge
-release as a Pi package in its `.pi/settings.json`, for example
-`git:github.com/mihaiiova/pi-forge@v0.19.0`; a project that does not pins
-none and is maintained from a Faur installed in your own Pi.
-Nothing is copied into the project. On the first start, Pi installs that
-exact tag under `.pi/git/` in the project (ignored by the generated
-`.gitignore`, like `.pi/npm/`) and loads the
-agent runtime (declared commands, `request_permission`, MCP approvals) and
-`/faur` from it. The first start therefore needs network access to
-GitHub. Pi never moves a pinned tag by itself.
+A generated project pins no Faur package. Install Faur in your own Pi to
+design and maintain projects; the projects run with Pi and the packages they
+declare, with Faur uninstalled. Updating Faur changes nothing in a project
+until you run `/faur sync` in it, which rebuilds the generated files with the
+installed Faur and shows any change to what agents can run or reach before
+writing it. Roll back with git.
 
-`/faur status` lists the release tags on GitHub and says whether a newer one
-exists. It downloads and runs nothing. Startup does not check.
-
-`/faur sync` asks twice:
-
-1. **Run the new release to preview it?** The dialog names the tag, the commit
-   it points to and a link to the changes. Only after you agree does Forge
-   fetch exactly that commit and run its generator on the project to compute
-   the preview. Nothing is written yet.
-2. **Apply it?** The preview shows the pin change and every file the new
-   release generates differently. Approving writes them, runs
-   `pi update --extensions` to install the new pin, and asks you to restart
-   Pi.
-
-Declining either step leaves the project unchanged. A headless session can
-grant neither, so `sync` stops there before contacting GitHub. On the newest
-release, `sync` rebuilds the generated files with it instead.
-
-To roll back, use git: restore the previous `.pi/settings.json` and generated
-files (for example `git checkout <commit> -- .pi README.md`), then restart
-Pi. Pi installs the older pin again.
+Projects built with v0.30.0 or earlier pin
+`git:github.com/mihaiiova/pi-forge@vX.Y.Z`. `/faur status` says so, and
+`/faur sync` from a newer Faur drops the pin (after confirmation). Their own
+pinned Faur's `/faur sync` also moves them to the newest release, which drops
+it in the same way.
 
 Projects generated before 1.0.0 pin `pi-agent-factory`. They are not
 migrated: regenerate them from their `.pi/system.yaml`.

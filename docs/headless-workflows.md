@@ -47,8 +47,9 @@ first line `Verdict: FAIL` that a document format requires).
 Approval is never granted unattended. Without a UI, a declared command or an
 MCP tool in `approveTools` is refused: the tool returns an error naming the
 call, nothing runs, and the agent continues (`headless-workflow.test.mjs`).
-`request_permission` saves a pending request for `/faur permissions review`.
-There is no separate exit code for a blocked call.
+Commands are refused by pi-commands, MCP tools by
+`@gotgenes/pi-permission-system`; both are project packages, so this holds
+with Faur uninstalled. There is no separate exit code for a blocked call.
 
 ## Left to the caller
 

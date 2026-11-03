@@ -1,4 +1,4 @@
-<!-- forge:generated v1 sha256=64b38edfcac2680ef012f3b02ad2a6017ac6692e9ffbe81baa4b3945341a9224 -->
+<!-- forge:generated v1 sha256=3497b08f8a452157de31f1eac8f81a153e0299fa6dc3428bb175eede6ea75f7a -->
 # notes-helper
 
 Answers questions about the notes in this folder
@@ -26,8 +26,9 @@ capabilities are enforced vs advisory.
 This project runs on Pi alone and pins no Faur package. Maintain it from
 your own Pi with Faur installed: run `pi` in this folder and use
 `/faur <request>` to propose a change (discuss, apply or discard it when the
-turn ends), `/faur check` to verify the agent and `/faur status` to
-summarize it. Without Faur, edit the files directly; roll back with git.
+turn ends), `/faur check` to verify the agent, `/faur status` to summarize
+it and `/faur permissions` to list, add or remove declared commands. Without
+Faur, edit the files directly; roll back with git. Restart Pi when packages change.
 
 ## Policy
 
