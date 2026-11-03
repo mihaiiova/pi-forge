@@ -94,7 +94,10 @@ export function preflightSecretFiles(root, model) {
     for (let i = 1; i < parts.length; i++) {
       const ignore = `${parts.slice(0, i).join('/')}/.gitignore`;
       try {
-        if (readFileSync(safePath(root, ignore), 'utf8').split(/\r?\n/).some(line => line.startsWith('!'))) {
+        // Pi writes `*` + `!.gitignore` into .pi/git/ and .pi/npm/; re-including
+        // the ignore file itself cannot unignore anything else.
+        const negations = readFileSync(safePath(root, ignore), 'utf8').split(/\r?\n/).filter(line => line.startsWith('!'));
+        if (negations.some(line => !['!.gitignore', '!/.gitignore'].includes(line))) {
           throw new Error(`${required ? 'Required ignore' : 'Integration secretsFile'} ${path}: ${ignore} contains negation rules; verify and remove them before applying`);
         }
       } catch (error) {

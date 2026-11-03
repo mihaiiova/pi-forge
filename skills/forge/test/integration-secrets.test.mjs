@@ -125,6 +125,22 @@ test('nested gitignore negations fail before generation or modification writes',
   }
 });
 
+test("Pi's own package-directory ignore files do not block regeneration", t => {
+  const root = mkdtempSync(join(tmpdir(), 'forge-pi-package-ignore-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  assert.equal(spawnSync('git', ['init', '-q', root]).status, 0);
+  mkdirSync(join(root, '.pi/git'), { recursive: true }); mkdirSync(join(root, '.pi/npm'));
+  for (const dir of ['.pi/git', '.pi/npm']) writeFileSync(join(root, dir, '.gitignore'), '*\n!.gitignore\n');
+  writeFileSync(join(root, '.pi/system.yaml'), 'schema: 1\nname: test\norchestrator:\n  name: lead\n  model: p/m\n');
+  const forge = new URL('../forge.mjs', import.meta.url).pathname;
+  const result = spawnSync(process.execPath, [forge, 'generate', root, '--yes'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  writeFileSync(join(root, '.pi/git/.gitignore'), '*\n!.gitignore\n!secret\n');
+  const refused = spawnSync(process.execPath, [forge, 'generate', root, '--yes'], { encoding: 'utf8' });
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /\.pi\/git\/\.gitignore contains negation rules/);
+});
+
 test('root secret ignore negation fails before any writes without overriding user rules', t => {
   const root = mkdtempSync(join(tmpdir(), 'forge-secrets-root-ignore-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
