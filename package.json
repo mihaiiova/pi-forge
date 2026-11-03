@@ -2,6 +2,7 @@
   "name": "pi-forge",
   "version": "0.30.0",
   "private": true,
+  "license": "MIT",
   "dependencies": {
     "yaml": "2.8.3"
   },

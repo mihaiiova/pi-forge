@@ -390,3 +390,7 @@ setup:
 `/faur check` reports unmet steps; `/faur setup` previews installs and asks for confirmation. For non-interactive administration use `forge setup <dir> --yes`. Steps marked `needsRoot` are printed, not run. Workflow launches never install. **Command checks execute shell code with your permissions automatically**, including during checks and workflow startup; use only trusted declarations.
 
 An MCP or CLI integration may also declare `secretsFile: .forge/service-secrets.env`. Forge creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env`, then use `/faur env set API_KEY --file .forge/service-secrets.env` to choose that file explicitly; without `--file` the destination remains `.env`. The value is entered interactively, not sent to the model. Integrations must be configured to read their chosen file themselves; Forge does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.
+
+## License
+
+[MIT](LICENSE)
