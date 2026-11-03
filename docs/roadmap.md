@@ -15,13 +15,14 @@ architecture review is recorded in
   prompt (v0.23.0); permission guidance (v0.24.0); trusted-run credential
   documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
   (v0.28.0); #66 (v0.29.0); regenerating projects that installed packages
-  (v0.29.1).
+  (v0.29.1); #60, #61 and #62 (v0.30.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
   projects become ordinary Pi projects that run with `pi` without Faur
-  (#59). The current release still pins the Forge package and requires
-  `./run`; the migration is staged below.
+  (#59). Since v0.30.0 projects start with `pi`, pin Forge only for declared
+  commands and MCP approvals, and run workflows with `pi -p`; the rest of the
+  migration is staged below.
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
@@ -39,11 +40,11 @@ architecture review is recorded in
   - Plain `pi mcp list` in a project's isolated home ignores the project until
     trust is saved; `/mcp` inside `./run` works, and `check-agent --connect`
     saves the trust itself.
-  - `./run --workflow` needs one interactive `./run` first, which installs the
-    pinned Forge package that holds the runner.
-  - Without a systemd user scope (always on macOS), a timeout stops the process
-    group and the invocation's pi-subagents runs; a process that detaches on
-    its own can survive.
+  - Plain `pi` with a user-level `/mcp` extension (such as `pi-mcp-adapter`)
+    does not enforce a project's MCP tool hiding or approvals; such projects
+    get `./run`, and `/faur check` reports the conflict.
+  - Headless callers own timeouts, cancellation and cleanup of background
+    specialists (#46).
   - Trusted runs share credentials with every agent and tool; there is no
     same-user confidentiality (#70).
 
