@@ -159,14 +159,17 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   orchestrator with `mcp` in its tools (or without `tools`) gets every
   server's usable tools; without it, it can call none, while its specialists
   still get their `mcp:` selections. OAuth servers need no credentials in the
-  config: sign in with `/mcp` inside `./run`. Duplicate `name`s are rejected.
+  config: sign in with `/mcp` (inside `./run`, which a design with MCP servers
+  gets so that a user-level `/mcp` extension cannot replace Pi's built-in
+  MCP). Duplicate `name`s are rejected.
 - `env[]` entries: `name` (required shell variable name) and `secret`
-  (optional boolean). These become `.env.example` entries, and `./run` loads
-  exactly these names from the gitignored `.env` (parsed, never sourced; the
-  caller's environment wins). The complete caller environment also reaches Pi
-  and its tools, even for undeclared names. `secret: true` does not isolate or
-  reliably redact a value. Use trusted tools and restricted test credentials;
-  do not pass credential values through workflow `--input`. Names that change how the shell, Node, Pi or the
+  (optional boolean). These become `.env.example` entries. Pi reads no
+  `.env`: the values come from the environment Pi starts in (exported, or
+  loaded with direnv), and `/faur check` reports declared names that are
+  unset. The complete caller environment reaches Pi and its tools, even for
+  undeclared names. `secret: true` does not isolate or reliably redact a
+  value. Use trusted tools and restricted test credentials; do not put
+  credential values in a workflow request. Names that change how the shell, Node, Pi or the
   network stack run (`PATH`, `NODE_OPTIONS`, `LD_*`, `DYLD_*`, proxy variables,
   `PI_CODING_AGENT_DIR`, `FORGE_*`, …) are rejected.
 - `cli[]` entries declare command-line tools: `name` (required kebab-case),
@@ -176,7 +179,7 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   call (it may not start with `-`); `{name:file}` writes the agent's text to
   a temporary file and passes its path. Every other argument is fixed. The
   command runs directly, without a shell, from the project directory, with
-  the user's own CLI logins and the `.env` variables `./run` loaded.
+  the user's own CLI logins and the environment Pi started in.
   `approve: true` asks the user before each run (Allow once / Allow for this
   session / Deny); without a UI (a headless run, or a background subagent)
   such a call fails instead of running. Duplicate `name`s are rejected.
@@ -216,11 +219,17 @@ Allowed keys: `name` (required), `description`, `skill`, `trigger`, `entry`,
   `agents[].name` (the specialists available to the workflow).
 - `inputs`/`outputs` are arrays of path strings.
 - `trigger` is `{ kind: "manual" | "headless" }` (scheduling deferred).
-- A workflow must declare at least one of `skill` or `entry`.
+- A workflow must declare at least one of `skill` or `entry`. Without `skill`,
+  generation writes a skill named after the workflow
+  (`.pi/skills/<workflow>/SKILL.md`) that states its boundary, so its name
+  cannot also be a `skills[]` name.
 
 Workflows are **declared boundaries, not a graph of internal steps**: execution
-authority stays with the named skill's own procedure. Duplicate `name`s are
-rejected.
+authority stays with the named skill's own procedure. Every workflow runs as
+its skill: interactively with `/skill:<name> <request>`, headless with
+`pi --approve -p "/skill:<name> <request>"` (see
+[headless-workflows.md](../../docs/headless-workflows.md)). Duplicate `name`s
+are rejected.
 
 ### `documents[]`
 

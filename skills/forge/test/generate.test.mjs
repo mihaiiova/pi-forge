@@ -18,7 +18,6 @@ const EXPECTED_PATHS = [
   ".pi/APPEND_SYSTEM.md",
   ".pi/settings.json",
   "README.md",
-  "run",
 ];
 /** A design that needs the Forge runtime: one declared command. */
 const withCommand = { ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "cli:hello"] }, integrations: { cli: [{ name: "hello", command: "echo", args: ["hi"] }] } };
@@ -53,7 +52,7 @@ test("the Forge release is pinned only when the design needs its runtime", () =>
   assert.ok(pins(withCommand).includes(expectedForgePin), "declared commands come from the Forge runtime");
   assert.ok(pins({ ...withServer, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "mcp"] } }).length === 0, "a lead with mcp and no approvals runs on built-in MCP alone");
   assert.ok(pins(withServer).includes(expectedForgePin), "a lead declared without mcp is kept from it by the runtime");
-  assert.ok(pins({ ...model, workflows: [{ name: "w", entry: "helper" }] }).includes(expectedForgePin), "workflows use the runner");
+  assert.deepEqual(pins({ ...model, workflows: [{ name: "w", entry: "helper" }] }), [], "workflows are skills Pi runs itself");
   assert.deepEqual(pins({ ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "subagent"] } }), ["npm:pi-subagents@0.83.1"], "subagent alone pins pi-subagents at this release's version");
 });
 
@@ -62,10 +61,8 @@ test("files a design does not use are not generated", () => {
   assert.ok(!paths(model).includes(".pi/mcp.json") && !paths(model).includes(".env.example"));
   assert.ok(paths(withServer).includes(".pi/mcp.json"));
   assert.ok(paths({ ...model, integrations: { env: [{ name: "TOKEN" }] } }).includes(".env.example"));
-  const run = (m) => byPath(generateProject(m, {}).files, "run").content;
-  assert.doesNotMatch(run(model), /workflow/, "no workflow block without workflows");
-  assert.equal(run({ ...model, workflows: [{ name: "w", entry: "helper" }] }).match(/workflow-runner\.mjs" '/g).length, 1, "one workflow block");
-  assert.doesNotMatch(run(model), /--no-context-files|--append-system-prompt/, "Pi loads the prompt and context files itself");
+  assert.ok(!paths(model).includes("run"), "plain pi starts a design that does not depend on built-in MCP");
+  assert.ok(paths(withServer).includes("run"), "a design with MCP servers gets the isolating launcher");
 });
 
 test("re-running generate is a no-op (idempotent)", () => {
@@ -298,8 +295,8 @@ test("a hand-written APPEND_SYSTEM.md without Faur markers is left alone, with a
   assert.ok(warnings.some((w) => w.includes("without Faur's generated section")));
 });
 
-test("generateProject emits the executable run launcher", () => {
-  const { files } = generateProject(model, {});
+test("generateProject emits the executable run launcher for a design with MCP servers", () => {
+  const { files } = generateProject(withServer, {});
   const run = byPath(files, "run");
   assert.ok(run, "run launcher is emitted");
   assert.equal(run.executable, true, "run launcher is marked executable");
@@ -384,26 +381,21 @@ test("edited scaffold gets safety entries appended without replacing edits", () 
   assert.equal(file.content, edited + '# forge: required ignores\n.forge/\n');
 });
 
-test('README lists exact named workflow commands and unattended options', () => {
-  const workflowModel = { ...model, workflows: [{ name: 'daily-report', entry: model.orchestrator.name }] };
-  const readme = byPath(generateProject(workflowModel, {}).files, 'README.md').content;
-  assert.match(readme, /\.\/run --workflow daily-report/);
-  assert.match(readme, /--allow-concurrent/);
-  assert.match(readme, /--timeout/);
-  assert.match(readme, /--input/);
+test('README lists each workflow as the headless skill command, for the launcher in use', () => {
+  const workflows = [{ name: 'daily-report', entry: model.orchestrator.name }, { name: 'weekly', skill: 'summarize', entry: model.orchestrator.name }];
+  const plain = byPath(generateProject({ ...model, workflows }, {}).files, 'README.md').content;
+  assert.match(plain, /^pi --approve -p "\/skill:daily-report <request>"$/m);
+  assert.match(plain, /^pi --approve -p "\/skill:summarize <request>"$/m, 'a declared skill is the one invoked');
+  assert.match(plain, /exit code reports the run, not whether the task succeeded/);
+  assert.match(plain, /a call that asks the user is refused in a headless run/);
+  assert.doesNotMatch(plain, /--workflow|--timeout|systemd/);
+  const isolated = byPath(generateProject({ ...withServer, workflows }, {}).files, 'README.md').content;
+  assert.match(isolated, /^\.\/run --approve -p "\/skill:daily-report <request>"$/m);
 });
 
-test('README states timeout cleanup ownership and detached-process limit', () => {
-  const workflowModel = { ...model, workflows: [{ name: 'daily-report', entry: model.orchestrator.name }] };
-  const readme = byPath(generateProject(workflowModel, {}).files, 'README.md').content;
-  assert.match(readme, /pi-subagents/);
-  assert.match(readme, /independently detached processes.*survive/i);
-  assert.match(readme, /cleanup.*incomplete/i);
-});
-
-test('README describes systemd scope and fallback', () => {
-  const workflowModel = { ...model, workflows: [{ name: 'daily-report', entry: model.orchestrator.name }] };
-  const readme = byPath(generateProject(workflowModel, {}).files, 'README.md').content;
-  assert.match(readme, /systemd.*scope/i);
-  assert.match(readme, /fallback/i);
+test('a workflow without a skill gets one named after it', () => {
+  const { files } = generateProject({ ...model, workflows: [{ name: 'daily-report', description: 'Report', entry: model.orchestrator.name }] }, {});
+  const skill = byPath(files, '.pi/skills/daily-report/SKILL.md').content;
+  assert.match(skill, /^---\nname: daily-report\ndescription: "Report"\n---/);
+  assert.match(skill, /## Boundary[\s\S]*Entry: helper/);
 });

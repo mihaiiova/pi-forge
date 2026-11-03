@@ -1,26 +1,24 @@
-<!-- forge:generated v1 sha256=5c12e0a599b808239a6efc10c46001ae7af721dacabd7dc01a91adaad4e56846 -->
+<!-- forge:generated v1 sha256=64b38edfcac2680ef012f3b02ad2a6017ac6692e9ffbe81baa4b3945341a9224 -->
 # notes-helper
 
 Answers questions about the notes in this folder
 
 ## Run
 
-The generated `./run` launcher is the entry point. It starts Pi with the
-project's own Pi configuration and logins, without your global Pi settings,
-MCP servers or extensions. Your environment, including any credentials in
-it, is inherited, and it is not an OS sandbox. Skills in the shared Agent
-Skills folder (`~/.agents/skills/`) and `AGENTS.md` files in parent folders
-do load, for the orchestrator. Plain `pi` in this folder runs the same
-project with your global Pi configuration added.
+Start it with `pi` in this folder. Your global Pi configuration (settings,
+packages, MCP servers, instructions) is added to the project's.
+Your environment, including any credentials in it, is inherited; this is not
+an OS sandbox. Skills in `~/.agents/skills/` and `AGENTS.md` files in parent
+folders also load, for the orchestrator. Pi asks once whether to trust the
+project; headless runs pass `--approve` instead.
 
 ```sh
-./run             # interactive
-./run -p "..."   # headless one-shot
+pi                          # interactive
+pi --approve -p "..."       # headless one-shot
 ```
 
-Authenticate inside `./run` with `/login`, or export
-the provider-specific key (for example `DEEPSEEK_API_KEY`). See the policy
-section below for which
+Authenticate with `/login`, or export the provider-specific key (for
+example `DEEPSEEK_API_KEY`). See the policy section below for which
 capabilities are enforced vs advisory.
 
 ## Maintain

@@ -16,11 +16,44 @@ import { skillSourceKind } from './skill-sources.mjs';
 import { enforcedAgentTools } from './policy.mjs';
 import { mcpToolName } from './mcp-gen.mjs';
 import { leadTools } from './asking.mjs';
+import { envNames, needsIsolation } from './runtime.mjs';
+import { REPLACES_BUILTIN } from './deps.mjs';
+import { homedir } from 'node:os';
 
 const BUILTIN = new Set(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']);
 
+/** The package name of a settings `packages` entry (`npm:name@1.2.3`, a git
+ * source or an object form), for matching known conflicts. */
+function packageName(entry) {
+  const source = typeof entry === 'string' ? entry : entry?.source;
+  if (typeof source !== 'string') return null;
+  if (source.startsWith('npm:')) { const rest = source.slice(4); const at = rest.lastIndexOf('@'); return at > 0 ? rest.slice(0, at) : rest; }
+  return source.split('/').pop().replace(/@.*$/, '');
+}
+
+/**
+ * User-level Pi configuration that would replace what a design relies on when
+ * it is started with plain `pi` (stage 0, #60). `agentDir` is the Pi
+ * configuration in effect; inside the project's own `run` home nothing applies.
+ * `mcpCommand` is the source of the session's `/mcp` command when known.
+ */
+export function hostConflicts(root, model, { agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi/agent'), mcpCommand } = {}) {
+  if (!needsIsolation(model)) return [];
+  const own = join(root, '.forge/pi-home');
+  try { if (realpathSync(agentDir) === realpathSync(own)) return []; } catch { /* the isolated home does not exist yet */ }
+  const out = [];
+  let packages = [];
+  try { packages = JSON.parse(readFileSync(join(agentDir, 'settings.json'), 'utf8')).packages ?? []; } catch { /* no user settings */ }
+  for (const entry of packages) {
+    const name = packageName(entry);
+    if (REPLACES_BUILTIN[name]) out.push(`plain pi: ${name} in ${join(agentDir, 'settings.json')} replaces ${REPLACES_BUILTIN[name]}, so this project's MCP tool hiding, approvals and tool names do not apply; start it with ./run`);
+  }
+  if (!out.length && mcpCommand && mcpCommand !== 'builtin') out.push(`plain pi: /mcp comes from ${mcpCommand}, which replaces Pi's built-in MCP, so this project's MCP tool hiding, approvals and tool names do not apply; start it with ./run`);
+  return out;
+}
+
 /** Check model validity, generated configuration and launch prerequisites. */
-export function checkProject(root, { registeredTools, mcpTools } = {}) {
+export function checkProject(root, { registeredTools, mcpTools, env = process.env, hostAgentDir, mcpCommand } = {}) {
   const doc = loadYaml().parse(readText(root, '.pi/system.yaml') ?? '');
   const validation = validateSystem(doc).errors;
   if (validation.length) return { ok: false, validation, consistency: null, launch: null, advisories: [] };
@@ -32,6 +65,11 @@ export function checkProject(root, { registeredTools, mcpTools } = {}) {
     const problem = secretFileProblem(root, path);
     if (problem) launch.push(`Integration secretsFile ${path}: ${problem}`);
   }
+  // Pi reads no .env: declared names come from the environment Pi starts in.
+  for (const name of envNames(doc)) {
+    if (!env[name]) launch.push(`integrations.env ${name}: not set in this environment; export it, or load .env with direnv, before starting the agent`);
+  }
+  launch.push(...hostConflicts(root, doc, { ...(hostAgentDir ? { agentDir: hostAgentDir } : {}), mcpCommand }));
   return { ok: !consistency.length && !launch.length, validation, consistency, launch, advisories: configurationAdvisories(doc) };
 }
 

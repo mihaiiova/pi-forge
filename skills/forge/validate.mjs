@@ -29,8 +29,8 @@ const SKILL_KEYS = ["name", "description", "body", "source"];
 const INTEGRATIONS_KEYS = ["mcp", "env", "cli"];
 const CLI_KEYS = ["name", "description", "command", "args", "approve", "setup", "secretsFile"];
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-// ./run loads declared names from .env; these would let a .env value change
-// what code runs or where traffic goes, so they cannot be declared.
+// Declared names are values an integration reads; these would change what
+// code runs or where traffic goes for the whole run, so they cannot be declared.
 const RESERVED_ENV_RE = /^(PATH|HOME|SHELL|USER|IFS|ENV|BASH_ENV|PS4|PROMPT_COMMAND|TMPDIR|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|SSL_CERT_FILE|SSL_CERT_DIR|LD_[A-Z0-9_]*|DYLD_[A-Z0-9_]*|PI_CODING_AGENT_DIR|PI_PACKAGE_DIR|PI_OFFLINE|PI_NO_UPDATE_CHECK|GIT_SSH_COMMAND|GIT_ASKPASS|SSH_ASKPASS|GIT_CONFIG_[A-Z0-9_]*|PYTHONPATH|PYTHONSTARTUP|PERL5OPT|RUBYOPT|HTTPS?_PROXY|ALL_PROXY|NO_PROXY|FORGE_[A-Z0-9_]*)$/i;
 const MCP_KEYS = ["name", "config", "setup", "secretsFile"];
 const ENV_KEYS = ["name", "secret"];
@@ -344,7 +344,7 @@ export function validateSystem(doc) {
               if (!ENV_NAME_RE.test(env.name)) {
                 errors.push(`document.integrations.env[${i}].name must be a shell variable name (letters, digits, underscore; not starting with a digit)`);
               } else if (RESERVED_ENV_RE.test(env.name)) {
-                errors.push(`document.integrations.env[${i}].name "${env.name}" is reserved: it changes how the shell, Node, Pi or the network stack runs, so ./run never loads it from .env`);
+                errors.push(`document.integrations.env[${i}].name "${env.name}" is reserved: it changes how the shell, Node, Pi or the network stack runs, so it cannot be an integration variable`);
               }
             }
             if (env.secret !== undefined && typeof env.secret !== "boolean") {
@@ -434,6 +434,10 @@ export function validateSystem(doc) {
         errors.push(
           `document.workflows[${i}] must declare at least one of "skill" or "entry"`,
         );
+      }
+      // Without a skill, the workflow gets a generated one under its own name.
+      if (!isNonEmptyString(wf.skill) && isNonEmptyString(wf.name) && Array.isArray(doc.skills) && doc.skills.some((s) => isPlainObject(s) && s.name === wf.name)) {
+        errors.push(`document.workflows[${i}] "${wf.name}" has no skill, so it gets a generated skill of that name, which skills[] already declares; set workflows[${i}].skill to "${wf.name}" or rename one of them`);
       }
     });
   }

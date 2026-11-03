@@ -16,5 +16,5 @@ Generated from this system's declarations; it changes when they do. Use only wha
 
 Specialist completion notices may be truncated. When the subagent tool supports durable output binding, bind reports to project paths only when the specialist can write there and you have an authorized way to read them; otherwise request a concise return and report missing access rather than assuming a path is readable.
 
-If a task needs something not listed, say what is missing; for a command-line task, ask with request_permission. Don't work around a missing capability.
-<!-- forge:derived v1 end sha256=7c14ea8052e2ae948ccb67c8ba6701c6d196fea5642957b72595bd6012bb6058 -->
+If a task needs something not listed, say what is missing. Don't work around a missing capability.
+<!-- forge:derived v1 end sha256=394b3610267bd2d083a1506eb28f58429f09c2987cc7d8e7f234c34a038e0741 -->

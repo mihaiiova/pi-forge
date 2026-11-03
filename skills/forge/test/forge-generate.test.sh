@@ -25,11 +25,11 @@ pass "forge generate --dry-run exits 0 and writes nothing"
 
 # ── generate materializes the single-agent tree ─────────────────
 first="$(node "$forge" generate "$work" 2>&1 >/dev/null)"
-grep -q 'login files are not inherited' <<<"$first" || fail "first build should explain Pi logins"
+grep -q 'own Pi logins' <<<"$first" && fail "plain pi uses the user's logins; no warning"
 grep -q 'from outside this project' <<<"$first" && fail "context-file warning without a context file"
 echo '# notes' > "$work/AGENTS.md"
 again="$(node "$forge" modify "$work" 2>&1 >/dev/null || true)"
-grep -q 'login files' <<<"$again" && fail "login warning repeated on a rebuild"
+grep -q 'own Pi logins' <<<"$again" && fail "login warning on a rebuild"
 grep -q 'from outside this project' <<<"$again" && fail "the project's own AGENTS.md loads natively; no warning"
 rm "$work/AGENTS.md"
 nested="$work/nested"; mkdir -p "$nested/.pi"; cp "$work/.pi/system.yaml" "$nested/.pi/"
@@ -40,10 +40,10 @@ outside="$(node "$forge" modify "$nested" 2>&1 >/dev/null || true)"
 grep -q '\.\./AGENTS.md from outside this project' <<<"$outside" || fail "a parent AGENTS.md is reported"
 rm -rf "$work/AGENTS.md" "$nested"
 pass "generation warnings appear only when they apply"
-for f in .pi/settings.json .pi/APPEND_SYSTEM.md README.md .gitignore run; do
+for f in .pi/settings.json .pi/APPEND_SYSTEM.md README.md .gitignore; do
   [[ -f "$work/$f" ]] || fail "generate did not create $f"
 done
-for f in .pi/mcp.json .pi/CAPABILITIES.md .env.example data/knowledge/.gitkeep; do
+for f in .pi/mcp.json .pi/CAPABILITIES.md .env.example data/knowledge/.gitkeep run; do
   [[ -e "$work/$f" ]] && fail "generate created $f, which the minimal agent does not use"
 done
 [[ -e "$work/.pi/agents" ]] && fail "generate created .pi/agents/ for an agent without specialists"
@@ -112,9 +112,8 @@ for f in $(cd "$fixtures/generate/multi-agent/golden" && find . -type f | sort);
     cmp -s "$fixtures/generate/multi-agent/golden/$f" "$ma/$f" || fail "golden mismatch: $f"
   fi
 done
-[[ -x "$ma/run" ]] || fail "run launcher not executable"
-grep -q 'PI_CODING_AGENT_DIR' "$ma/run" || fail "run launcher missing the isolated agent dir"
-node -e 'const s=require(process.argv[1]); const v=require(process.argv[2]).version; const e=[`git:github.com/mihaiiova/pi-forge@v${v}`,"npm:pi-subagents@0.83.1"]; if(JSON.stringify(s.packages)!==JSON.stringify(e)){console.error(JSON.stringify(s.packages));process.exit(1)}' "$ma/.pi/settings.json" "$root/package.json" || fail "settings.json packages are not the pinned Forge and runtime primitives"
+[[ -e "$ma/run" ]] && fail "multi-agent has no MCP servers, so no run launcher"
+node -e 'const s=require(process.argv[1]); const v=require(process.argv[2]).version; const e=["npm:pi-subagents@0.83.1"]; if(JSON.stringify(s.packages)!==JSON.stringify(e)){console.error(JSON.stringify(s.packages));process.exit(1)}' "$ma/.pi/settings.json" "$root/package.json" || fail "settings.json packages are not only the runtime primitive the design uses"
 rm -rf "$ma"
 pass "forge generate reproduces the multi-agent golden tree"
 
@@ -130,6 +129,8 @@ grep -q '"publish_\*": "hidden"' "$vs/.pi/mcp.json" || fail "valid-seo hidden to
 grep -q 'publish_\*' "$vs/.pi/mcp.json" || fail "valid-seo hide publish_* missing"
 grep -q "### Enforced by Pi's tool layer" "$vs/README.md" || fail "README missing enforced marker"
 grep -q 'An agent with `bash` or a shell-like command can still reach' "$vs/README.md" || fail "README omits what tool-layer enforcement does not cover"
+[[ -x "$vs/run" ]] || fail "run launcher not executable"
+grep -q 'PI_CODING_AGENT_DIR' "$vs/run" || fail "run launcher missing the isolated agent dir"
 grep -qi 'cannot be bypassed\|credentials are not inherited' "$vs/README.md" "$vs/run" && fail "generated text overstates enforcement"
 grep -q '### Advisory (guidance — not enforced)' "$vs/README.md" || fail "README missing advisory marker"
 rm -rf "$vs"

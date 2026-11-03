@@ -20,7 +20,7 @@ export default function (pi: ExtensionAPI) {
       if (project) return project(args, ctx);
       const request = (args ?? '').trim();
       if (/^(check|status|sync|env|permissions?)(\s|$)/.test(request)) {
-        const message = 'This folder is not a Forge project (no trusted .pi/system.yaml). Describe an outcome with /faur to design one, or start an existing project with its ./run.';
+        const message = 'This folder is not a Forge project (no trusted .pi/system.yaml). Describe an outcome with /faur to design one, or start an existing project with pi in its folder (or its ./run).';
         if (ctx.hasUI) ctx.ui.notify(message, 'warning'); else process.stderr.write(`Forge (warning): ${message}\n`);
         return;
       }

@@ -271,7 +271,7 @@ export function planChange(root, operations, options = {}) {
         remove: skills.remove.map(name => existsSync(join(root, installedDir(name))) ? `${installedDir(name)}/` : `${name}: prune skills-lock.json entry`),
         how: `On apply, npx ${SKILLS_CLI} runs in a temporary project and its checked files and skills-lock.json are applied here. The CLI is not OS-sandboxed. Installed SKILL.md must match the preview. Skills can instruct agents to run programs; read them before approving.`,
       } } : {}),
-      restart: restart ? 'Takes effect after restarting ./run: the launcher or packages change.' : 'Takes effect after /reload; no restart needed.',
+      restart: restart ? 'Takes effect after restarting Pi: the launcher or packages change.' : 'Takes effect after /reload; no restart needed.',
     },
   };
 }

@@ -27,7 +27,7 @@ import { authoredSkills, vendoredSkills, skillSourceKind } from "./skill-sources
 import { workflowSkill } from "./workflow-skill.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
-import { buildRuntimePlan } from "./runtime.mjs";
+import { buildRuntimePlan, needsIsolation } from "./runtime.mjs";
 import { runtimeNeeds } from "./deps.mjs";
 import { integrationSecrets, gitignoreSafety, REQUIRED_IGNORES } from './integration-secrets.mjs';
 import { cliRef, cliToolName } from "./cli-tools.mjs";
@@ -74,7 +74,6 @@ export const GENERATED_PATHS = [
   ".pi/APPEND_SYSTEM.md",
   "README.md",
   ".gitignore",
-  "run",
 ];
 
 const hasMcp = (model) => Array.isArray(model?.integrations?.mcp) && model.integrations.mcp.length > 0;
@@ -383,38 +382,40 @@ function readmeBody(model, packages) {
     "",
     "## Run",
     "",
-    "The generated `./run` launcher is the entry point. It starts Pi with the",
-    "project's own Pi configuration and logins, without your global Pi settings,",
-    "MCP servers or extensions. Your environment, including any credentials in",
-    "it, is inherited, and it is not an OS sandbox. Skills in the shared Agent",
-    "Skills folder (`~/.agents/skills/`) and `AGENTS.md` files in parent folders",
-    "do load, for the orchestrator. Plain `pi` in this folder runs the same",
-    "project with your global Pi configuration added.",
+    ...(needsIsolation(model) ? [
+      "Start it with `./run`. It runs Pi with this project's own Pi configuration",
+      "and logins instead of yours, so a package you installed (such as an MCP",
+      "extension that replaces Pi's built-in MCP) cannot change what this project",
+      "relies on. Plain `pi` here also works, with your configuration added;",
+      "`/faur check` reports what in it conflicts.",
+    ] : [
+      "Start it with `pi` in this folder. Your global Pi configuration (settings,",
+      "packages, MCP servers, instructions) is added to the project's.",
+    ]),
+    "Your environment, including any credentials in it, is inherited; this is not",
+    "an OS sandbox. Skills in `~/.agents/skills/` and `AGENTS.md` files in parent",
+    "folders also load, for the orchestrator. Pi asks once whether to trust the",
+    "project; headless runs pass `--approve` instead.",
     "",
     "```sh",
-    "./run             # interactive",
-    "./run -p \"...\"   # headless one-shot",
-    ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `./run --workflow ${w.name}`)),
+    ...(needsIsolation(model) ? [
+      "./run                       # interactive",
+      "./run --approve -p \"...\"    # headless one-shot",
+      ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `./run --approve -p "/skill:${w.skill ?? w.name} <request>"`)),
+    ] : [
+      "pi                          # interactive",
+      "pi --approve -p \"...\"       # headless one-shot",
+      ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `pi --approve -p "/skill:${w.skill ?? w.name} <request>"`)),
+    ]),
     "```",
     "",
     ...((model.workflows?.length ?? 0) ? [
-      "Named workflow runs accept `--input key=value` (repeatable), `--timeout 30m`",
-      "(default 30m; units s, m or h), and `--allow-concurrent` to bypass the",
-      "default per-workflow lock. They require Node.js, and run the workflow runner",
-      "from the Forge package pinned in `.pi/settings.json`.",
-      "Run interactive `./run` once to install project packages before the first",
-      "named workflow; its installed Forge package validates system.yaml before Pi starts.",
-      "Regenerate after changing declarations so derived files stay current.",
-      "The final stdout line is JSON with workflow, runId, status, answer and",
-      "an optional message. Exit codes: 0 success, 1 agent/tool failure,",
-      "2 configuration/lock failure, 3 approval required, 4 timeout.",
-      "When available, Forge starts a private systemd user scope and stops it on",
-      "exit. The fallback is process-group termination plus stop requests for",
-      "pi-subagents runs in this invocation's isolated temporary state. The result",
-      "reports `cleanup: incomplete` and retains `stateDir` if cleanup is unconfirmed.",
-      "Independently detached processes can survive the fallback cleanup.",
-      "Approval is never granted unattended. Entry delegation and boundary",
-      "instructions are model-directed, not a hard guarantee of execution.",
+      "A workflow is a skill: the text after it is the request. Print mode exits 0",
+      "with the final answer on stdout, or non-zero with the error on stderr; the",
+      "exit code reports the run, not whether the task succeeded. Add",
+      "`--mode json` for an event stream. Pi waits for stdin to close when it is",
+      "not a terminal, so callers close it. Approval is never granted unattended:",
+      "a call that asks the user is refused in a headless run.",
       "",
     ] : []),
     ...(packages.length ? [
@@ -423,11 +424,10 @@ function readmeBody(model, packages) {
       "should allow extra time before assuming the output stream has closed.",
       "",
     ] : []),
-    "Authenticate inside `./run` with `/login`, or export",
-    "the provider-specific key (for example `DEEPSEEK_API_KEY`). See the policy",
-    "section below for which",
+    `Authenticate with \`/login\`${needsIsolation(model) ? " inside `./run`" : ""}, or export the provider-specific key (for`,
+    "example `DEEPSEEK_API_KEY`). See the policy section below for which",
     "capabilities are enforced vs advisory.",
-    ...(model.integrations?.env?.length ? ["For integration variables, see `.env.example` and use `/faur env set NAME`."] : []),
+    ...(model.integrations?.env?.length ? ["Integration variables (listed in `.env.example`) come from the environment you start Pi in: export them, or load `.env` with direnv (`dotenv` in `.envrc`). `/faur check` reports any that are unset."] : []),
     ...[...new Set(integrationSecrets(model))].map(path => `For integration secrets in \`${path}\`, use \`/faur env set NAME --file ${path}\`; declare NAME in integrations.env first. Forge does not load this file; configure the integration to read it.`),
     "",
     ...((model.setup?.length || model.integrations?.mcp?.some(x => x.setup?.length) || model.integrations?.cli?.some(x => x.setup?.length)) ? [
@@ -446,7 +446,7 @@ function readmeBody(model, packages) {
       '`/faur sync` moves to the newest Forge release after two confirmations.',
       'Roll back with git. `/faur permissions` lists the commands agents may run',
       'and adds, removes or reviews them; agents ask for a command they need with',
-      '`request_permission`. Restart `./run` when the launcher or packages change.',
+      '`request_permission`. Restart Pi when the launcher or packages change.',
     ] : [
       'This project runs on Pi alone and pins no Faur package. Maintain it from',
       'your own Pi with Faur installed: run `pi` in this folder and use',
@@ -527,10 +527,18 @@ function agentEntries(model) {
   return agents.filter((agent) => isPlainObject(agent) && isNonEmptyString(agent.name));
 }
 
+/** Workflows declared without a skill get one named after them, so every
+ * workflow starts the same way: `/skill:<name>`, interactive or `pi -p`. */
+function workflowOnlySkills(model) {
+  return (Array.isArray(model.workflows) ? model.workflows : [])
+    .filter((wf) => isPlainObject(wf) && isNonEmptyString(wf.name) && !isNonEmptyString(wf.skill))
+    .map((wf) => ({ name: wf.name, description: isNonEmptyString(wf.description) ? wf.description : `Run the ${wf.name} workflow` }));
+}
+
 function skillEntries(model) {
   // Sourced skills come from a pinned package or a vendored user directory, so
   // they produce no generated SKILL.md and are not managed paths.
-  return authoredSkills(model).filter((skill) => isNonEmptyString(skill.name));
+  return [...authoredSkills(model), ...workflowOnlySkills(model)].filter((skill) => isNonEmptyString(skill.name));
 }
 
 function agentPath(agent) {
@@ -553,7 +561,7 @@ function skillFiles(model, existing) {
   const workflows = Array.isArray(model.workflows) ? model.workflows : [];
   const workflowBySkill = new Map();
   for (const wf of workflows) {
-    if (isPlainObject(wf) && isNonEmptyString(wf.skill)) workflowBySkill.set(wf.skill, wf);
+    if (isPlainObject(wf) && isNonEmptyString(wf.name)) workflowBySkill.set(isNonEmptyString(wf.skill) ? wf.skill : wf.name, wf);
   }
   return skillEntries(model).map((skill) => {
     const path = skillPath(skill);
@@ -575,6 +583,7 @@ export function managedPaths(model) {
   const paths = [...GENERATED_PATHS];
   if (hasMcp(model)) paths.push(".pi/mcp.json");
   if (hasEnv(model)) paths.push(".env.example");
+  if (needsIsolation(model)) paths.push("run");
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
   for (const skill of skillEntries(model)) paths.push(skillPath(skill));
   if (backgroundAgents(model).length > 0) paths.push(SUBAGENT_CONFIG);
@@ -596,7 +605,7 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
   const existing = isPlainObject(existingFiles) ? existingFiles : {};
   const piPackages = isPlainObject(opts) ? opts.piPackages : undefined;
   const contextFiles = isPlainObject(opts) && Array.isArray(opts.contextFiles) ? opts.contextFiles : [];
-  const plan = buildRuntimePlan(model, { piPackages, contextFiles, firstBuild: existing["run"] === undefined });
+  const plan = buildRuntimePlan(model, { piPackages, contextFiles, firstBuild: existing["run"] === undefined && existing[".pi/settings.json"] === undefined });
   const subagentConfig = backgroundAgents(model).length > 0
     ? [derivedFile(SUBAGENT_CONFIG, buildSubagentConfig(existing[SUBAGENT_CONFIG]), existing[SUBAGENT_CONFIG])]
     : [];
@@ -608,7 +617,7 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
     authoredFile("README.md", "html", readmeBody(model, plan.packages), existing["README.md"]),
     gitignoreFile(existing[".gitignore"], model),
     ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
-    { ...derivedFile("run", plan.launcherScript, existing["run"]), executable: true },
+    ...(plan.launcherScript ? [{ ...derivedFile("run", plan.launcherScript, existing["run"]), executable: true }] : []),
     ...subagentConfig,
     ...agentFiles(model, existing),
     ...skillFiles(model, existing),

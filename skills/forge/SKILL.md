@@ -202,24 +202,26 @@ first; the user decides.
 ## After generation
 
 - **Configure** — declare each credential in `integrations.env` and reference
-  it as `${NAME}` in MCP config. `./run` loads declared names from the
-  gitignored `.env`; the user fills it in (or later uses
-  `/faur env set NAME`). **Never write a secret into a committed
+  it as `${NAME}` in MCP config. Pi takes declared names from the environment
+  it starts in; the user exports them or loads `.env` with direnv (`/faur env
+  set NAME` writes `.env`). **Never write a secret into a committed
   file** — only `${ENV}` references and `.env.example` templates. **Done when**
   every required credential is declared as a `${ENV}`/`.env.example` entry and
   no secret is committed.
-- **Validate** — `forge validate <dir>`, then a headless smoke run through
-  the generated launcher (`./run -p "<workflow input>"`). The launcher is the
-  canonical entry point and runs the system under its own isolated Pi config
-  directory (`PI_CODING_AGENT_DIR=.forge/pi-home`), so the host's global
-  Pi settings, logins, MCP servers and extensions are not loaded. The
-  caller's environment, including credentials, is inherited, and the launcher
-  is not an OS sandbox. Skills in the
-  shared Agent Skills folder `~/.agents/skills/` (and `.agents/skills/` in the
-  project and its parents) do load for the orchestrator, by design;
+- **Validate** — `forge validate <dir>`, then a headless smoke run:
+  `pi --approve -p "/skill:<workflow> <request>"` in the project folder, or
+  `./run --approve -p …` when the project has `run`. Plain `pi` adds the
+  user's global Pi configuration. A design with MCP servers gets `run`, which
+  uses the project's own Pi config directory (`PI_CODING_AGENT_DIR=.forge/pi-home`)
+  so a user-level package cannot replace Pi's built-in MCP; `/faur check`
+  reports such a package. Neither is an OS sandbox, and the caller's
+  environment, including credentials, is inherited. Skills in
+  `~/.agents/skills/` (and `.agents/skills/` in the project and its parents)
+  and parent-folder `AGENTS.md` files load for the orchestrator;
   subagents get only the skills listed for them.
-- **Maintain** — every generated system pins the Forge package, which
-  provides `/faur` and the agent runtime. Within `./run`, `/faur <request>`
+- **Maintain** — a system whose design needs the agent runtime pins the
+  Forge package, which also provides `/faur` inside it; any other system is
+  maintained from a Faur installed in the user's own Pi. `/faur <request>`
   inspects, discovers and previews a structured model change; when the turn
   ends, Forge prompts the human to discuss, apply or discard it, and plain
   replies continue the conversation until then (`/faur exit` leaves). `/faur review`
@@ -313,8 +315,8 @@ prior approvals cannot grant that authority.
    declare environment variables and ${ENV} references instead.
    - Credentials: declare each variable with
      {"op":"add","target":"env","name":"GITHUB_PAT","value":{"secret":true}}
-     and reference it as ${GITHUB_PAT} in the MCP config. ./run loads declared
-     names from the project's gitignored .env. Never ask the user to paste a
+     and reference it as ${GITHUB_PAT} in the MCP config. Pi reads it from the
+     environment it starts in (exported, or .env loaded with direnv). Never ask the user to paste a
      secret into the conversation: tell them to run
      /faur env set GITHUB_PAT after applying, which stores it
      without the model seeing it. /faur env lists what is set. For a declared
@@ -329,7 +331,8 @@ prior approvals cannot grant that authority.
      it for none). Forge sets Pi's exposure from these; never write exposure
      or toolExposure. Say which tools create, change or delete things and
      what the credential can reach, then ask. OAuth servers need no
-     credentials in the config: the user signs in with /mcp inside ./run.
+     credentials in the config: the user signs in with /mcp (inside ./run when
+     the project has one).
    - Reach: a subagent's tools list is a strict allowlist. Add
      "mcp:<server>/<tool>" for each MCP tool it should have (or
      "mcp:<server>" for the whole server); the orchestrator reaches every
@@ -450,13 +453,13 @@ user wants to pursue through a new /faur request.
 downloads and runs nothing. /faur sync proposes the newest tag, asks the human
 before fetching and running that release, previews the pin change and the files
 it generates, and applies only after a second approval. Pi installs the new
-pin; the human restarts ./run. The reviewed Faur-managed file plan is applied
+pin; the human restarts Pi. The reviewed Faur-managed file plan is applied
 first, then Pi's package update runs. Synchronous file-apply failures have
 best-effort rollback, not crash-atomic recovery. Package installation and its
 external side effects are outside that rollback: if it fails, the applied files
 remain and package state may be partial. From the project directory retry
 `pi update --extensions --approve` in the same Pi environment, then restart
-./run; alternatively review the current changes and package state before using
+Pi; alternatively review the current changes and package state before using
 git to revert. Never describe the whole sync as transactional. On the newest
 release, /faur sync regenerates
 the project with it instead: text agents read is rewritten directly; changes to
@@ -465,7 +468,7 @@ system.yaml, compares the generated files with it and runs the launch check. A
 proposed change also rebuilds whatever this version generates differently, and
 its preview lists those files under reconciliation. After an approved change the
 human runs /reload (Pi reloads by itself after a sync rebuild); a restart of
-./run is needed only when the launcher or packages change. After reviewing the
+Pi is needed only when the launcher or packages change. After reviewing the
 current changes, git can restore previous files; it cannot undo external
 package-install effects. Updates
 needing a new schema require a separate previewed model migration; never

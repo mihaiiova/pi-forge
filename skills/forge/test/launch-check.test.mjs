@@ -153,3 +153,30 @@ test('live launch check does not assume a missing extension is an uninstalled pa
   assert.ok(result.problems.some(p => p.problem.includes('subagent: no loaded extension')));
   assert.ok(result.problems.every(p => !p.problem.includes("run ./run once")));
 });
+
+test('the check reports a user-level package that replaces built-in MCP, and declared env names that are unset', async t => {
+  const { checkProject, hostConflicts } = await import('../check.mjs');
+  const { generateProject } = await import('../generate.mjs');
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join, dirname } = await import('node:path');
+  const yaml = (await import('../yaml-loader.mjs')).loadYaml();
+  const root = mkdtempSync(join(tmpdir(), 'forge-host-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const model = { schema: 1, name: 'host-check', orchestrator: { name: 'lead', model: 'p/m', tools: ['read', 'mcp'] }, integrations: { env: [{ name: 'DOCS_TOKEN', secret: true }], mcp: [{ name: 'docs', config: { url: 'http://localhost:3002/mcp' } }] } };
+  mkdirSync(join(root, '.pi'));
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(model));
+  for (const f of generateProject(model, {}).files) { mkdirSync(dirname(join(root, f.path)), { recursive: true }); writeFileSync(join(root, f.path), f.content); }
+  const host = join(root, 'host');
+  mkdirSync(host);
+  writeFileSync(join(host, 'settings.json'), JSON.stringify({ packages: ['npm:pi-mcp-adapter@2.32.1', 'npm:pi-subagents@0.65.0'] }));
+  const launch = checkProject(root, { env: {}, hostAgentDir: host }).launch;
+  assert.ok(launch.some(p => /plain pi: pi-mcp-adapter .* replaces Pi's built-in MCP support.*start it with \.\/run/.test(p)), launch.join('\n'));
+  assert.ok(launch.some(p => /integrations\.env DOCS_TOKEN: not set in this environment/.test(p)));
+  assert.ok(!checkProject(root, { env: { DOCS_TOKEN: 'x' }, hostAgentDir: host }).launch.some(p => /DOCS_TOKEN/.test(p)), 'a set name is not reported');
+  mkdirSync(join(root, '.forge/pi-home'), { recursive: true });
+  assert.deepEqual(hostConflicts(root, model, { agentDir: join(root, '.forge/pi-home') }), [], 'inside run there is no user configuration');
+  assert.match(hostConflicts(root, model, { agentDir: join(root, 'none'), mcpCommand: 'npm:other-mcp@1.0.0' })[0], /\/mcp comes from npm:other-mcp@1\.0\.0/, 'the session reports who owns /mcp');
+  assert.deepEqual(hostConflicts(root, model, { agentDir: join(root, 'none'), mcpCommand: 'builtin' }), []);
+  assert.deepEqual(hostConflicts(root, { ...model, integrations: {} }, { agentDir: host }), [], 'a design without MCP does not depend on it');
+});

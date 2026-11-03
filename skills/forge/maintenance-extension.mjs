@@ -41,7 +41,9 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
   /** What this session registered: tool names, and MCP tools with their exposure (servers that have connected). */
   const loaded = () => {
     const all = pi.getAllTools?.();
-    return { registeredTools: all?.map(t => t.name), toolProviders: Object.fromEntries((all ?? []).filter(t => t.sourceInfo?.source || t.sourceInfo?.path).map(t => [t.name, t.sourceInfo.source || t.sourceInfo.path])), mcpTools: all?.filter(t => t.name.startsWith('mcp__')).map(t => ({ name: t.name, exposure: t.exposure })) };
+    // Who registered /mcp in this session: Pi itself, or an extension replacing it.
+    const mcp = pi.getCommands?.().find(c => c.name === 'mcp');
+    return { registeredTools: all?.map(t => t.name), toolProviders: Object.fromEntries((all ?? []).filter(t => t.sourceInfo?.source || t.sourceInfo?.path).map(t => [t.name, t.sourceInfo.source || t.sourceInfo.path])), mcpTools: all?.filter(t => t.name.startsWith('mcp__')).map(t => ({ name: t.name, exposure: t.exposure })), mcpCommand: mcp ? (mcp.sourceInfo?.source === 'builtin' || mcp.source !== 'extension' ? 'builtin' : mcp.sourceInfo?.source ?? mcp.sourceInfo?.path) : undefined };
   };
   const tell = (ctx, message, level = 'info') => {
     if (ctx.hasUI) ctx.ui.notify(message, level);
@@ -156,7 +158,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
       ...(skills?.install ?? []).map(s => `Install registry skill ${s.name} from ${s.source} into ${s.into}`),
       ...(skills?.remove ?? []).map(path => `Remove registry skill ${path}`),
       ...(skills ? [skills.how] : []),
-      plan.restart ? 'Takes effect after restarting ./run.' : 'Takes effect after /reload.',
+      plan.restart ? 'Takes effect after restarting Pi.' : 'Takes effect after /reload.',
     ].join('\n');
   };
   // A revision turn that proposes a change ends with a prompt: discuss (the
@@ -312,14 +314,14 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     const syncPreview = { ...plan.preview, syncOrder: 'Apply the reviewed Faur-managed file plan, then run pi update --extensions --approve. Pi package installation and its external side effects are not transactional and cannot be rolled back by Faur.' };
     if (!await ctx.ui.confirm(`Apply Forge ${proposal.tag}?`, json(syncPreview))) { discardUpdate(plan); tell(ctx, 'Cancelled; nothing applied.'); return; }
     const applied = await applyUpdate(root, plan, true, updates.install ? { install: updates.install } : {});
-    tell(ctx, `Updated to Forge ${proposal.tag}${applied.changed?.length ? `; rebuilt ${applied.changed.join(', ')}` : ''}. Restart ./run to load it.`);
+    tell(ctx, `Updated to Forge ${proposal.tag}${applied.changed?.length ? `; rebuilt ${applied.changed.join(', ')}` : ''}. Restart Pi to load it.`);
   };
   /** Values are typed by the human and written straight to .env; they never pass through the model, a tool result or the session. */
   const env = async (ctx, name, destination = '.env') => {
     const model = parsedModel(readText(root, '.pi/system.yaml'));
     if (!name) {
       const list = envStatus(root, model);
-      tell(ctx, list.length ? list.map(e => `${e.name}${e.secret ? ' (secret)' : ''}: ${e.set}`).join('\n') + '\nSet a value with /faur env set NAME, or use --file PATH for a declared integration secretsFile; then restart ./run.' : 'No integrations.env variables are declared.');
+      tell(ctx, list.length ? list.map(e => `${e.name}${e.secret ? ' (secret)' : ''}: ${e.set}`).join('\n') + '\nPi reads them from the environment it starts in, not from .env: export them, or load .env with direnv. /faur env set NAME writes .env; --file PATH writes a declared integration secretsFile.' : 'No integrations.env variables are declared.');
       return;
     }
     if (!ctx.hasUI) throw new Error('Interactive input is required to set a value');
@@ -327,7 +329,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     const value = await ctx.ui.input(`Value for ${name} (stored in ${destination}; visible while typing)`, '');
     if (value === undefined || value === '') { tell(ctx, 'Cancelled; file unchanged.'); return; }
     setEnvValue(root, model, name, value, destination);
-    tell(ctx, `${name} saved to ${destination}. Restart ./run if needed.`);
+    tell(ctx, `${name} saved to ${destination}.${destination === '.env' ? ' Pi does not read .env: load it with direnv or export the value, then restart Pi.' : ''}`);
   };
   /** A conversational revision (or a read-only review): the model may only inspect and propose. */
   const revise = async (ctx, request) => {

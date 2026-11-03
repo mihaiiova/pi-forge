@@ -382,6 +382,31 @@ file.
   prompt holds the authored text and the generated section, the tools are
   the four declared built-ins, and no Faur tool or command loads.
 
+### Stage 2 results (2026-11-03, #62)
+
+- Projects start with `pi`. `run` is generated only for designs with MCP
+  servers, because hiding, approvals and the generated MCP tool names depend on
+  Pi's built-in MCP; it sets `PI_CODING_AGENT_DIR` and runs `exec pi "$@"`,
+  nothing else (no `.env` loader, no `--approve`, no `system.yaml` check, no
+  workflow logic). `launcher.test.sh` proves arguments pass unchanged, `.env`
+  is not read and the design record is not needed (R1, R4, R5).
+- Workflows are skills run with `pi --approve -p "/skill:<workflow> <request>"`.
+  A workflow without `skill:` gets a generated skill named after it. The
+  workflow runner, its lock files, systemd scope, pi-subagents cleanup, JSON
+  line, exit codes and approval signal file are deleted (R16, R17's signal);
+  a blocked call is a tool error in the run. `headless-workflow.test.mjs`
+  runs real Pi with a scripted model: approvals are refused headless with no
+  side effect, and a workflow with MCP and no commands runs with no Faur
+  package. Caller concerns (timeout, cancellation, locking, structured
+  results) are left to the caller adapter (#46).
+- `/faur check` reports declared env names unset in the current environment,
+  and, for designs with MCP servers, a user-level package that replaces
+  built-in MCP (from the user's `settings.json`, or the session's `/mcp`
+  owner). Workflows no longer pin Forge.
+- Not done here: TOaD's caller still uses its pinned v0.29.1 runner until it
+  moves to `pi -p` (next step). The isolated `run` loading no user package,
+  MCP server or instruction rests on stage 0 (D) and `isolation.test.sh` (C).
+
 **Upstream proposal, draft (not filed).**
 
 > **Let a project ignore user-level resources.** A trusted project often
@@ -414,7 +439,7 @@ workflow runner) moves before the runner is removed.
 |---|---|---|---|
 | 0. Verify (done 2026-11-03) | Confirm the "verify" rows: global-resource merging (including the `pi-mcp-adapter` conflict) in plain and isolated mode, pi-subagents project configuration, existing packages for R9/R10/R12, Pi structured or JSON output for R16. Draft the upstream Pi proposal for ignoring user-level resources | nothing | Stage 0 results above; `skills/forge/test/pi-lab/stage0.sh` reproduces them |
 | 1. Native prompt and output (done 2026-11-03, #61) | Capability section and context load natively; output is pay-per-use (no `pi-subagents` without specialists; no empty `mcp.json`, `.env.example`, `data/knowledge/`) | R2, R3, R14, R15, `projectContext` | The minimal agent runs with plain `pi` and no Faur installed |
-| 2. Launch and headless | `run` optional and minimal; documented environment; workflows invoked with `pi -p`; Faur's check reports host-config conflicts and setup | R1 (as requirement), R4, R5, R16 runner after Revisor migrates | Marketing agent without approvals or commands runs headless with plain `pi`; isolated mode excludes global packages, proven with the `pi-mcp-adapter` conflict |
+| 2. Launch and headless (done 2026-11-03, #62) | `run` optional and minimal; documented environment; workflows invoked with `pi -p`; Faur's check reports host-config conflicts and setup | R1 (as requirement), R4, R5, R16 runner after Revisor migrates | Marketing agent without approvals or commands runs headless with plain `pi`; isolated mode excludes global packages, proven with the `pi-mcp-adapter` conflict |
 | 3. Enforcement without Faur | Approvals, declared commands, headless blocking from an existing or one new generic package; first run the R10 candidates against the lab's stub server | R10–R13, R17 from Faur | B and C run with plain `pi`; enforcement tests (approval asks, blocks headless; commands run without a shell) pass without Faur installed |
 | 4. Faur as maker | Faur runs only in the developer's Pi; projects pin no Faur; `system.yaml` is the design record with drift reconcile (reuse `import`, generate, diff); metadata location decided; rename to Faur | R6, R18, R19 relocation | Generate → edit native files by hand → reopen with Faur → adopt → revise again, with no manual edit lost |
 

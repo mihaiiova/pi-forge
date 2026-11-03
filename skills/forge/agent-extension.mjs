@@ -14,7 +14,6 @@ import { readText } from './maintenance-store.mjs';
 import { parsedModel } from './changes.mjs';
 import { registerPermissions } from './permissions-extension.mjs';
 import { mcpApprovals } from './mcp-gen.mjs';
-import { blockWorkflowApproval } from './workflow-approval.mjs';
 import { leadTools } from './asking.mjs';
 import { runtimeNeeds } from './deps.mjs';
 
@@ -61,7 +60,6 @@ function registerMcpBoundary(pi, root) {
     if (!rule) return undefined;
     const call = `${rule.server}: ${event.toolName.slice(event.toolName.indexOf('__', 5) + 2)}`;
     if (!ctx?.hasUI) {
-      blockWorkflowApproval(call);
       return { block: true, reason: `${call} needs the user's approval for each call, which this session can't ask for. Report the exact call you need instead.` };
     }
     const input = JSON.stringify(event.input ?? {}, null, 2);

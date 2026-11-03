@@ -27,7 +27,7 @@ const FORGE_PACKAGE = `${FORGE_SOURCE}@v${VERSION}`;
 const LOCAL_PATH_RE = /^(file:|link:|\/|\.\.?\/)/;
 const RUNTIME_PRIMITIVES = ["pi-subagents"];
 /** Packages that replace a Pi built-in the generated system relies on. */
-const REPLACES_BUILTIN = { "pi-mcp-adapter": "Pi's built-in MCP support" };
+export const REPLACES_BUILTIN = { "pi-mcp-adapter": "Pi's built-in MCP support" };
 
 function isString(value) {
   return typeof value === "string";
@@ -71,9 +71,9 @@ function declaredSpecError(spec) {
 
 /**
  * Which runtime packages a design uses. The Forge runtime registers declared
- * commands (and request_permission), asks before approved MCP calls, keeps
- * MCP away from a lead declared without it, and runs headless workflows; a
- * design with none of these runs on Pi alone. pi-subagents serves declared
+ * commands (and request_permission), asks before approved MCP calls and keeps
+ * MCP away from a lead declared without it; a design with none of these runs
+ * on Pi alone. Workflows are skills Pi runs itself (`pi -p "/skill:…"`). pi-subagents serves declared
  * specialists and a lead that lists the `subagent` tool.
  */
 export function runtimeNeeds(model) {
@@ -81,8 +81,7 @@ export function runtimeNeeds(model) {
   const servers = Array.isArray(model?.integrations?.mcp) ? model.integrations.mcp.length : 0;
   const agents = Array.isArray(model?.agents) ? model.agents.length : 0;
   return {
-    forge: cliEntries(model).length > 0 || mcpApprovals(model).length > 0 || (servers > 0 && !lead.includes('mcp'))
-      || (Array.isArray(model?.workflows) && model.workflows.length > 0),
+    forge: cliEntries(model).length > 0 || mcpApprovals(model).length > 0 || (servers > 0 && !lead.includes('mcp')),
     subagents: agents > 0 || lead.includes('subagent'),
   };
 }

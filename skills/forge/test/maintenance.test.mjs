@@ -21,8 +21,9 @@ const model = {
   schema: 1, name: 'maintenance-test', description: 'A focused research system',
   orchestrator: { name: 'lead', model: 'fixture/large', tools: ['read'], prompt: 'Coordinate research.\n' },
 };
-/** A design that needs the Forge runtime (one declared command), so it pins a release. */
-const pinnedModel = { ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'cli:hello'] }, integrations: { cli: [{ name: 'hello', command: 'echo', args: ['hi'], approve: false }] } };
+/** A design that needs the Forge runtime (one declared command), so it pins a
+ * release, and has an MCP server, so it gets the run launcher. */
+const pinnedModel = { ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'mcp', 'cli:hello'] }, integrations: { cli: [{ name: 'hello', command: 'echo', args: ['hi'], approve: false }], mcp: [{ name: 'docs', config: { url: 'http://localhost:3002/mcp' } }] } };
 /** Make the lead's derived section look like an older release wrote it (intact fingerprint). */
 function olderSection(root) {
   const body = '## What you can use\n\nOlder wording.';
@@ -100,7 +101,7 @@ test('generated files preserve existing modes and use regular creation modes wit
   const root = mkdtempSync(join(tmpdir(), 'forge-generated-modes-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, '.pi'));
-  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(model));
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(pinnedModel));
   writeFileSync(join(root, '.env'), 'TOKEN=private\n', { mode: 0o600 });
   applyChange(root, planChange(root, [{ op: 'reconcile' }], { piPackages: pkg.pi.packages }), true);
   for (const path of ['README.md', '.pi/settings.json', '.pi/APPEND_SYSTEM.md']) {
@@ -298,7 +299,7 @@ test('vendored skills must already be in the project and cannot be orphaned', t 
 });
 
 test('unmarked instructions and unrelated derived drift never get silently reconciled', t => {
-  const root = project(t);
+  const root = project(t, pinnedModel);
   writeFileSync(join(root, '.pi/APPEND_SYSTEM.md'), 'Hand-authored primary instructions.\n');
   const before = snapshot(root);
   assert.throws(() => planChange(root, [{ op: 'set', target: 'orchestrator', value: { ...model.orchestrator, prompt: 'Requested instructions.' } }]), /Authored file conflict/);
@@ -433,7 +434,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
 });
 
 test('approval dialog warns when reconciliation overwrites a hand-edited launcher', async t => {
-  const root = project(t);
+  const root = project(t, pinnedModel);
   writeFileSync(join(root, 'run'), readText(root, 'run') + '# developer edit\n');
   const mock = adapter();
   mock.forge = registerMaintenance(mock.pi, mock.Type, root);
@@ -580,7 +581,7 @@ test('env variables are declared by proposal and their values set only by the us
   await mock.tools.forge_plan.execute('id', { action: 'propose', operations: json([{ op: 'add', target: 'env', name: 'GITHUB_PAT', value: { secret: true } }]) }, undefined, undefined, mock.ctx);
   mock.approve();
   await mock.endTurn();
-  assert.match(readText(root, 'run'), /FORGE_ENV_NAMES=" GITHUB_PAT "/);
+  assert.equal(readText(root, 'run'), null, 'no launcher: Pi takes the variable from the environment it starts in');
   assert.match(readText(root, '.env.example'), /^GITHUB_PAT=$/m);
   await command('env');
   assert.ok(mock.notices.some(([message]) => message.includes('GITHUB_PAT (secret): not set')));
@@ -670,7 +671,7 @@ test('applied changes and rebuilds reload Pi unless the launcher or packages cha
   const quiet = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
   assert.equal(quiet.restart, false);
   assert.match(quiet.preview.restart, /after \/reload; no restart needed/);
-  assert.equal(planChange(root, [{ op: 'add', target: 'env', name: 'API_TOKEN', value: { secret: true } }]).restart, true, 'a new launcher');
+  assert.equal(planChange(root, [{ op: 'add', target: 'mcp', name: 'docs', value: { config: { url: 'http://localhost:3002/mcp' } } }]).restart, true, 'a new launcher');
   assert.equal(planChange(root, [{ op: 'set', target: 'packages', value: ['npm:example-package@1.0.0'] }]).restart, true, 'packages to install');
   const mock = adapter();
   const reloads = [];

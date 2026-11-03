@@ -58,7 +58,7 @@ test("runtimePackages pins only what the design needs", () => {
   assert.deepEqual(runtimePackages(PI_PACKAGES, ["npm:pi-subagents@0.83.1"], { forge: false, subagents: false }).packages, ["npm:pi-subagents@0.83.1"], "a declared pi-subagents is kept");
 });
 
-test("runtimeNeeds: the Forge runtime for commands, MCP approvals, a lead kept from MCP and workflows", () => {
+test("runtimeNeeds: the Forge runtime for commands, MCP approvals and a lead kept from MCP", () => {
   const lead = (tools, extra = {}) => runtimeNeeds({ orchestrator: { name: "l", tools }, ...extra });
   assert.deepEqual(lead(["read"]), { forge: false, subagents: false });
   assert.deepEqual(lead(["read", "subagent"]), { forge: false, subagents: true });
@@ -67,7 +67,7 @@ test("runtimeNeeds: the Forge runtime for commands, MCP approvals, a lead kept f
   assert.equal(lead(["read", "mcp"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }).forge, false);
   assert.equal(lead(["read", "mcp"], { integrations: { mcp: [{ name: "s", config: { url: "u", approveTools: ["x"] } }] } }).forge, true);
   assert.equal(lead(["read"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }).forge, true, "a lead without mcp next to a server");
-  assert.equal(lead(["read"], { workflows: [{ name: "w" }] }).forge, true);
+  assert.equal(lead(["read"], { workflows: [{ name: "w" }] }).forge, false, "workflows are skills Pi runs itself");
 });
 
 test("pi-mcp-adapter is rejected: it would replace Pi's built-in MCP", () => {

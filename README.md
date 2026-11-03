@@ -12,8 +12,8 @@ working as your needs change.
 **The specialized agent is the product. Pi is its runtime.** Forge composes
 Pi's own resources and adds no workflow engine or scheduler of its own. In
 this release a generated agent runs on Pi alone, plus the Forge package only
-when its design needs one (declared commands, MCP approval gates or headless
-workflows), started through `./run`.
+when its design needs one (declared commands or MCP approval gates). It starts
+with `pi` in its folder, or with its `./run` when it uses MCP servers.
 
 > **Direction (2026-11-02).** Forge is becoming **Faur**, and generated
 > projects are becoming ordinary Pi projects that run with plain `pi`, with
@@ -44,11 +44,11 @@ you ──▶ /faur (builder, conversational)
           ▼
    <project>/.pi/system.yaml   compact desired state (schema 1)
    <project>/.pi/…             native Pi files: settings, agents, skills, mcp.json, prompts
-   <project>/run               launcher with its own Pi home and logins
+   <project>/run               optional: its own Pi home and logins (MCP designs)
    <project>/.forge/           build record, capability manifest, isolated Pi home
           │
           ▼
-   ./run, ./run -p "…"   Pi runs the agent; /faur revises it in place
+   pi, pi -p "/skill:…"   Pi runs the agent (or ./run); /faur revises it
 ```
 
 - **Design and generate:** `/faur` holds a design conversation, writes
@@ -149,7 +149,7 @@ Slack — with `deliver: [{ mcp, tool, with }]`. Change formats later with
 
 Subagents that use MCP or extension tools (web search, for example) always
 run in the background, where those tools load; the forge sets this up. On
-every start, `./run` checks that each agent will get the tools and skills it is
+every start with Faur loaded (pinned, or in your own Pi), it checks that each agent will get the tools and skills it is
 declared to have, and names any that are missing. MCP servers connect after
 start, so `/faur check` also checks their tools. The last result is saved in
 `.forge/check.json` and shown by `/faur status`.
@@ -159,7 +159,7 @@ It makes no model calls and does not connect MCP by default; `--connect` runs
 `pi mcp list --json` using the project's isolated Pi home and may connect to
 networks and use configured credentials. Pi's shell commands read project MCP
 servers only for a saved trust decision, so `--connect` saves one in the
-project's own isolated Pi home (which `./run` trusts on every start anyway) and
+project's own isolated Pi home and
 reports `trustSaved`; your personal Pi home is not touched. CLI
 checks test command presence only, not authentication or functionality. The
 CLI inspects installed Pi extensions using Pi's SDK without installing missing
@@ -176,8 +176,9 @@ Declare each server in `integrations.mcp` and choose per agent which tools it
 gets: `mcp:<server>` or `mcp:<server>/<tool>` for a specialist, `mcp` for the
 orchestrator. In the server's config, `includeTools` lists the tools agents may
 use, `excludeTools` hides tools from everyone, and `approveTools` makes a tool
-ask you before every call; without a UI, such a call is blocked. Use `/mcp`
-inside `./run` to see the servers, their tools and errors, and to sign in to
+ask you before every call; without a UI, such a call is blocked. These rules
+rely on Pi's built-in MCP, so such a project starts with `./run`. Use `/mcp`
+to see the servers, their tools and errors, and to sign in to
 servers that use OAuth.
 
 See [`schema.md`](skills/forge/schema.md) for every field, validation
@@ -225,14 +226,19 @@ without a shell, with your own CLI logins. In a running system:
 
 ### Running and maintaining a generated system
 
-A generated project starts with `./run`, which isolates it from your global Pi
-configuration (own config dir, own Pi logins: `/login` once per project). Your
-shell environment, including any credentials in it, is still inherited, and
-`./run` is not an OS sandbox.
+A generated project starts with `pi` in its folder, which adds your global Pi
+configuration to the project's. A project with MCP servers also gets `./run`,
+which uses the project's own config dir and Pi logins (`/login` once per
+project) so a package you installed cannot replace Pi's built-in MCP; `/faur
+check` reports such a package for plain `pi`. Either way your shell
+environment, including any credentials in it, is inherited, and neither is an
+OS sandbox. Workflows run headless as skills: `pi --approve -p
+"/skill:<workflow> <request>"` (see [headless workflows](docs/headless-workflows.md)).
 `/faur check` reports declared model providers without configured
-credentials. For example, use `/login deepseek` in `./run` or set
-`DEEPSEEK_API_KEY` before starting it. Run `./run` once to install the pinned
-packages before checking extension-provided tools or starting a named workflow.
+credentials and declared environment variables that are unset. For example,
+use `/login deepseek` or set `DEEPSEEK_API_KEY` before starting it. Start the
+project once interactively to install pinned packages before checking
+extension-provided tools.
 On first installation Pi may leave npm output pipes open briefly after exit.
 
 Pi loads the project's `AGENTS.md`, and any in parent folders, into the
@@ -254,20 +260,19 @@ Lower-level: `/faur env [set NAME]` and `/faur permissions [add | remove
 While preparing a change, the maintainer can read public documentation (for
 example an MCP server's README and releases) to verify versions, tools and
 auth, and can declare the environment variables an integration needs. You set
-their values with `/faur env set NAME`; `./run` loads them from the
-project's gitignored `.env`. Generation and change previews also add missing
+their values in the environment Pi starts in: export them, or load the
+project's gitignored `.env` with direnv (`/faur env set NAME` writes it). Generation and change previews also add missing
 secret and state paths to an existing `.gitignore` without rewriting your rules.
 Ignoring files does not remove credentials already committed to git: rotate any
 credentials that were committed, including those in `.env` or `.forge/`.
 
 #### Credentials in trusted runs
 
-For a trusted run, declare the variable names under `integrations.env` and set
-values in the project's `.env`, or have the caller supply them in the process
-environment when launching `./run --workflow <name>`. Caller environment
-values take precedence over `.env`. Forge loads only declared names from `.env`,
-but inherits the **entire caller environment**, including undeclared variables.
-Do not put credential values in `--input`: workflow inputs become prompt text.
+For a trusted run, declare the variable names under `integrations.env` and
+have the caller supply them in the process environment (directly, or from
+`.env` through direnv). Pi reads no `.env` itself. The run inherits the
+**entire caller environment**, including undeclared variables. Do not put
+credential values in a workflow request: it becomes prompt text.
 
 The Pi configuration directory is separate, but this is **not an OS security
 boundary**. Pi, agents, tools and their subprocesses can access inherited
@@ -292,7 +297,7 @@ A generated project whose design needs the Forge runtime pins one Forge
 release as a Pi package in its `.pi/settings.json`, for example
 `git:github.com/mihaiiova/pi-forge@v0.19.0`; a project that does not pins
 none and is maintained from a Faur installed in your own Pi.
-Nothing is copied into the project. On the first `./run`, Pi installs that
+Nothing is copied into the project. On the first start, Pi installs that
 exact tag under `.pi/git/` in the project (ignored by the generated
 `.gitignore`, like `.pi/npm/`) and loads the
 agent runtime (declared commands, `request_permission`, MCP approvals) and
@@ -311,15 +316,15 @@ exists. It downloads and runs nothing. Startup does not check.
 2. **Apply it?** The preview shows the pin change and every file the new
    release generates differently. Approving writes them, runs
    `pi update --extensions` to install the new pin, and asks you to restart
-   `./run`.
+   Pi.
 
 Declining either step leaves the project unchanged. A headless session can
 grant neither, so `sync` stops there before contacting GitHub. On the newest
 release, `sync` rebuilds the generated files with it instead.
 
 To roll back, use git: restore the previous `.pi/settings.json` and generated
-files (for example `git checkout <commit> -- .pi run README.md`), then restart
-`./run`. Pi installs the older pin again.
+files (for example `git checkout <commit> -- .pi README.md`), then restart
+Pi. Pi installs the older pin again.
 
 Projects generated before 1.0.0 pin `pi-agent-factory`. They are not
 migrated: regenerate them from their `.pi/system.yaml`.

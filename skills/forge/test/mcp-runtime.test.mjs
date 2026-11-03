@@ -173,13 +173,3 @@ test('the boundary blocks any MCP call by an orchestrator without mcp, however i
   assert.equal(await call('read'), undefined);
 });
 
-test('workflow MCP approval signals the blocked call without reaching the server', async t => {
-  const approval = join(mkdtempSync(join(tmpdir(), 'forge-approval-')), 'blocked');
-  const old = process.env.FORGE_APPROVAL_FILE;
-  process.env.FORGE_APPROVAL_FILE = approval;
-  t.after(() => { if (old === undefined) delete process.env.FORGE_APPROVAL_FILE; else process.env.FORGE_APPROVAL_FILE = old; rmSync(dirname(approval), { recursive: true, force: true }); });
-  const session = await open(t);
-  await session.run(['mcp__seo__run_audit', {}]);
-  assert.deepEqual(session.calls(), []);
-  assert.match(readFileSync(approval, 'utf8'), /seo: run_audit/);
-});

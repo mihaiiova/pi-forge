@@ -13,7 +13,6 @@
  * system.yaml always go through planChange/applyChange and a confirmation.
  */
 import { parsedModel } from './changes.mjs';
-import { blockWorkflowApproval } from './workflow-approval.mjs';
 import { readText } from './maintenance-store.mjs';
 import { planChange, applyChange } from './maintenance.mjs';
 import {
@@ -65,8 +64,7 @@ export function registerPermissions(pi, Type, root, { runtime = true } = {}) {
         try { checkValues(entry.args, values); } catch (error) { return text(error.message, true); }
         if (entry.approve !== false && !allowedForSession.has(entry.name)) {
           if (!ctx?.hasUI) {
-            blockWorkflowApproval(`cli_${entry.name}: ${describeCall(entry, values)}`);
-            return text(`${entry.name} needs the user's approval for each run, which this session can't ask for${child ? '. Report back what you need run, so the orchestrator can run it' : '. Run it from an interactive ./run session'}.`, true);
+            return text(`${entry.name} needs the user's approval for each run, which this session can't ask for${child ? '. Report back what you need run, so the orchestrator can run it' : '. Run it from an interactive session'}.`, true);
           }
           const choice = await ctx.ui.select(`Run this command?\n\n${describeCall(entry, values)}`, ['Allow once', `Allow ${entry.name} for this session`, 'Deny']);
           if (!choice || choice === 'Deny') return text('The user denied this run.', true);
@@ -107,9 +105,6 @@ export function registerPermissions(pi, Type, root, { runtime = true } = {}) {
       const warning = readerFileWarning(entry);
       try { checkValues(entry.args, params.values); } catch (error) { return text(`${error.message}${warning ? `\n${warning}` : ''}`, true); }
       if (!ctx?.hasUI) {
-        if (blockWorkflowApproval(`request_permission ${entry.name}: ${describeCall(entry, params.values ?? {})}`)) {
-          return text(`${entry.name} needs approval; nothing ran.`, true);
-        }
         const requests = readRequests(root).filter((r) => !(r.command === entry.command && JSON.stringify(r.args) === JSON.stringify(entry.args)));
         writeRequests(root, [...requests, { name: entry.name, command: entry.command, args: entry.args, reason: params.reason, requestedAt: new Date().toISOString() }]);
         return text(`Saved as a pending request; nothing ran. Tell the user what is blocked. They can approve it with /faur permissions review.${warning ? `\n${warning}` : ''}`, true);

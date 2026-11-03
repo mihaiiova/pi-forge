@@ -1,93 +1,71 @@
 # Headless workflow invocation
 
-> **Direction (2026-11-02):** this `./run --workflow` contract belongs to the
-> current release. Generated projects are moving to plain `pi -p` invocation;
-> caller concerns (timeouts, cancellation, structured results, artifacts) move
-> to an optional caller-side adapter outside generated projects, and the runner
-> is removed only after its consumers (Revisor's MCP server) have moved. See
-> `docs/architecture-audit.md` §5 (R16).
+Changed by #62 (2026-11-03): the `./run --workflow` runner is removed. A
+workflow is a skill, and Pi runs it in print or JSON mode. Generated projects
+contain no workflow logic.
 
-Generated projects run declared workflows with `./run --workflow <name>`.
-Repeat `--input key=value` to pass input data. `--timeout` accepts integer
-seconds, minutes or hours (`30m` by default); `--allow-concurrent` bypasses
-the default per-workflow lock. The last stdout line is JSON with `workflow`,
-`runId`, `status` (`ok`, `error`, `blocked`, `timeout`, `cancelled` or
-`configuration_error`), `answer`, `toolErrors`, and, when applicable,
-`message`. Exit codes are 0 (success), 1 (agent failure, or cancelled),
-2 (configuration or lock failure), 3 (approval required), and 4 (timeout).
-
-A run fails when Pi exits with an error, its final message ended in an error
-or was aborted, or there is no answer. Tool errors the agent recovered from
-do not fail the run; `toolErrors` counts them. Stopping `./run` (SIGTERM,
-SIGINT or SIGHUP), as a caller cancelling does, stops the workflow and
-reports `cancelled`.
-
-The runner is `skills/forge/workflow-runner.mjs` in the Forge package pinned
-in `.pi/settings.json`, which Pi installs under `.pi/git/`; nothing is copied
-into the project, and the runner changes only when the pin moves. It
-validates `.pi/system.yaml` with that same package, tolerating what Forge
-itself tolerates, before starting Pi. Run interactive `./run` once to install
-the project packages before the first headless run; until then, and when the
-configuration is invalid, a run fails closed with exit 2 and no model turn.
-After changing declarations, regenerate the project so its launcher reflects
-them.
-
-The per-workflow lock is a file in `.forge/workflow-locks/` holding the
-runner's pid, so it works on Linux and macOS alike. A lock whose holder has
-died is taken over.
-
-Pi print mode expands `/skill:<name> ...` before starting the agent. The
-`workflow-print-mode.test.mjs` test verifies this with the installed Pi and a
-scripted provider. Pi's built-in MCP has no Forge approval gate of its own:
-Forge's runtime blocks `approveTools` calls without a UI, as verified with the
-stdio MCP fixture in `mcp-runtime.test.mjs`. Named invocation is handled by
-the launcher to validate the workflow, inputs, timeout and concurrency and to
-return a structured result. When a workflow has a skill it is invoked through
-Pi's skill command; a specialist entry and the declared boundaries are passed
-to the orchestrator as instructions. Delegation is model-directed, not a hard
-guarantee.
-
-The launcher exports `FORGE_WORKFLOW`, `FORGE_TRIGGER=headless`, and a unique
-`FORGE_RUN_ID`. pi-subagents 0.83.1 does not consume the Forge run ID: its
-`status.json` uses the Pi session file path, or the Pi session UUID when no
-session file exists. Forge instead gives every invocation a private
-`PI_SUBAGENTS_TEMP_ROOT`; both top-level and nested pi-subagents runs use that
-root. Timeout and approval cleanup requests stop through the pinned version's
-stop-request inbox and waits for recorded runs to stop. Unconfirmed cleanup is
-reported as `cleanup: "incomplete"`, with the retained `stateDir` for diagnosis.
-The inbox protocol and status layout are version-specific and must be rechecked
-when the pi-subagents pin changes.
-
-On Linux, when a test invocation of `systemd-run --user --scope` succeeds,
-Forge runs Pi in its own uniquely named user scope and stops that scope on
-exit. Otherwise it terminates the process group and stops the invocation-owned
-pi-subagents runs. Independently detached processes outside pi-subagents can
-survive the fallback. Neither a scope nor the cleanup protocol can guarantee
-termination of work moved to another machine or outside its ownership boundary.
-
-To exercise the actual pinned pi-subagents runner without a model call, point
-`FORGE_SUBAGENTS_PACKAGE` at an installed or extracted pi-subagents 0.83.1
-package, with its dependencies available, and run:
+## Invocation
 
 ```sh
-FORGE_SUBAGENTS_PACKAGE=/path/to/pi-subagents node --test \
-  --test-name-pattern='timeout stops a real' skills/forge/test/workflow-launcher.test.mjs
-FORGE_TEST_SCOPE=1 FORGE_SUBAGENTS_PACKAGE=/path/to/pi-subagents node --test \
-  --test-name-pattern='timeout stops a real' skills/forge/test/workflow-launcher.test.mjs
+cd <project>
+pi --approve -p "/skill:<workflow> <request>"     # plain pi
+./run --approve -p "/skill:<workflow> <request>"  # a project that has run
 ```
 
-The first command forces the fallback; the second requires a usable user
-systemd scope and verifies the actual Pi process's cgroup contains the Forge
-scope. The ordinary launcher tests also exercise fallback isolation,
-process-group termination, and scope cleanup when a user scope is available.
+- **The skill.** A workflow declared with `skill:` runs that skill. A
+  workflow declared with only `entry:` gets a generated skill named after it
+  (`.pi/skills/<workflow>/SKILL.md`), which states the boundary: entry agent,
+  available agents, inputs, outputs, approval and verify. Pi expands the skill
+  before the agent starts (`workflow-print-mode.test.mjs`).
+- **The request** is the text after the skill command: paths, URLs, names,
+  scenarios. The skill tells the agent to treat it as data. There is no
+  separate `--input key=value`.
+- **Trust.** Print, JSON and RPC mode cannot ask the trust question; with no
+  saved decision they skip every project resource without an error. Pass
+  `--approve`, or save the decision once with `/trust` in an interactive run.
+- **Stdin.** When stdin is not a terminal, Pi waits for it to close. Callers
+  close it (or pass `</dev/null`).
+- **`run`.** Projects whose design has MCP servers get a `run` launcher that
+  sets `PI_CODING_AGENT_DIR` to the project's own Pi home and executes Pi, so
+  a user-level package that replaces built-in MCP cannot change the run. It
+  isolates Pi configuration only; the caller's environment, credentials,
+  `~/.agents/skills` and parent-folder `AGENTS.md` files still apply.
 
-The live-model workflow fixture is opt-in; it uses the configured model and
-provider key from the environment, so it can incur API cost:
+## Result
 
-```sh
-RUN_FACTORY_LIVE_TESTS=1 FORGE_LIVE_MODEL=provider/model node --test \
-  skills/forge/test/workflow-live.test.mjs
-```
+| Mode | Success | Failure |
+|---|---|---|
+| `-p` | exit 0; the final answer on stdout | exit 1; the error on stderr, stdout empty (a provider error is retried first) |
+| `--mode json -p` | JSONL events ending with `agent_end` (final messages, usage) and `agent_settled` | as above |
 
-Export the provider's API key as well. The generated project's Pi home is
-isolated, so credentials stored only in the host Pi home are not inherited.
+The exit code reports the run, not the task: a workflow whose test failed
+still exits 0. A caller reads the task outcome from the answer (for example a
+first line `Verdict: FAIL` that a document format requires).
+
+## Approval
+
+Approval is never granted unattended. Without a UI, a declared command or an
+MCP tool in `approveTools` is refused: the tool returns an error naming the
+call, nothing runs, and the agent continues (`headless-workflow.test.mjs`).
+`request_permission` saves a pending request for `/faur permissions review`.
+There is no separate exit code for a blocked call.
+
+## Left to the caller
+
+Pi does not provide these, and the project does not either. A caller that needs
+them implements them around the `pi` process (the caller adapter, #46):
+
+- a timeout and cancellation (kill the process group);
+- one-at-a-time locking, if runs share state;
+- a structured result beyond the answer text, and artifact collection;
+- stopping background specialists a cancelled run leaves behind.
+
+## Credentials
+
+Pi takes declared `integrations.env` names from the environment it starts
+in: the caller exports them, or loads `.env` with direnv. MCP configuration
+references them as `${NAME}` (or `!command`). Model providers use `/login`
+(inside `./run` for a project that has one) or their API key variable.
+`/faur check` reports declared names that are unset in the current
+environment. A trusted run shares its credentials with every tool in it; they
+are not protected integrations (#70).

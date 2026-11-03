@@ -52,7 +52,8 @@ function project(t) {
   mkdirSync(join(root, '.pi'));
   // One declared command: the design needs the Forge runtime, so the project pins a release to sync.
   const minimal = readFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), 'utf8');
-  writeFileSync(join(root, '.pi/system.yaml'), minimal.replace('tools: [read, grep, find, ls]', 'tools: [read, grep, find, ls, "cli:hello"]') + 'integrations:\n  cli:\n    - name: hello\n      command: echo\n      args: [hi]\n      approve: false\n');
+  // An MCP server too, so the project has its run launcher.
+  writeFileSync(join(root, '.pi/system.yaml'), minimal.replace('tools: [read, grep, find, ls]', 'tools: [read, grep, find, ls, mcp, "cli:hello"]') + 'integrations:\n  cli:\n    - name: hello\n      command: echo\n      args: [hi]\n      approve: false\n  mcp:\n    - name: docs\n      config:\n        url: http://localhost:3002/mcp\n');
   execFileSync(process.execPath, [join(repo, 'skills/forge/forge.mjs'), 'generate', root], { stdio: 'ignore' });
   return root;
 }

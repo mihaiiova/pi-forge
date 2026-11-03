@@ -13,7 +13,6 @@
     "subagent"
   ],
   "packages": [
-    "git:github.com/mihaiiova/pi-forge@v<PACKAGE_VERSION>",
     "npm:pi-subagents@0.83.1"
   ]
 }
