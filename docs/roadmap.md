@@ -15,7 +15,7 @@ architecture review is recorded in
   prompt (v0.23.0); permission guidance (v0.24.0); trusted-run credential
   documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
   (v0.28.0); #66 (v0.29.0); regenerating projects that installed packages
-  (v0.29.1); #60, #61 and #62 (v0.30.0).
+  (v0.29.1); #60, #61 and #62 (v0.30.0); #63 (v0.31.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
@@ -35,9 +35,6 @@ architecture review is recorded in
   6. Deferred: #48 (compose an existing sandbox), #70 (protected
      integrations).
 - **Known limitations (current release):**
-  - A personal Forge install from a local checkout loads next to a project's
-    pin, so commands appear twice inside generated projects (install from the
-    git tag instead).
   - Plain `pi mcp list` in a project's isolated home ignores the project until
     trust is saved; `/mcp` inside `./run` works, and `check-agent --connect`
     saves the trust itself.
