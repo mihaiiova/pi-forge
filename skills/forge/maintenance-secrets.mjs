@@ -18,6 +18,43 @@ function isCredential(value, path) {
 export function redacted(value) {
   return walk(value, [], (v, path) => isCredential(v, path) ? '[redacted]' : v);
 }
+
+/** Redact paired values while preserving whether a secret was added, removed,
+ * or changed. Labels are independent of the secret (no guessable hashes). */
+export function redactedDiffPair(before, after) {
+  const changes = [];
+  const pair = (a, b, path, hasA = true, hasB = true) => {
+    if ((hasA && isCredential(a, path)) || (hasB && isCredential(b, path))) {
+      const action = !hasA ? 'added' : !hasB ? 'removed' : Object.is(a, b) ? null : 'changed';
+      if (action) changes.push({ path: path.map(String), action });
+      return [hasA ? `[redacted${action ? `: ${action} before` : ''}]` : undefined,
+        hasB ? `[redacted${action ? `: ${action} after` : ''}]` : undefined];
+    }
+    const objectA = hasA && a !== null && typeof a === 'object';
+    const objectB = hasB && b !== null && typeof b === 'object';
+    if ((objectA || objectB) && (!objectA || !objectB || Array.isArray(a) === Array.isArray(b))) {
+      const array = objectA ? Array.isArray(a) : Array.isArray(b);
+      const left = array ? [] : {}, right = array ? [] : {};
+      const keys = new Set([...Object.keys(objectA ? a : {}), ...Object.keys(objectB ? b : {})]);
+      for (const key of keys) {
+        const inA = objectA && Object.hasOwn(a, key), inB = objectB && Object.hasOwn(b, key);
+        const [av, bv] = pair(inA ? a[key] : undefined, inB ? b[key] : undefined,
+          [...path, array ? Number(key) : key], inA, inB);
+        if (inA) left[key] = av;
+        if (inB) right[key] = bv;
+      }
+      return [objectA ? left : a, objectB ? right : b];
+    }
+    if (objectA && objectB) {
+      const [left] = pair(a, undefined, path, true, false);
+      const [, right] = pair(undefined, b, path, false, true);
+      return [left, right];
+    }
+    return [a, b];
+  };
+  const [left, right] = pair(before, after, []);
+  return { before: left, after: right, changes };
+}
 function secretsAt(root) {
   const secrets = new Set();
   for (const p of ['.pi/system.yaml', '.pi/settings.json', '.pi/mcp.json']) {

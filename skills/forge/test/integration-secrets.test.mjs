@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validSecretsPath, ensureSecretFiles, secretFileProblem, gitignoreSafety } from '../integration-secrets.mjs';
-import { setEnvValue, envStatus } from '../maintenance-env.mjs';
+import { envStatus } from '../maintenance-env.mjs';
 
 // Git subprocesses in this suite must not inherit a developer's global excludes.
 process.env.GIT_CONFIG_GLOBAL = '/dev/null';
@@ -44,11 +44,9 @@ test('secrets files are exclusive, private, explicitly selected and reject symli
   ensureSecretFiles(root, model, { onCreate: path => created.push(path) });
   assert.deepEqual(created, ['private/keys.env'], 'existing secrets are not reported as new');
   assert.equal(readFileSync(file, 'utf8'), 'OTHER=existing\n');
-  setEnvValue(root, model, 'TEST_KEY', 'example', 'private/keys.env');
-  assert.equal(readFileSync(file, 'utf8'), 'OTHER=existing\nTEST_KEY=example\n');
+  writeFileSync(file, 'OTHER=existing\nTEST_KEY=example\n');
   assert.deepEqual(envStatus(root, model, {}), [{ name: 'TEST_KEY', secret: true, set: 'private/keys.env' }]);
   assert.doesNotMatch(JSON.stringify(envStatus(root, model, {})), /example/);
-  assert.throws(() => setEnvValue(root, model, 'TEST_KEY', 'example', 'other.env'), /not a declared/);
   mkdirSync(join(root, 'outside')); symlinkSync(join(root, 'outside'), join(root, 'link'));
   assert.throws(() => ensureSecretFiles(root, { integrations: { mcp: [{ secretsFile: 'link/keys.env' }] } }), /symlink/);
   assert.equal(secretFileProblem(root, 'link/keys.env'), 'unsafe or inaccessible path');
@@ -75,7 +73,7 @@ test('generation creates ignored private files and check reports missing files',
   assert.equal(lstatSync(join(root, 'private/keys.env')).mode & 0o777, 0o600);
   assert.equal(spawnSync('git', ['check-ignore', '-q', 'private/keys.env'], { cwd: root }).status, 0);
   const readme = readFileSync(join(root, 'README.md'), 'utf8');
-  assert.match(readme, /\/faur env set NAME --file private\/keys\.env/);
+  assert.match(readme, /Configure integration secrets in `private\/keys\.env` outside Faur/);
   assert.match(readme, /Forge does not load this file; configure the integration to read it/);
   rmSync(join(root, 'private/keys.env'));
   const checked = spawnSync(process.execPath, [cli, 'check-agent', root], { encoding: 'utf8' });

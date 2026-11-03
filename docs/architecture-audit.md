@@ -286,7 +286,7 @@ that rested on unconfirmed Pi or package behavior; the results follow the table.
 | R15 | Agent-context fallback for pre-`CAPABILITIES.md` projects | none current | — | Delete |
 | R16 | `./run --workflow`: validation, setup preflight, lock, timeout, systemd scope, pi-subagents cleanup, JSON line, exit codes (`workflow-runner.mjs`) | B, C; TOaD's caller MCP server | 1 + 4, verified | Invocation: `pi -p "/skill:<workflow> …"` expands the skill (Q1); success exits 0 with the answer on stdout (Q2); a provider failure retries, then exits 1 with the error on stderr and empty stdout (Q3); `--mode json` ends with `agent_end` (final message, usage) then `agent_settled` (Q4). Print mode waits for stdin EOF when stdin is not a terminal, so callers close it. Left for an optional caller-side adapter (#46 re-scoped): timeout and cancellation, the task outcome (exit 0 is run success only), locks, artifacts. Setup preflight moves to Faur's check |
 | R17 | Headless approval blocking signal (`workflow-approval.mjs`, exit 3) | B, C | 2 + 4 | Blocking without UI comes from the R10 package; a blocked call surfaces as a tool error, not an exit code, so the caller adapter maps it to a status |
-| R18 | `/faur` maintenance, `forge_plan`, `/faur env`, `/faur permissions`, `/faur sync` inside the agent | every agent | — | Faur in the developer's Pi, operating on the project from outside. `/faur env set` becomes documentation or a Faur command |
+| R18 | `/faur` maintenance, `forge_plan`, `/faur env`, `/faur permissions`, `/faur sync` inside the agent | every agent | — | Faur in the developer's Pi, operating on the project from outside. `/faur env set` is removed in favor of external configuration |
 | R19 | `.forge/build.json`, `.forge/capabilities.json`, `.forge/check.json` | Faur only | — | Faur metadata; location decided with `system.yaml`'s (stage 4) |
 
 After stage 0 (below), the class 4 work is R12 (declared commands) and the
@@ -488,6 +488,52 @@ package (it knows parent from child) or becomes advisory.
 > the project root. The setting only removes resources, so like
 > `sessionDir` it can be read before user extensions load, and an untrusted
 > project cannot use it to add anything.
+
+### Stage 4 decisions (2026-11-03, #64)
+
+**Metadata location — approved:** keep the design
+record at `.pi/system.yaml` and maker records (`build.json`,
+`capabilities.json`, `check.json`) under `.forge/` until the rename. Moving
+all records under `.pi/` would mix maker state with native Pi configuration;
+moving the design record under `.forge/` would require a relocation without
+changing runtime behavior. A later rename to `.faur/` can rename the maker
+state once, subject to separate approval. `.forge/pi-home` is distinct: it is the Pi
+configuration directory used by isolated projects, not just maker metadata,
+and its removal or relocation requires its own runtime verification.
+
+**Environment command — approved direction:** remove `/faur env set` and
+document external environment and integration secret-file setup instead. Pi
+does not load `.env`; users must export variables or use a loader such as
+direnv, and integrations must themselves read their declared secret files.
+This is not isolation or credential protection.
+
+**#64 implementation under review:** `/faur drift` previews per-file adoption,
+reapplication and selected-field reconciliation for supported settings, lead
+and specialist prompts, MCP servers and declared commands. Changes go through
+`planChange`/`applyChange`, require interactive approval, and refuse stale
+plans or collateral edits to other drifted files. Native-only settings and
+supported unrepresented frontmatter are preserved and reported. Comparison is
+two-way: generator-version differences can appear as drift, and not every
+native Pi feature is inventoried. The implementation deliberately refuses
+unsafe cases rather than silently changing runtime behavior: examples include
+ambiguous unmarked specialist prompts, changed specialist capability grants,
+edited generated instruction sections, unsupported command configuration,
+and MCP exposure changes that cannot be represented safely. Resolve those
+manually; this is not general automatic reconciliation of all native features.
+
+`package-sdk.test.mjs` exercises generated projects with real Pi: adopting a
+prompt and settings followed by another revision, adopting and reconciling
+MCP changes, and deleting `system.yaml` before reconstructing it with `forge
+import`. The latter checks the same Pi prompt and active tools before deletion,
+after deletion, and after import, and verifies that a native-only setting is
+reported and retained. This is evidence for those cases, not for every Pi
+feature. Import is conservative and may scaffold missing files; inspect its
+report and preview further generation.
+
+**Epic acceptance discrepancy:** #59 asks isolated mode to exclude all global
+skills and instructions, but stage 0 showed `~/.agents/skills` and parent
+`AGENTS.md` still load. The supported guarantee is Pi agent-directory
+isolation, not that stronger criterion; do not claim it passed.
 
 ### Staged migration
 

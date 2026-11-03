@@ -264,7 +264,7 @@ While preparing a change, the maintainer can read public documentation (for
 example an MCP server's README and releases) to verify versions, tools and
 auth, and can declare the environment variables an integration needs. You set
 their values in the environment Pi starts in: export them, or load the
-project's gitignored `.env` with direnv (`/faur env set NAME` writes it). Generation and change previews also add missing
+project's gitignored `.env` with direnv. Configure values outside Faur. Generation and change previews also add missing
 secret and state paths to an existing `.gitignore` without rewriting your rules.
 Ignoring files does not remove credentials already committed to git: rotate any
 credentials that were committed, including those in `.env` or `.forge/`.
@@ -372,7 +372,7 @@ setup:
 
 `/faur check` reports unmet steps; `/faur setup` previews installs and asks for confirmation. For non-interactive administration use `forge setup <dir> --yes`. Steps marked `needsRoot` are printed, not run. Workflow launches never install. **Command checks execute shell code with your permissions automatically**, including during checks and workflow startup; use only trusted declarations.
 
-An MCP or CLI integration may also declare `secretsFile: .forge/service-secrets.env`. Forge creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env`, then use `/faur env set API_KEY --file .forge/service-secrets.env` to choose that file explicitly; without `--file` the destination remains `.env`. The value is entered interactively, not sent to the model. Integrations must be configured to read their chosen file themselves; Forge does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.
+An MCP or CLI integration may also declare `secretsFile: .forge/service-secrets.env`. Forge creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env` and configure its value in that file outside Faur; do not send secrets to the model. Integrations must be configured to read their chosen file themselves; Forge does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.
 
 ## License
 

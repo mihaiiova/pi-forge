@@ -27,7 +27,7 @@ architecture review is recorded in
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
-     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (remaining: design record and drift reconcile; projects already pin no Faur), then #67 (rename to Faur).
+     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (drift reconciliation implementation under review; supported edits are previewed and approved, unsafe cases are refused and preserved; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)), then #67 (rename to Faur).
   2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   3. #68, the public-alpha gate (harness early, criteria pass as issues land).
   4. Composition and evidence: #29, #30, #31, #35, #40.

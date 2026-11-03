@@ -31,6 +31,37 @@ test("importSystem derives the orchestrator model and thinking from settings def
   assert.equal(system.models, undefined, "no tiers");
 });
 
+test('importSystem preserves an explicitly empty defaultTools allowlist', () => {
+  const { system } = importSystem({ ...SETTINGS, defaultTools: [] }, {});
+  assert.deepEqual(system.orchestrator.tools, []);
+  assert.equal(validateSystem(system).ok, true);
+});
+
+test('importSystem separates intact generated specialist guidance and blocks ambiguous generated files', () => {
+  const marker = "## What you can use\n\nGenerated from this system's declarations; it changes when they do. Use only what is listed here.";
+  const agent = { name: 'scout', tools: ['read'], model: 'p/m', prompt: `Authored instructions.\n\n${marker}\n\n- read`, generatedMarker: true, intactGenerated: true };
+  const clean = importSystem(SETTINGS, { agents: [agent] });
+  assert.equal(clean.system.agents[0].prompt, 'Authored instructions.');
+  assert.match(clean.report.flagged[0].reason, /not imported as authored prompt/);
+  assert.equal(clean.report.blocked.length, 0);
+  for (const modified of [ { ...agent, intactGenerated: false }, { ...agent, prompt: `${agent.prompt}\n\n${marker}` }, { ...agent, prompt: 'no recognized boundary' } ]) {
+    assert.match(importSystem(SETTINGS, { agents: [modified] }).report.blocked[0].reason, /cannot be safely separated/);
+  }
+  const unmarked = importSystem(SETTINGS, { agents: [{ ...agent, generatedMarker: false }] });
+  assert.equal(unmarked.system.agents[0].prompt, undefined);
+  assert.match(unmarked.report.flagged[0].reason, /preserved in the native file/);
+});
+
+test('importSystem reconstructs only a separable marked lead prompt and reports other content', () => {
+  const marked = `<!-- forge:generated v1 sha256=${'a'.repeat(64)} -->\nManual first line.\nSecond line.\n\n<!-- forge:derived v1 begin: generated from system.yaml; edits here are reported, not kept -->\nGenerated and native content.\n`;
+  const imported = importSystem(SETTINGS, { appendSystem: marked });
+  assert.equal(imported.system.orchestrator.prompt, 'Manual first line.\nSecond line.\n');
+  assert.match(imported.report.flagged.find(flag => flag.key === '.pi/APPEND_SYSTEM.md').reason, /not reconstructed/);
+  const unmarked = importSystem(SETTINGS, { appendSystem: 'Native instructions.\n' });
+  assert.equal(unmarked.system.orchestrator.prompt, undefined);
+  assert.match(unmarked.report.flagged.find(flag => flag.key === '.pi/APPEND_SYSTEM.md').reason, /not imported/);
+});
+
 test("importSystem keeps each agent's own model, thinking and skills", () => {
   const { system } = importSystem(SETTINGS, DETECTED);
   assert.deepEqual(system.agents.map((a) => [a.name, a.model, a.thinking, a.skills]), [
@@ -46,6 +77,16 @@ test("importSystem declares only detected skills, by their own directory, and no
   assert.deepEqual(system.integrations.mcp, [
     { name: "cloudflare", config: { command: "npx", args: ["cloudflare-mcp", "--stdio"] } },
   ]);
+});
+
+test('importSystem reports native commands that cannot be reconstructed', () => {
+  const { system, report } = importSystem(SETTINGS, { commandsPresent: true });
+  assert.equal(system.integrations?.cli, undefined);
+  assert.match(report.flagged.find(item => item.key === '.pi/commands.json').reason, /not reconstructed/);
+  assert.ok(!importSystem(SETTINGS, {}).report.flagged.some(item => item.key === '.pi/commands.json'));
+  const pin = 'git:github.com/mihaiiova/pi-commands@v0.1.0';
+  assert.deepEqual(importSystem({ ...SETTINGS, packages: [pin] }, { commandsPresent: true }).system.packages, [pin]);
+  assert.equal(importSystem({ ...SETTINGS, packages: [pin] }, {}).system.packages, undefined);
 });
 
 test("importSystem flags missing models instead of inventing them", () => {

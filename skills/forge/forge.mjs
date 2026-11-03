@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseSystem } from "./parse.mjs";
 import { validateSystem } from "./validate.mjs";
-import { generateProject, managedPaths } from "./generate.mjs";
+import { generateProject, managedPaths, intactScaffold } from "./generate.mjs";
 import { indent } from "./diff.mjs";
 import { parseMcpFile, probeClis, scanSkills } from "./discover.mjs";
 import { loadYaml } from "./yaml-loader.mjs";
@@ -37,7 +37,7 @@ import { importSystem } from "./import.mjs";
 import { parseModelList, unavailableModelWarnings } from "./models.mjs";
 import { vendoredSkills } from "./skill-sources.mjs";
 import { installedDir, searchSkills, previewRegistrySkill, resolveRegistrySkill } from "./registry-skills.mjs";
-import { planChange, applyChange, withSkillPreviews } from './maintenance.mjs';
+import { planChange, applyChange, approvalPreview, publicChangePreview, withSkillPreviews } from './maintenance.mjs';
 import { atomicWrite } from './maintenance-store.mjs';
 import { checkAgent, loadProjectTools, connectMcp } from './check.mjs';
 import { parsedModel } from './changes.mjs';
@@ -288,6 +288,8 @@ function detectAgents(dir) {
         ? fm.skills
         : typeof fm.skills === "string" ? fm.skills.split(",").map((s) => s.trim()).filter(Boolean) : [],
       prompt: typeof fm.systemPrompt === "string" ? fm.systemPrompt : body,
+      generatedMarker: /<!-- forge:generated v1 sha256=[0-9a-f]{64} -->\s*$/.test(text),
+      intactGenerated: intactScaffold(text),
     });
   }
   return agents;
@@ -383,19 +385,21 @@ async function runReconcile(dir, dryRun, yes, command) {
   const plan = await withSkillPreviews(planChange(root, [{ op: 'reconcile' }], {
     piPackages: readPiPackages(), vendorCopies: vendor.copies,
   }));
-  printWarnings(plan.preview.warnings);
+  const preview = publicChangePreview(root, plan);
+  printWarnings(preview.warnings);
   warnUnavailableModels(normalized);
   console.log(`${dryRun ? 'Planned changes (dry run — nothing written)' : 'Preview of changes to apply'} for ${systemPath}:`);
-  for (const file of plan.preview.files) {
+  for (const file of preview.files) {
     console.log(`  ${pad(file.action)} ${file.path}`);
     if (file.diff) console.log(indent(file.diff, '    '));
   }
   printVendorPlan(vendor.copies);
   printRegistryPlan(plan.skills.install);
-  if (plan.preview.skills) console.log(JSON.stringify(plan.preview.skills, null, 2));
-  if (plan.preview.inventoryWarning) console.error(`warning - ${plan.preview.inventoryWarning}`);
-  if (plan.preview.rebuilt) console.error(`warning - ${plan.preview.rebuilt}`);
+  if (preview.skills) console.log(JSON.stringify(preview.skills, null, 2));
+  if (preview.inventoryWarning) console.error(`warning - ${preview.inventoryWarning}`);
+  if (preview.rebuilt) console.error(`warning - ${preview.rebuilt}`);
   if (dryRun) return;
+  approvalPreview(root, plan);
   // A first build is implicit approval only when it executes no registry CLI.
   // Reconciliation and registry execution always need explicit approval.
   const firstBuild = !existsSync(join(root, '.forge/build.json')) && !existsSync(join(root, '.pi/settings.json'));
@@ -428,9 +432,16 @@ function runImport(dir) {
     skills: detectSkills(target),
     agents: detectAgents(target),
     mcpServers: readMcpFile(join(target, ".pi", "mcp.json")),
+    commandsPresent: existsSync(join(target, '.pi', 'commands.json')),
+    ...(existsSync(join(target, '.pi', 'APPEND_SYSTEM.md')) ? { appendSystem: readFileSync(join(target, '.pi', 'APPEND_SYSTEM.md'), 'utf8') } : {}),
   };
 
   const { system, report } = importSystem(settings, detected);
+  if (report.blocked.length) {
+    for (const item of report.blocked) console.error(`error - ${item.key}: ${item.reason}`);
+    process.exitCode = 1;
+    return;
+  }
 
   // Fail before writing anything if runtime dependencies cannot be resolved.
   if (failOnErrors(generateProject(system, {}, { piPackages: readPiPackages() }).errors)) return;
@@ -570,8 +581,9 @@ async function main(argv) {
     const index = rest.indexOf('--operations');
     if (index < 0 || !rest[index + 1]) { fail('change requires --operations <json-file>'); return; }
     const plan = await withSkillPreviews(planChange(root, JSON.parse(readFileSync(rest[index + 1], 'utf8'))));
-    console.log(JSON.stringify(plan.preview, null, 2));
+    console.log(JSON.stringify(publicChangePreview(root, plan), null, 2));
     if (dryRun) { console.log('Dry run — nothing written.'); return; }
+    approvalPreview(root, plan);
     let approved = rest.includes('--yes');
     if (!approved && process.stdin.isTTY) {
       const rl = createInterface({ input: process.stdin, output: process.stdout });

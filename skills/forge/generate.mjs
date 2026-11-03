@@ -459,7 +459,7 @@ function readmeBody(model, packages) {
     "example `DEEPSEEK_API_KEY`). See the policy section below for which",
     "capabilities are enforced vs advisory.",
     ...(model.integrations?.env?.length ? ["Integration variables (listed in `.env.example`) come from the environment you start Pi in: export them, or load `.env` with direnv (`dotenv` in `.envrc`). `/faur check` reports any that are unset."] : []),
-    ...[...new Set(integrationSecrets(model))].map(path => `For integration secrets in \`${path}\`, use \`/faur env set NAME --file ${path}\`; declare NAME in integrations.env first. Forge does not load this file; configure the integration to read it.`),
+    ...[...new Set(integrationSecrets(model))].map(path => `Configure integration secrets in \`${path}\` outside Faur. Forge does not load this file; configure the integration to read it.`),
     "",
     ...((model.setup?.length || model.integrations?.mcp?.some(x => x.setup?.length) || model.integrations?.cli?.some(x => x.setup?.length)) ? [
       '## Setup', '',

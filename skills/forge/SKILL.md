@@ -316,12 +316,10 @@ prior approvals cannot grant that authority.
      {"op":"add","target":"env","name":"GITHUB_PAT","value":{"secret":true}}
      and reference it as ${GITHUB_PAT} in the MCP config. Pi reads it from the
      environment it starts in (exported, or .env loaded with direnv). Never ask the user to paste a
-     secret into the conversation: tell them to run
-     /faur env set GITHUB_PAT after applying, which stores it
-     without the model seeing it. /faur env lists what is set. For a declared
-     integration `secretsFile`, use `/faur env set GITHUB_PAT --file <path>`;
-     the user explicitly selects the file, and the integration must be configured
-     to read it. Never ask the user to put a secret value in the conversation.
+     secret into the conversation: ask them to configure it outside Faur.
+     /faur env lists what is set without displaying values. For a declared
+     integration `secretsFile`, configure the file outside Faur and configure
+     the integration to read it. Never ask for a secret in the conversation.
    - MCP scope is the user's choice; ask rather than assume. Generated
      systems use Pi's built-in MCP. In the config, "includeTools" lists the
      tools agents may use (omit it for all; the orchestrator then finds them
@@ -450,12 +448,44 @@ user wants to pursue through a new /faur request.
 
 Generated projects pin no Faur, so there is no release to move. /faur status
 says whether a project still pins Forge from an earlier release (v0.30.0 or
-before). /faur sync regenerates the project with the Faur running it: text
-agents read is rewritten directly; changes to what they can run or reach,
-including dropping an old Forge pin, are shown and confirmed. /faur check validates
+before). /faur sync previews regeneration with the Faur running it and asks
+for confirmation, including when only text changes or an old Forge pin is
+removed. /faur check validates
 system.yaml, compares the generated files with it and runs the launch check. A
 proposed change also rebuilds whatever this version generates differently, and
-its preview lists those files under reconciliation. After an approved change the
+its preview lists those files under reconciliation. `/faur drift adopt
+.pi/settings.json` previews adoption of representable Pi settings without
+rewriting the native settings file. `/faur drift adopt .pi/APPEND_SYSTEM.md`
+adopts a marked lead prompt. The same command can preview adoption of a
+marked specialist prompt (`.pi/agents/<name>.md`) or representable edits,
+additions and removals in MCP and command entries (`.pi/mcp.json`,
+`.pi/commands.json`). It refuses changes it cannot safely represent, including
+changed capability grants, and reports other edited files that would be
+overwritten. `/faur drift reapply <path>` previews reapplication of one of
+`.pi/settings.json`, `.pi/mcp.json`, `.pi/commands.json`, the marked lead
+prompt or a marked specialist, preserving other files. A marked specialist
+addition can be adopted only when its native frontmatter round-trips without
+behavior changes. An unmarked specialist with an explicit matching name,
+description and tools can be adopted without rewriting it; unsupported
+frontmatter is reported and preserved, and conflicting subsequent changes
+require explicit reconciliation. A deletion can be adopted when the remaining
+declarations validate. `/faur drift reconcile .pi/settings.json adopt=model,tools` adopts
+those modeled settings and reapplies the other modeled settings; use
+`adopt=none` or any subset of `model`, `thinking` and `tools`. The local
+confirmation previews the result, preserving unrepresented settings.
+For marked specialists, `/faur drift reconcile .pi/agents/<name>.md adopt=description,prompt`
+adopts any subset of `description`, `model`, `thinking`, and `prompt`, and
+reapplies the others. For MCP or commands, `/faur drift reconcile .pi/mcp.json
+adopt=server.url` or `/faur drift reconcile .pi/commands.json adopt=command.args`
+adopts selected `name.field` entries and reapplies unselected modeled fields.
+Unknown native fields are preserved and reported. Reapply refuses MCP exposure,
+tool exposure or codemode differences that cannot be safely represented.
+Approval is refused if a changed sensitive value cannot be shown safely; configure
+such values outside Faur and reconcile the native files explicitly. `adopt=none` reapplies the
+modeled fields. `/faur drift reconcile .pi/APPEND_SYSTEM.md adopt=prompt`
+adopts the lead prompt; `adopt=none` reapplies it. Unrepresentable exposure or
+generated-instruction changes are refused rather than silently weakened.
+After an approved change the
 human runs /reload (Pi reloads by itself after a sync rebuild); a restart of
 Pi is needed only when the launcher or packages change. After reviewing the
 current changes, git can restore previous files; it cannot undo external

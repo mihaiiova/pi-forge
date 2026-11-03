@@ -83,8 +83,7 @@ integrations:
     - name: seo
       config:
         command: ${JSON.stringify(process.execPath)}
-        args: [${JSON.stringify(server)}]
-        env: { MCP_LOG: ${JSON.stringify(called)} }
+        args: ["-e", ${JSON.stringify(`process.env.MCP_LOG=${JSON.stringify(called)}; import(${JSON.stringify(pathToFileURL(server).href)})`)}]
         includeTools: [run_audit]
         approveTools: [run_audit]
 workflows:

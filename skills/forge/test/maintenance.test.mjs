@@ -9,8 +9,9 @@ import { execFileSync, spawnSync as requireResult } from 'node:child_process';
 import { loadYaml } from '../yaml-loader.mjs';
 import { generateProject, managedPaths } from '../generate.mjs';
 import { changeModel } from '../changes.mjs';
-import { planChange, applyChange, inspectProject, rebuildPlan, changesReach } from '../maintenance.mjs';
+import { planChange, planSettingsAdoption, planSettingsReconciliation, planPromptAdoption, planAgentAdoption, planAgentReconciliation, planIntegrationAdoption, planIntegrationReconciliation, planNativeReapply, applyChange, approvalPreview, inspectProject, rebuildPlan, changesReach } from '../maintenance.mjs';
 import { readJson, readText, json, atomicWrite, fingerprints, applyWrites } from '../maintenance-store.mjs';
+import { redactedDiffPair } from '../maintenance-secrets.mjs';
 import { registerMaintenance } from '../maintenance-extension.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../../..');
@@ -85,6 +86,645 @@ test('reconcile plans and builds a new project without existing settings', t => 
   assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'large');
   assert.equal(readJson(root, '.forge/build.json').version, pkg.version);
   assert.equal(inspectProject(root).consistency.ok, true);
+});
+
+test('inspection reports native drift without modifying or disclosing file contents', async t => {
+  const root = project(t, pinnedModel);
+  assert.deepEqual(inspectProject(root).nativeDrift, []);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'manual-model';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const prompt = readText(root, '.pi/APPEND_SYSTEM.md');
+  writeFileSync(join(root, '.pi/APPEND_SYSTEM.md'), prompt.replace('Coordinate research.', 'Private manual edit.'));
+  const commands = readJson(root, '.pi/commands.json');
+  commands.commands[0].command = 'printf';
+  writeFileSync(join(root, '.pi/commands.json'), json(commands));
+  mkdirSync(join(root, '.pi/agents'), { recursive: true });
+  writeFileSync(join(root, '.pi/agents/custom.md'), 'private authored content');
+  const before = snapshot(root);
+  const drift = inspectProject(root).nativeDrift;
+  assert.deepEqual(drift.map(item => item.path), ['.pi/agents/custom.md', '.pi/APPEND_SYSTEM.md', '.pi/commands.json', '.pi/settings.json'].sort((a, b) => a.localeCompare(b)));
+  assert.doesNotMatch(JSON.stringify(drift), /Private manual edit|private authored content/);
+  assert.deepEqual(snapshot(root), before);
+  const mock = adapter();
+  await registerMaintenance(mock.pi, mock.Type, root)('revise the system', mock.ctx);
+  const warning = mock.notices.find(([message]) => message.includes('Native files differ'))?.[0];
+  assert.match(warning, /\.pi\/commands\.json/);
+  for (const option of ['adopt', 'reapply', 'reconcile']) assert.match(warning, new RegExp(`/faur drift ${option}`));
+  assert.match(warning, /unsafe or unrepresentable changes are refused and preserved/);
+});
+
+test('adopting Pi settings preserves the native file and survives another revision', t => {
+  const root = project(t);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'hand-edited';
+  settings.defaultTools = ['read', 'grep'];
+  settings.theme = 'my-theme';
+  writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
+  const original = readText(root, '.pi/settings.json');
+  const adoption = planSettingsAdoption(root);
+  assert.throws(() => applyChange(root, adoption, false), /approval/);
+  applyChange(root, adoption, true);
+  assert.equal(readText(root, '.pi/settings.json'), original);
+  const adopted = yaml.parse(readText(root, '.pi/system.yaml'));
+  assert.equal(adopted.orchestrator.model, 'fixture/hand-edited');
+  assert.deepEqual(adopted.orchestrator.tools, ['read', 'grep']);
+  applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
+  assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'hand-edited');
+  assert.equal(readJson(root, '.pi/settings.json').theme, 'my-theme');
+});
+
+test('/faur drift adopt settings previews and requires explicit approval', async t => {
+  const root = project(t);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'manual-model';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const before = readText(root, '.pi/system.yaml');
+  const mock = adapter();
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
+  await mock.forge('drift adopt .pi/settings.json', mock.ctx);
+  assert.equal(readText(root, '.pi/system.yaml'), before);
+  assert.match(mock.dialogs[0].body, /manual-model/);
+  mock.approve();
+  await mock.forge('drift adopt .pi/settings.json', mock.ctx);
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/manual-model');
+});
+
+test('settings reconciliation adopts selected fields, reapplies others and preserves unknown settings', async t => {
+  const root = project(t);
+  const path = '.pi/settings.json';
+  const settings = readJson(root, path);
+  settings.defaultModel = 'manual';
+  settings.defaultTools = ['read', 'grep'];
+  settings.theme = 'native-theme';
+  writeFileSync(join(root, path), json(settings));
+  const plan = planSettingsReconciliation(root, ['model']);
+  assert.deepEqual(plan.preview.reconciliationChoice.adopt, ['model']);
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  const mock = adapter();
+  const command = registerMaintenance(mock.pi, mock.Type, root);
+  await command('drift reconcile .pi/settings.json adopt=model', mock.ctx);
+  assert.equal(readJson(root, path).defaultModel, 'manual');
+  assert.deepEqual(readJson(root, path).defaultTools, ['read', 'grep']);
+  mock.approve();
+  await command('drift reconcile .pi/settings.json adopt=model', mock.ctx);
+  assert.equal(readJson(root, path).defaultModel, 'manual');
+  assert.deepEqual(readJson(root, path).defaultTools, ['read']);
+  assert.equal(readJson(root, path).theme, 'native-theme');
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/manual');
+  const stale = planSettingsReconciliation(root, []);
+  writeFileSync(join(root, path), json({ ...readJson(root, path), theme: 'changed' }));
+  assert.throws(() => applyChange(root, stale, true), /changed since preview/);
+  assert.throws(() => planSettingsReconciliation(root, ['theme']), /accepts model, thinking and tools only/);
+});
+
+test('settings reconciliation refuses collateral edited native configuration', t => {
+  const root = project(t, pinnedModel);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'manual';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const commands = readJson(root, '.pi/commands.json');
+  commands.commands[0].command = 'printf';
+  writeFileSync(join(root, '.pi/commands.json'), json(commands));
+  const before = snapshot(root);
+  assert.throws(() => planSettingsReconciliation(root, ['model']), /Resolve other native edits/);
+  assert.deepEqual(snapshot(root), before);
+});
+
+test('specialist prompt adoption preserves a manual edit through revision', t => {
+  const design = { ...model, agents: [{ name: 'scout', description: 'Research', model: 'fixture/small', tools: ['read'], prompt: 'Research carefully.' }] };
+  const root = project(t, design);
+  const path = '.pi/agents/scout.md';
+  writeFileSync(join(root, path), readText(root, path).replace('Research carefully.', 'Research carefully with citations.'));
+  const plan = planAgentAdoption(root, path);
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  applyChange(root, plan, true);
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).agents[0].prompt, 'Research carefully with citations.');
+  applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+  assert.match(readText(root, path), /Research carefully with citations/);
+});
+
+test('a representable added specialist is adopted without rewriting its file', t => {
+  const root = project(t);
+  const agent = { name: 'scout', description: 'Research', model: 'fixture/small', tools: ['read'], prompt: 'Research carefully.' };
+  const file = generateProject({ ...model, agents: [agent] }, {}, { piPackages: pkg.pi.packages }).files.find(item => item.path === '.pi/agents/scout.md');
+  mkdirSync(join(root, '.pi/agents'), { recursive: true });
+  writeFileSync(join(root, file.path), file.content);
+  const plan = planAgentAdoption(root, file.path);
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  applyChange(root, plan, true);
+  assert.equal(readText(root, file.path), file.content);
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).agents[0].prompt, agent.prompt);
+  applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+  assert.equal(readText(root, file.path), file.content);
+});
+
+test('unmarked specialist adoption preserves and reports native-only frontmatter', t => {
+  const root = project(t);
+  const path = '.pi/agents/scout.md';
+  const text = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\ncustomNative: retained\n---\nResearch carefully.\n';
+  mkdirSync(join(root, '.pi/agents'), { recursive: true });
+  writeFileSync(join(root, path), text);
+  const plan = planAgentAdoption(root, path);
+  assert.deepEqual(plan.preview.adoption.unrepresented, ['customNative']);
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  applyChange(root, plan, true);
+  assert.equal(readText(root, path), text);
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).agents[0].prompt, 'Research carefully.\n');
+  assert.ok(inspectProject(root).nativeUnrepresented.some(item => item.path === path && item.setting === 'customNative'));
+  applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+  assert.equal(readText(root, path), text);
+});
+
+test('unmarked specialist adoption refuses ambiguous prompt sources and stale previews', t => {
+  const root = project(t);
+  const path = '.pi/agents/scout.md';
+  mkdirSync(join(root, '.pi/agents'), { recursive: true });
+  const front = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n';
+  writeFileSync(join(root, path), `${front}systemPrompt: First\n---\nSecond\n`);
+  assert.throws(() => planAgentAdoption(root, path), /both systemPrompt and body/);
+  writeFileSync(join(root, path), `${front}---\nResearch\n`);
+  const plan = planAgentAdoption(root, path);
+  writeFileSync(join(root, path), `${front}---\nChanged after preview\n`);
+  assert.throws(() => applyChange(root, plan, true), /changed since preview/);
+});
+
+test('reapply previews prompt and specialist changes and preserves unsupported content', t => {
+  const design = { ...model, agents: [{ name: 'scout', description: 'Research', model: 'fixture/small', tools: ['read'], prompt: 'Research carefully.' }] };
+  const root = project(t, design);
+  const prompt = '.pi/APPEND_SYSTEM.md', agent = '.pi/agents/scout.md';
+  writeFileSync(join(root, prompt), readText(root, prompt).replace('Coordinate research.', 'Manual lead edit.'));
+  writeFileSync(join(root, agent), readText(root, agent).replace('Research carefully.', 'Manual specialist edit.'));
+  const leadPlan = planNativeReapply(root, prompt);
+  assert.throws(() => applyChange(root, leadPlan, false), /approval/);
+  applyChange(root, leadPlan, true);
+  assert.match(readText(root, prompt), /Coordinate research/);
+  assert.match(readText(root, agent), /Manual specialist edit/);
+  const agentPlan = planNativeReapply(root, agent);
+  applyChange(root, agentPlan, true);
+  assert.match(readText(root, agent), /Research carefully/);
+  const text = readText(root, agent).replace('name: scout', 'name: scout\ncustomNative: true');
+  writeFileSync(join(root, agent), text);
+  assert.throws(() => planNativeReapply(root, agent), /unsupported frontmatter/);
+  assert.equal(readText(root, agent), text);
+});
+
+test('specialist deletion can be adopted when remaining declarations are valid', t => {
+  const design = { ...model, agents: [{ name: 'scout', description: 'Research', model: 'fixture/small', tools: ['read'], prompt: 'Research carefully.' }] };
+  const root = project(t, design);
+  const path = '.pi/agents/scout.md';
+  rmSync(join(root, path));
+  const plan = planAgentAdoption(root, path);
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  applyChange(root, plan, true);
+  assert.deepEqual(yaml.parse(readText(root, '.pi/system.yaml')).agents, []);
+  applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+  assert.equal(readText(root, path), null);
+});
+
+test('integration adoption preserves edited native files through revisions', t => {
+  for (const path of ['.pi/mcp.json', '.pi/commands.json']) {
+    const root = project(t, pinnedModel);
+    const value = readJson(root, path);
+    if (path.endsWith('mcp.json')) value.mcpServers.docs.url = 'http://localhost:4000/mcp';
+    else value.commands[0].args = ['updated'];
+    writeFileSync(join(root, path), json(value));
+    const original = readText(root, path);
+    const plan = planIntegrationAdoption(root, path);
+    assert.throws(() => applyChange(root, plan, false), /approval/);
+    applyChange(root, plan, true);
+    assert.equal(readText(root, path), original);
+    applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+    assert.deepEqual(readJson(root, path), value);
+  }
+});
+
+test('reapplying one native configuration requires approval and leaves other edits alone', async t => {
+  const root = project(t, pinnedModel);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'manual';
+  settings.theme = 'native-theme';
+  settings.apiKey = 'reapply-private-secret';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const mcp = readJson(root, '.pi/mcp.json');
+  mcp.mcpServers.docs.url = 'http://localhost:4444/mcp';
+  writeFileSync(join(root, '.pi/mcp.json'), json(mcp));
+  const plan = planNativeReapply(root, '.pi/settings.json');
+  assert.deepEqual(Object.keys(plan.writes), ['.pi/settings.json']);
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  const mock = adapter();
+  const command = registerMaintenance(mock.pi, mock.Type, root);
+  await command('drift reapply .pi/settings.json', mock.ctx);
+  assert.match(mock.dialogs[0].body, /File: \.pi\/settings\.json \(write\)/);
+  assert.match(mock.dialogs[0].body, /\[redacted\]/);
+  assert.doesNotMatch(mock.dialogs[0].body, /reapply-private-secret/);
+  assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'manual');
+  mock.approve();
+  await command('drift reapply .pi/settings.json', mock.ctx);
+  assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'large');
+  assert.equal(readJson(root, '.pi/settings.json').theme, 'native-theme');
+  assert.deepEqual(readJson(root, '.pi/mcp.json'), mcp);
+  const stale = planNativeReapply(root, '.pi/mcp.json');
+  mcp.mcpServers.docs.url = 'http://localhost:5555/mcp';
+  writeFileSync(join(root, '.pi/mcp.json'), json(mcp));
+  assert.throws(() => applyChange(root, stale, true), /changed since preview/);
+});
+
+test('paired redaction reports added, removed and changed sensitive fields without fingerprints', () => {
+  const before = { env: { NODE_OPTIONS: 'old-private-value', KEEP: 'same-private-value', REMOVE: 'removed-private-value' }, nested: { apiKey: 'nested-private-value' } };
+  const after = { env: { NODE_OPTIONS: 'new-private-value', KEEP: 'same-private-value', ADD: 'added-private-value' }, nested: [] };
+  const result = redactedDiffPair(before, after);
+  assert.deepEqual(result.changes, [
+    { path: ['env', 'NODE_OPTIONS'], action: 'changed' },
+    { path: ['env', 'REMOVE'], action: 'removed' },
+    { path: ['env', 'ADD'], action: 'added' },
+    { path: ['nested', 'apiKey'], action: 'removed' },
+  ]);
+  assert.equal(result.before.env.KEEP, '[redacted]');
+  assert.equal(result.after.env.KEEP, '[redacted]');
+  assert.doesNotMatch(JSON.stringify(result), /private-value|[a-f0-9]{32,}/);
+});
+
+test('MCP reapply refuses hidden execution-bearing environment changes without revealing values', async t => {
+  const design = structuredClone(pinnedModel);
+  design.integrations.mcp[0].config = { command: 'node', env: { NODE_OPTIONS: 'design-private-value', REMOVED_IN_NATIVE: 'design-only-secret' } };
+  const root = project(t, design);
+  const mcp = readJson(root, '.pi/mcp.json');
+  mcp.mcpServers.docs.env = { NODE_OPTIONS: 'native-private-value', EXTRA_NATIVE: 'native-only-secret' };
+  writeFileSync(join(root, '.pi/mcp.json'), json(mcp));
+  const mock = adapter();
+  const command = registerMaintenance(mock.pi, mock.Type, root);
+  await command('drift reapply .pi/mcp.json', mock.ctx);
+  assert.deepEqual(mock.dialogs, [], 'an approval that hides the effect must never be presented');
+  assert.ok(mock.notices.some(([message, level]) => level === 'error' && /Approval refused: changed sensitive values/.test(message)));
+  for (const secret of ['design-private-value', 'native-private-value', 'design-only-secret', 'native-only-secret']) assert.doesNotMatch(JSON.stringify([mock.notices, mock.messages]), new RegExp(secret));
+  assert.deepEqual(readJson(root, '.pi/mcp.json'), mcp, 'refusal leaves native config unchanged');
+});
+
+test('CLI previews redact hidden MCP environment changes and refuse to apply them', t => {
+  const design = structuredClone(pinnedModel);
+  design.integrations.mcp[0].config = { command: 'node', env: { NODE_OPTIONS: 'design-private-value' } };
+  const root = project(t, design);
+  const path = '.pi/mcp.json';
+  const native = readJson(root, path);
+  native.mcpServers.docs.env.NODE_OPTIONS = 'native-private-value';
+  writeFileSync(join(root, path), json(native));
+  for (const args of [['modify', root, '--dry-run'], ['modify', root, '--yes']]) {
+    const result = requireResult(process.execPath, [forge, ...args], { encoding: 'utf8' });
+    const output = result.stdout + result.stderr;
+    assert.doesNotMatch(output, /design-private-value|native-private-value/);
+    assert.match(output, /\[redacted/);
+    assert.equal(result.status, args.includes('--dry-run') ? 0 : 1, output);
+    if (!args.includes('--dry-run')) assert.match(output, /Approval refused: changed sensitive values/);
+    assert.deepEqual(readJson(root, path), native);
+  }
+});
+
+test('integration adoption supports representable additions and deletions without losing native files', t => {
+  for (const path of ['.pi/mcp.json', '.pi/commands.json']) {
+    const root = project(t, pinnedModel);
+    const value = readJson(root, path);
+    if (path.endsWith('mcp.json')) value.mcpServers.extra = { url: 'http://localhost:4010/mcp', exposure: 'deferred' };
+    else value.commands.push({ name: 'extra', command: 'echo', args: ['extra'], approve: false, lead: false });
+    writeFileSync(join(root, path), json(value));
+    applyChange(root, planIntegrationAdoption(root, path), true);
+    const added = yaml.parse(readText(root, '.pi/system.yaml')).integrations;
+    assert.ok((path.endsWith('mcp.json') ? added.mcp : added.cli).some(entry => entry.name === 'extra'));
+    assert.deepEqual(readJson(root, path), value);
+    if (path.endsWith('mcp.json')) delete value.mcpServers.extra;
+    else value.commands = value.commands.filter(entry => entry.name !== 'extra');
+    writeFileSync(join(root, path), json(value));
+    applyChange(root, planIntegrationAdoption(root, path), true);
+    const removed = yaml.parse(readText(root, '.pi/system.yaml')).integrations;
+    assert.ok(!(path.endsWith('mcp.json') ? removed.mcp : removed.cli).some(entry => entry.name === 'extra'));
+    assert.deepEqual(readJson(root, path), value);
+    applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+    assert.deepEqual(readJson(root, path), value);
+  }
+});
+
+test('inspection reports preserved native settings outside the design', t => {
+  const root = project(t, pinnedModel);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.theme = 'custom';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const mcp = readJson(root, '.pi/mcp.json');
+  mcp.vendorOption = true;
+  writeFileSync(join(root, '.pi/mcp.json'), json(mcp));
+  const report = inspectProject(root).nativeUnrepresented;
+  assert.ok(report.some(item => item.path === '.pi/settings.json' && item.setting === 'theme'));
+  assert.ok(report.some(item => item.path === '.pi/mcp.json' && item.setting === 'vendorOption'));
+});
+
+test('integration adoption refuses unsupported grants, collateral drift and stale previews', t => {
+  const root = project(t, pinnedModel);
+  const commands = readJson(root, '.pi/commands.json');
+  commands.commands[0].lead = !commands.commands[0].lead;
+  writeFileSync(join(root, '.pi/commands.json'), json(commands));
+  assert.throws(() => planIntegrationAdoption(root, '.pi/commands.json'), /cannot be adopted/);
+  commands.commands[0].lead = !commands.commands[0].lead;
+  commands.commands[0].args = ['edited'];
+  writeFileSync(join(root, '.pi/commands.json'), json(commands));
+  const plan = planIntegrationAdoption(root, '.pi/commands.json');
+  commands.commands[0].args = ['newer'];
+  writeFileSync(join(root, '.pi/commands.json'), json(commands));
+  assert.throws(() => applyChange(root, plan, true), /changed since preview/);
+  const mcp = readJson(root, '.pi/mcp.json');
+  mcp.mcpServers.docs.url = 'http://localhost:4000/mcp';
+  writeFileSync(join(root, '.pi/mcp.json'), json(mcp));
+  assert.throws(() => planIntegrationAdoption(root, '.pi/commands.json'), /Resolve other native edits/);
+});
+
+test('adopting an edited lead prompt preserves it across revisions', t => {
+  const root = project(t);
+  const path = '.pi/APPEND_SYSTEM.md';
+  writeFileSync(join(root, path), readText(root, path).replace('Coordinate research.', 'Coordinate the user-edited research.'));
+  const adoption = planPromptAdoption(root);
+  assert.throws(() => applyChange(root, adoption, false), /approval/);
+  applyChange(root, adoption, true);
+  assert.match(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.prompt, /user-edited research/);
+  applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/other' }]), true);
+  assert.match(readText(root, path), /Coordinate the user-edited research/);
+});
+
+test('settings adoption checks stale previews and refuses collateral drift', t => {
+  const root = project(t, pinnedModel);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'hand-edited';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const adoption = planSettingsAdoption(root);
+  writeFileSync(join(root, '.pi/settings.json'), json({ ...settings, defaultModel: 'newer' }));
+  assert.throws(() => applyChange(root, adoption, true), /changed since preview/);
+  const commands = readJson(root, '.pi/commands.json');
+  commands.commands[0].command = 'printf';
+  writeFileSync(join(root, '.pi/commands.json'), json(commands));
+  assert.throws(() => planSettingsAdoption(root), /Resolve other native edits/);
+});
+
+test('unrelated revisions refuse to discard native-only MCP and command fields and report their names', t => {
+  for (const path of ['.pi/mcp.json', '.pi/commands.json']) {
+    const root = project(t, pinnedModel);
+    const native = readJson(root, path);
+    if (path.endsWith('mcp.json')) {
+      native.mcpServers.docs.futureOption = { mode: 'do-not-report' };
+      native.futureRoot = 'do-not-report';
+    } else {
+      native.commands[0].futureOption = 'do-not-report';
+      native.futureRoot = 'do-not-report';
+    }
+    writeFileSync(join(root, path), json(native));
+    const before = readText(root, path);
+    const inspected = inspectProject(root).nativeUnrepresented.filter(item => item.path === path);
+    assert.ok(inspected.some(item => item.setting.endsWith('.futureOption')));
+    assert.ok(inspected.some(item => item.setting === 'futureRoot'));
+    assert.doesNotMatch(JSON.stringify(inspected), /do-not-report/);
+    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native (?:MCP|command).*would be lost/);
+    assert.equal(readText(root, path), before);
+    const op = path.endsWith('mcp.json')
+      ? { op: 'update', target: 'mcp', name: 'docs', value: { config: { url: 'http://localhost:9999/mcp' } } }
+      : { op: 'update', target: 'cli', name: 'hello', value: { command: 'printf' } };
+    assert.throws(() => planChange(root, [op]), /Native (?:MCP|command).*would be lost/);
+    if (path.endsWith('mcp.json')) {
+      assert.throws(() => planChange(root, [{ op: 'update', target: 'mcp', name: 'docs', value: { config: { url: 'http://localhost:3002/mcp', futureOption: { mode: 'replacement' } } } }]), /Native MCP field docs\.futureOption would be lost/);
+    }
+    const target = path.endsWith('mcp.json') ? 'mcp' : 'cli';
+    const name = target === 'mcp' ? 'docs' : 'hello';
+    assert.throws(() => planChange(root, [
+      { op: 'set', target: 'orchestrator', value: { ...pinnedModel.orchestrator, tools: ['read'] } },
+      { op: 'remove', target, name },
+    ]), /Native (?:MCP|command).*would be lost|Authored removal conflict/);
+    assert.equal(readText(root, path), before);
+  }
+});
+
+test('unrelated revisions refuse to discard native subagent overrides or disabled built-in MCP', t => {
+  for (const field of ['overrides', 'mcp']) {
+    const root = project(t);
+    const settings = readJson(root, '.pi/settings.json');
+    if (field === 'overrides') settings.subagents = { agentOverrides: { scout: { model: 'fixture/private' } } };
+    else settings.extensions = ['-builtin:mcp'];
+    writeFileSync(join(root, '.pi/settings.json'), json(settings));
+    const before = readText(root, '.pi/settings.json');
+    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native settings (?:subagents\.agentOverrides|extension -builtin:mcp)/);
+    assert.equal(readText(root, '.pi/settings.json'), before);
+  }
+});
+
+test('inspection reports local unmanaged resources without reading content or flagging declared skills', t => {
+  const root = project(t, { ...model, skills: [{ name: 'known', description: 'Known skill', body: 'Use the known skill.' }] });
+  for (const [path, text] of [
+    ['.pi/extensions/custom.ts', 'do-not-report-extension-value'],
+    ['.pi/skills/local/SKILL.md', 'do-not-report-local-value'],
+    ['.agents/skills/other/SKILL.md', 'do-not-report-other-value'],
+  ]) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  const resources = inspectProject(root).nativeUnrepresented;
+  for (const path of ['.pi/extensions/custom.ts', '.pi/skills/local/SKILL.md', '.agents/skills/other/SKILL.md']) assert.ok(resources.some(item => item.path === path), path);
+  assert.ok(!resources.some(item => item.path === '.pi/skills/known/SKILL.md'));
+  assert.doesNotMatch(JSON.stringify(resources), /do-not-report/);
+});
+
+test('integration reconciliation merges selected fields before validation and preserves unknown native settings', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const native = readJson(root, path);
+  native.mcpServers.docs.url = 'http://localhost:4000/mcp';
+  native.mcpServers.docs.futureOption = { enabled: true };
+  native.futureRoot = { enabled: true };
+  writeFileSync(join(root, path), json(native));
+  const plan = planIntegrationReconciliation(root, path, ['docs.url']);
+  assert.deepEqual(plan.preview.reconciliationChoice.unrepresented, ['mcpServers.docs.futureOption', 'futureRoot']);
+  applyChange(root, plan, true);
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).integrations.mcp[0].config.url, 'http://localhost:4000/mcp');
+  assert.deepEqual(readJson(root, path).mcpServers.docs.futureOption, { enabled: true });
+  assert.deepEqual(readJson(root, path).futureRoot, { enabled: true });
+  assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native MCP field docs\.futureOption would be lost/);
+});
+
+test('MCP reconciliation reapplies unselected connection fields absent from the design', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const native = readJson(root, path);
+  Object.assign(native.mcpServers.docs, {
+    url: 'http://localhost:4000/mcp', type: 'stdio', command: 'malicious-command',
+    args: ['--execute'], env: { DANGER: 'value' }, cwd: '/tmp',
+    headers: { Authorization: '${TOKEN}' }, oauth: { clientId: 'client' },
+    auth: { provider: 'example' }, enabled: false, timeout: 1, description: 'manual',
+    futureOption: { retain: true },
+  });
+  writeFileSync(join(root, path), json(native));
+  const plan = planIntegrationReconciliation(root, path, ['docs.url']);
+  assert.deepEqual(plan.preview.reconciliationChoice.unrepresented, ['mcpServers.docs.futureOption']);
+  const server = JSON.parse(plan.writes[path]).mcpServers.docs;
+  assert.deepEqual(server, { url: 'http://localhost:4000/mcp', exposure: 'deferred', futureOption: { retain: true } });
+  assert.throws(() => applyChange(root, plan, false), /approval/);
+  applyChange(root, plan, true);
+  assert.deepEqual(readJson(root, path).mcpServers.docs, server);
+  assert.deepEqual(yaml.parse(readText(root, '.pi/system.yaml')).integrations.mcp[0].config, { url: 'http://localhost:4000/mcp' });
+});
+
+test('MCP reconciliation refuses native Forge policy fields instead of treating them as unknown', t => {
+  for (const key of ['includeTools', 'excludeTools', 'approveTools']) {
+    const root = project(t, pinnedModel);
+    const path = '.pi/mcp.json';
+    const native = readJson(root, path);
+    native.mcpServers.docs[key] = ['*'];
+    writeFileSync(join(root, path), json(native));
+    assert.throws(() => planIntegrationReconciliation(root, path, []), /Native MCP policy field.*requires explicit reconciliation/);
+  }
+});
+
+test('command reconciliation reapplies newly added modeled fields and preserves native-only fields', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/commands.json';
+  const native = readJson(root, path);
+  Object.assign(native.commands[0], { description: 'manual', command: 'printf', lead: false, futureOption: true });
+  writeFileSync(join(root, path), json(native));
+  const plan = planIntegrationReconciliation(root, path, ['hello.command']);
+  assert.deepEqual(plan.preview.reconciliationChoice.unrepresented, ['commands.hello.futureOption']);
+  const command = JSON.parse(plan.writes[path]).commands[0];
+  assert.equal(command.command, 'printf');
+  assert.equal(command.description, undefined);
+  assert.equal(command.lead, true);
+  assert.equal(command.futureOption, true);
+  applyChange(root, plan, true);
+  assert.deepEqual(readJson(root, path).commands[0], command);
+});
+
+test('integration reconciliation rejects unsafe fields, collateral drift and stale plans', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/commands.json';
+  const native = readJson(root, path);
+  native.commands[0].command = 'printf';
+  native.commands[0].args = ['changed'];
+  native.commands[0].futureOption = true;
+  writeFileSync(join(root, path), json(native));
+  assert.throws(() => planIntegrationReconciliation(root, path, ['hello.lead']), /Cannot adopt/);
+  assert.throws(() => planChange(root, [{ op: 'reconcile' }], { preserveNativePath: 'README.md' }), /Unsupported/);
+  const plan = planIntegrationReconciliation(root, path, ['hello.command']);
+  assert.deepEqual(plan.preview.reconciliationChoice.unrepresented, ['commands.hello.futureOption']);
+  assert.equal(JSON.parse(plan.writes[path]).commands[0].command, 'printf');
+  assert.deepEqual(JSON.parse(plan.writes[path]).commands[0].args, ['hi']);
+  writeFileSync(join(root, path), json({ ...native, other: 1 }));
+  assert.throws(() => applyChange(root, plan, true), /changed|stale/i);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.defaultModel = 'other';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  assert.throws(() => planIntegrationReconciliation(root, path, ['hello.command']), /other native edits/);
+});
+
+test('integration reconciliation refuses native exposure changes rather than silently weakening them', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const native = readJson(root, path);
+  native.mcpServers.docs.exposure = 'direct';
+  writeFileSync(join(root, path), json(native));
+  assert.throws(() => planIntegrationReconciliation(root, path, []), /Unrepresented MCP exposure change/);
+});
+
+test('interactive integration reconciliation previews redacted data and respects cancellation', async t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const native = readJson(root, path);
+  native.mcpServers.docs.url = 'http://localhost:4000/mcp';
+  native.mcpServers.docs.futureSecret = 'private-value-do-not-show';
+  writeFileSync(join(root, path), json(native));
+  const before = snapshot(root);
+  const mock = adapter();
+  await registerMaintenance(mock.pi, mock.Type, root)('drift reconcile .pi/mcp.json adopt=docs.url', mock.ctx);
+  assert.equal(mock.dialogs.length, 1);
+  assert.ok(!JSON.stringify(mock.dialogs).includes('private-value-do-not-show'));
+  assert.deepEqual(snapshot(root), before);
+  assert.ok(mock.notices.some(([message]) => message.includes('Cancelled')));
+});
+
+test('prompt reconciliation requires approval and adopts the selected authored prompt', async t => {
+  const root = project(t);
+  const path = '.pi/APPEND_SYSTEM.md';
+  writeFileSync(join(root, path), readText(root, path).replace('Coordinate research.', 'Manually edited prompt.'));
+  const mock = adapter();
+  const run = registerMaintenance(mock.pi, mock.Type, root);
+  await run('drift reconcile .pi/APPEND_SYSTEM.md adopt=prompt', mock.ctx);
+  assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.prompt, model.orchestrator.prompt);
+  mock.approve();
+  await run('drift reconcile .pi/APPEND_SYSTEM.md adopt=prompt', mock.ctx);
+  assert.match(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.prompt, /Manually edited prompt/);
+});
+
+test('specialist reconciliation adopts chosen fields and preserves unrepresented frontmatter', t => {
+  const design = { ...model, agents: [{ name: 'scout', description: 'Old description', prompt: 'Old prompt.', tools: ['read'], model: 'fixture/large' }] };
+  const root = project(t, design);
+  const path = '.pi/agents/scout.md';
+  let text = readText(root, path);
+  text = text.replace('Old description', 'New description').replace('Old prompt.', 'Manual prompt.').replace('name: scout\n', 'name: scout\ncustom: keep-me\n');
+  writeFileSync(join(root, path), text);
+  const plan = planAgentReconciliation(root, path, ['description']);
+  assert.deepEqual(plan.preview.reconciliationChoice.unrepresented, ['custom']);
+  applyChange(root, plan, true);
+  const recorded = yaml.parse(readText(root, '.pi/system.yaml')).agents[0];
+  assert.equal(recorded.description, 'New description');
+  assert.equal(recorded.prompt, 'Old prompt.');
+  const actual = readText(root, path);
+  assert.match(actual, /custom: keep-me/);
+  assert.match(actual, /Old prompt\./);
+  assert.doesNotMatch(actual, /Manual prompt\./);
+});
+
+test('specialist reconciliation refuses unselected capability changes', t => {
+  const design = { ...model, agents: [{ name: 'scout', description: 'Old description', prompt: 'Old prompt.', tools: ['read', 'bash'], model: 'fixture/large' }] };
+  for (const [field, mutate] of [
+    ['tools', text => text.replace('  - bash\n', '')],
+    ['skills', text => text.replace('name: scout\n', 'name: scout\nskills: []\n')],
+    ['inheritProjectContext', text => text.replace('name: scout\n', 'name: scout\ninheritProjectContext: false\n')],
+    ['inheritSkills', text => text.replace('name: scout\n', 'name: scout\ninheritSkills: false\n')],
+    ['async', text => text.replace('name: scout\n', 'name: scout\nasync: false\n')],
+  ]) {
+    const root = project(t, design);
+    const path = '.pi/agents/scout.md';
+    writeFileSync(join(root, path), mutate(readText(root, path)).replace('Old description', 'New description'));
+    const before = snapshot(root);
+    assert.throws(() => planAgentReconciliation(root, path, ['description']), new RegExp(`Specialist ${field} differs`));
+    assert.deepEqual(snapshot(root), before, `${field} refusal leaves all files unchanged`);
+  }
+});
+
+test('standalone native-only settings are reported on invocation and preserved without exposing their values', async t => {
+  const root = project(t);
+  const path = '.pi/settings.json';
+  const settings = readJson(root, path);
+  settings.theme = 'sensitive-theme-value';
+  writeFileSync(join(root, path), json(settings));
+  const before = readText(root, path);
+  const mock = adapter();
+  await registerMaintenance(mock.pi, mock.Type, root)('review the system', mock.ctx);
+  assert.ok(mock.notices.some(([message]) => message.includes(path) && message.includes('native-only settings')));
+  assert.doesNotMatch(JSON.stringify(mock.notices), /sensitive-theme-value/);
+  assert.equal(readText(root, path), before);
+  const plan = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
+  applyChange(root, plan, true);
+  assert.equal(readJson(root, path).theme, 'sensitive-theme-value');
+});
+
+test('import reports native commands and a later revision preserves the native file', t => {
+  const root = project(t);
+  const path = '.pi/commands.json';
+  const commands = '{"commands":[{"name":"custom","command":"echo","args":["test"]}]}\n';
+  writeFileSync(join(root, path), commands);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.packages = ['git:github.com/mihaiiova/pi-commands@v0.1.0'];
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  rmSync(join(root, '.pi/system.yaml'));
+  const result = requireResult(process.execPath, [forge, 'import', root], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /flagged - \.pi\/commands\.json:.*not reconstructed/);
+  assert.equal(readText(root, path), commands);
+  const imported = yaml.parse(readText(root, '.pi/system.yaml'));
+  assert.equal(imported.integrations?.cli, undefined);
+  applyChange(root, planChange(root, [{ op: 'assign', name: imported.orchestrator.name, model: 'fixture/small' }]), true);
+  assert.equal(readText(root, path), commands, 'the omitted native commands remain intact after revision');
+  assert.ok(readJson(root, '.pi/settings.json').packages?.includes('git:github.com/mihaiiova/pi-commands@v0.1.0'), 'revision retains the native commands package');
 });
 
 test('generated files preserve existing modes and use regular creation modes without changing secret permissions', t => {
@@ -180,6 +820,92 @@ test('checked writes roll back when post-write verification fails', t => {
   }), /post-write verification failed/);
   assert.equal(readFileSync(join(root, 'original'), 'utf8'), 'before');
   assert.equal(existsSync(join(root, 'created')), false);
+});
+
+test('ordinary revisions refuse collateral native MCP exposure and codemode changes', async t => {
+  const cases = [
+    ['exposure hidden', value => { value.mcpServers.docs.exposure = 'hidden'; }, /docs\.exposure/],
+    ['exposure removed', value => { delete value.mcpServers.docs.exposure; }, /docs\.exposure/],
+    ['tool hidden', value => { value.mcpServers.docs.toolExposure = { secret: 'hidden' }; }, /docs\.toolExposure/],
+    ['tool deferred', value => { value.mcpServers.docs.toolExposure = { secret: 'deferred' }; }, /docs\.toolExposure/],
+    ['codemode enabled', value => { value.autoEnableCodemode = true; }, /autoEnableCodemode/],
+    ['codemode removed', value => { delete value.autoEnableCodemode; }, /autoEnableCodemode/],
+  ];
+  for (const [name, edit, error] of cases) await t.test(name, t => {
+    const root = project(t, pinnedModel);
+    const path = '.pi/mcp.json';
+    const value = readJson(root, path);
+    edit(value);
+    writeFileSync(join(root, path), json(value));
+    const before = snapshot(root);
+    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), error);
+    assert.deepEqual(snapshot(root), before, 'refusal leaves every file unchanged');
+  });
+});
+
+test('explicit MCP reapply refuses unrepresented exposure and codemode changes', async t => {
+  const cases = [
+    ['exposure', value => { value.mcpServers.docs.exposure = 'hidden'; }],
+    ['toolExposure', value => { value.mcpServers.docs.toolExposure = { secret: 'hidden' }; }],
+    ['autoEnableCodemode', value => { value.autoEnableCodemode = true; }],
+  ];
+  for (const [field, edit] of cases) await t.test(field, async t => {
+    const root = project(t, pinnedModel);
+    const path = '.pi/mcp.json';
+    const expected = readJson(root, path);
+    const edited = structuredClone(expected);
+    edit(edited);
+    writeFileSync(join(root, path), json(edited));
+    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native MCP/);
+    assert.throws(() => planNativeReapply(root, path), new RegExp(`Unrepresented MCP .*${field}`));
+    const mock = adapter();
+    const command = registerMaintenance(mock.pi, mock.Type, root);
+    mock.approve();
+    await command(`drift reapply ${path}`, mock.ctx);
+    assert.deepEqual(mock.dialogs, []);
+    assert.deepEqual(readJson(root, path), edited, 'refusal preserves native configuration');
+  });
+});
+
+test('explicit MCP reapply still refuses unsupported server content and stale previews', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const value = readJson(root, path);
+  value.mcpServers.docs.url = 'http://localhost:4001/mcp';
+  value.mcpServers.docs.futureOption = { preserve: true };
+  writeFileSync(join(root, path), json(value));
+  assert.throws(() => planNativeReapply(root, path), /unrepresented settings: futureOption/);
+  assert.deepEqual(readJson(root, path), value);
+  delete value.mcpServers.docs.futureOption;
+  writeFileSync(join(root, path), json(value));
+  const plan = planNativeReapply(root, path);
+  value.autoEnableCodemode = true;
+  writeFileSync(join(root, path), json(value));
+  assert.throws(() => applyChange(root, plan, true), /changed since preview/);
+  assert.deepEqual(readJson(root, path), value);
+});
+
+test('ordinary revisions refuse a manual deferred override of a modeled hidden MCP tool', t => {
+  const design = { ...pinnedModel, policies: { enforced: [{ mcp: 'docs', hide: ['secret'] }] } };
+  const root = project(t, design);
+  const path = '.pi/mcp.json';
+  const value = readJson(root, path);
+  assert.equal(value.mcpServers.docs.toolExposure.secret, 'hidden');
+  value.mcpServers.docs.toolExposure.secret = 'deferred';
+  writeFileSync(join(root, path), json(value));
+  assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /docs\.toolExposure/);
+  assert.equal(readJson(root, path).mcpServers.docs.toolExposure.secret, 'deferred');
+});
+
+test('ordinary revisions allow explicit modeled MCP policy changes without native drift', t => {
+  const root = project(t, pinnedModel);
+  const plan = planChange(root, [{ op: 'set', target: 'policies', value: { enforced: [{ mcp: 'docs', hide: ['secret'] }] } }]);
+  assert.deepEqual(JSON.parse(plan.writes['.pi/mcp.json']).mcpServers.docs.toolExposure, { secret: 'hidden' });
+  applyChange(root, plan, true);
+  assert.deepEqual(readJson(root, '.pi/mcp.json').mcpServers.docs.toolExposure, { secret: 'hidden' });
+  const remove = planChange(root, [{ op: 'set', target: 'policies', value: {} }]);
+  applyChange(root, remove, true);
+  assert.equal(readJson(root, '.pi/mcp.json').mcpServers.docs.toolExposure, undefined);
 });
 
 test('structured changes preserve comments, add/update/remove all schema entities and reconcile capabilities', t => {
@@ -305,19 +1031,17 @@ test('unmarked instructions and unrelated derived drift never get silently recon
   const plan = rebuildPlan(root);
   assert.deepEqual(plan.preview.reconciliation, ['run']);
   assert.deepEqual(plan.rebuild.reach, ['run'], 'a launcher change asks first');
-  assert.equal(plan.rebuild.automatic, false);
   applyChange(root, plan, true);
   assert.ok(!readText(root, 'run').includes('custom launcher'));
   assert.equal(rebuildPlan(root).rebuild.unchanged, true);
 });
 
-test('a rebuild that only changes text agents read is automatic', t => {
+test('a text-only rebuild is previewed without capability changes', t => {
   const root = project(t);
   olderSection(root);
   const plan = rebuildPlan(root);
   assert.deepEqual(plan.rebuild.changed, ['.pi/APPEND_SYSTEM.md']);
   assert.deepEqual(plan.rebuild.reach, []);
-  assert.equal(plan.rebuild.automatic, true);
   writeFileSync(join(root, '.forge/capabilities.json'), '{}\n');
   assert.deepEqual(rebuildPlan(root).rebuild.reach, ['.forge/capabilities.json']);
   const agent = (tools, prompt) => `---\nname: a\ntools:\n${tools.map(x => `  - ${x}`).join('\n')}\nsystemPrompt: |\n  ${prompt}\n---\n`;
@@ -421,6 +1145,69 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.equal(mock.prompts.length, prompts, 'headless sessions never prompt');
   assert.equal(readText(root, '.pi/system.yaml'), applied);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
+});
+
+test('proposal approval shows redacted exact CLI and MCP diffs and rejects a stale preview', async t => {
+  const root = project(t, pinnedModel);
+  const settings = readJson(root, '.pi/settings.json');
+  settings.apiKey = 'private-existing-token';
+  writeFileSync(join(root, '.pi/settings.json'), json(settings));
+  const mock = adapter();
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root);
+  await mock.forge('change integrations', mock.ctx);
+  const operations = [
+    { op: 'assign', name: 'lead', model: 'fixture/small' },
+    { op: 'update', target: 'cli', name: 'hello', value: { command: 'printf', args: ['--fixed', '{value}'] } },
+    { op: 'update', target: 'mcp', name: 'docs', value: { config: { url: 'https://example.org/new-mcp' } } },
+  ];
+  await mock.tools.forge_plan.execute('id', { action: 'propose', operations: json(operations) }, undefined, undefined, mock.ctx);
+  const before = readText(root, '.pi/system.yaml');
+  mock.ctx.ui.select = async title => {
+    assert.match(title, /Design diff \(\.pi\/system\.yaml\)/);
+    assert.match(title, /File: \.pi\/commands\.json \(write\)/);
+    assert.match(title, /\+\s+"command": "printf"/);
+    assert.match(title, /--fixed/);
+    assert.match(title, /https:\/\/example\.org\/new-mcp/);
+    assert.match(title, /"changedCli"/);
+    assert.match(title, /"changedMcp"/);
+    assert.doesNotMatch(title, /\[object Object\]|private-existing-token/);
+    assert.match(title, /\[redacted\]/);
+    writeFileSync(join(root, '.pi/settings.json'), json({ ...settings, theme: 'changed-after-preview' }));
+    return 'Apply';
+  };
+  await mock.endTurn();
+  assert.equal(readText(root, '.pi/system.yaml'), before);
+  assert.ok(mock.notices.some(([message, level]) => level === 'error' && /changed since|preview again|changed after/i.test(message)));
+});
+
+test('approval refuses token-shaped and known secrets in changed CLI arguments without exposing them', async t => {
+  for (const secret of ['ghp_0123456789abcdefghijklmnop', 'existing-private-value']) {
+    const root = project(t, pinnedModel);
+    const settings = readJson(root, '.pi/settings.json');
+    settings.apiKey = 'existing-private-value';
+    writeFileSync(join(root, '.pi/settings.json'), json(settings));
+    const operations = [{ op: 'update', target: 'cli', name: 'hello', value: { args: [secret] } }];
+    const plan = planChange(root, operations);
+    assert.throws(() => approvalPreview(root, plan), /Approval refused: changed sensitive values/);
+    const before = snapshot(root);
+    const mock = adapter();
+    mock.forge = registerMaintenance(mock.pi, mock.Type, root);
+    await mock.forge('change command', mock.ctx);
+    await mock.tools.forge_plan.execute('id', { action: 'propose', operations: json(operations) }, undefined, undefined, mock.ctx);
+    mock.approve();
+    await mock.endTurn();
+    assert.equal(mock.prompts.length, 0, 'no hidden command is presented for approval');
+    assert.ok(mock.notices.some(([message, level]) => level === 'error' && /Approval refused/.test(message)));
+    assert.doesNotMatch(JSON.stringify([mock.notices, mock.prompts, mock.messages]), new RegExp(secret));
+    assert.deepEqual(snapshot(root), before);
+  }
+});
+
+test('oversized approval previews are refused instead of truncated', t => {
+  const root = project(t);
+  const plan = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
+  plan.preview.warnings.push('x'.repeat(100001));
+  assert.throws(() => approvalPreview(root, plan), /exceeds 100000 characters.*Nothing applied/);
 });
 
 test('approval dialog warns when reconciliation overwrites a hand-edited launcher', async t => {
@@ -557,15 +1344,13 @@ test('discover checks named CLIs locally without registry approval', async t => 
   await assert.rejects(mock.tools.forge_plan.execute('id', { action: 'discover', clis: 'sh; rm -rf /' }, undefined, undefined, mock.ctx), /plain command names/);
 });
 
-test('env variables are declared by proposal and their values set only by the user command', async t => {
+test('env variables are declared by proposal and configured outside Faur', async t => {
   const root = project(t);
   const mock = adapter();
-  let typed = 'github_pat_secret_value';
-  mock.ctx.ui.input = async () => typed;
   mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   const command = arg => mock.forge(arg, mock.ctx);
   await command('env set GITHUB_PAT');
-  assert.ok(mock.notices.some(([message, level]) => level === 'error' && /not declared in integrations\.env/.test(message)));
+  assert.ok(mock.notices.some(([message, level]) => level === 'error' && /was removed/.test(message)));
   await command('declare a GitHub token');
   await assert.rejects(mock.tools.forge_plan.execute('id', { action: 'propose', operations: json([{ op: 'add', target: 'env', name: 'NODE_OPTIONS', value: {} }]) }, undefined, undefined, mock.ctx), /reserved/);
   await mock.tools.forge_plan.execute('id', { action: 'propose', operations: json([{ op: 'add', target: 'env', name: 'GITHUB_PAT', value: { secret: true } }]) }, undefined, undefined, mock.ctx);
@@ -575,20 +1360,12 @@ test('env variables are declared by proposal and their values set only by the us
   assert.match(readText(root, '.env.example'), /^GITHUB_PAT=$/m);
   await command('env');
   assert.ok(mock.notices.some(([message]) => message.includes('GITHUB_PAT (secret): not set')));
-  writeFileSync(join(root, '.env'), '# keep me\nOTHER=1\n');
+  writeFileSync(join(root, '.env'), 'GITHUB_PAT=external-secret\n');
   await command('env set GITHUB_PAT');
-  assert.equal(readText(root, '.env'), '# keep me\nOTHER=1\nGITHUB_PAT=github_pat_secret_value\n');
-  assert.equal(statSync(join(root, '.env')).mode & 0o777, 0o600, 'setting a secret remains private');
-  typed = 'rotated';
-  await command('env set GITHUB_PAT');
-  assert.equal(readText(root, '.env'), '# keep me\nOTHER=1\nGITHUB_PAT=rotated\n');
+  assert.equal(readText(root, '.env'), 'GITHUB_PAT=external-secret\n');
   await command('env');
   assert.ok(mock.notices.some(([message]) => message.includes('GITHUB_PAT (secret): .env')));
-  const everything = JSON.stringify([mock.messages, mock.notices]);
-  assert.ok(!everything.includes('github_pat_secret_value') && !everything.includes('rotated'), 'values never reach the model or notices');
-  typed = undefined;
-  await command('env set GITHUB_PAT');
-  assert.equal(readText(root, '.env'), '# keep me\nOTHER=1\nGITHUB_PAT=rotated\n');
+  assert.ok(!JSON.stringify([mock.messages, mock.notices]).includes('external-secret'));
 });
 
 test('document formats are proposed as operations and land in the writer instructions', t => {
@@ -630,18 +1407,22 @@ test('/faur sync on a project that pins no Forge package rebuilds it with this F
   const run = async (request) => { mock.notices.length = 0; await mock.forge(request, mock.ctx); return mock.notices.map(n => n[0]).join('\n'); };
   assert.match(await run('sync'), new RegExp(`pins no Faur package\\. Already built with Forge ${pkg.version}; nothing to rebuild`));
   olderSection(root);
+  mock.approve();
   assert.match(await run('sync'), /pins no Faur package\. Rebuilt with Forge [^:]+: \.pi\/APPEND_SYSTEM\.md/);
   assert.match(await run('status'), /Faur: not pinned; the project runs on Pi and its own packages/);
 });
 
-test('/faur sync rebuilds with this Faur: text directly, reach changes (such as dropping an old Faur pin) after confirmation', async t => {
+test('/faur sync requires confirmation for text and reach changes', async t => {
   const root = project(t, pinnedModel);
   const mock = adapter();
   mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   const run = async (request, ctx = mock.ctx) => { mock.notices.length = 0; await mock.forge(request, ctx); return mock.notices.map(n => n[0]).join('\n'); };
   assert.match(await run('sync'), new RegExp(`Already built with Forge ${pkg.version}; nothing to rebuild`));
   olderSection(root);
-  assert.match(await run('sync'), new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/APPEND_SYSTEM\\.md\\.`), 'no confirmation for text');
+  assert.match(await run('sync'), /Cancelled; nothing rebuilt/);
+  assert.match(readText(root, '.pi/APPEND_SYSTEM.md'), /Older wording/);
+  mock.approve();
+  assert.match(await run('sync'), new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/APPEND_SYSTEM\\.md\\.`));
   assert.doesNotMatch(readText(root, '.pi/APPEND_SYSTEM.md'), /Older wording/);
   // A project from v0.30.0 or earlier still pins Forge; the rebuild drops it.
   const settings = JSON.parse(readText(root, '.pi/settings.json'));
@@ -652,7 +1433,9 @@ test('/faur sync rebuilds with this Faur: text directly, reach changes (such as 
   process.stderr.write = text => { stderr += text; return true; };
   try { await run('sync', { ...mock.ctx, hasUI: false }); } finally { process.stderr.write = write; }
   assert.match(stderr, /Syncing needs interactive confirmation; nothing was changed/);
+  mock.ctx.ui.confirm = async () => false;
   assert.match(await run('sync'), /Cancelled; nothing rebuilt\./, 'a package change asks first');
+  mock.ctx.ui.confirm = async () => true;
   mock.approve();
   assert.match(await run('sync'), /still pinned git:github\.com\/mihaiiova\/pi-forge@v0\.30\.0\. Rebuilt with Forge [^:]+: \.pi\/settings\.json/);
   assert.ok(!JSON.parse(readText(root, '.pi/settings.json')).packages.some(p => p.includes('pi-forge')), 'the pin is gone');
@@ -670,6 +1453,7 @@ test('applied changes and rebuilds reload Pi unless the launcher or packages cha
   mock.ctx.reload = async () => { reloads.push('reload'); };
   mock.forge = registerMaintenance(mock.pi, mock.Type, root);
   olderSection(root);
+  mock.approve();
   await mock.forge('sync', mock.ctx);
   assert.deepEqual(reloads, ['reload']);
   assert.match(mock.notices.at(-1)[0], new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/APPEND_SYSTEM\\.md\\. Reloading\\.$`));
@@ -843,7 +1627,7 @@ test('/faur check reports a missing orchestrator extension from the live registr
   assert.ok(report.capabilities.some(c => c.agent === 'lead' && c.name === 'missing_tool' && c.status === 'missing'));
 });
 
-test('/faur env set selects a declared integration secrets file without exposing the value', async t => {
+test('/faur env set cannot write a declared integration secrets file', async t => {
   const root = project(t);
   const mock = adapter();
   mock.ctx.ui.input = async () => 'integration-secret-test-value';
@@ -856,10 +1640,9 @@ test('/faur env set selects a declared integration secrets file without exposing
   mock.approve();
   await mock.endTurn();
   await mock.forge('env set SERVICE_KEY --file .forge/service.env', mock.ctx);
-  assert.equal(readText(root, '.forge/service.env'), 'SERVICE_KEY=integration-secret-test-value\n');
+  assert.equal(readText(root, '.forge/service.env'), '');
+  assert.ok(mock.notices.some(([message, level]) => level === 'error' && message.includes('was removed')));
   assert.ok(!JSON.stringify([mock.messages, mock.notices]).includes('integration-secret-test-value'));
-  await mock.forge('env set SERVICE_KEY --file .forge/other.env', mock.ctx);
-  assert.ok(mock.notices.some(([message, level]) => level === 'error' && message.includes('not a declared integration secretsFile')));
 });
 
 test('setup commands appear in the approval execution surface', t => {
@@ -882,6 +1665,36 @@ test('interactive setup requires confirmation and lists commands', async t => {
   assert.equal(existsSync(join(root, 'ready')), false);
   mock.approve(); await mock.forge('setup', mock.ctx);
   assert.equal(existsSync(join(root, 'ready')), true);
+});
+
+test('interactive setup refuses redacted install commands without prompting or executing', async t => {
+  for (const secret of ['ghp_0123456789abcdefghijklmnop', 'existing-private-value']) {
+    const root = project(t);
+    const settings = readJson(root, '.pi/settings.json');
+    settings.apiKey = 'existing-private-value';
+    writeFileSync(join(root, '.pi/settings.json'), json(settings));
+    writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify({ ...model, setup: [{ description: 'prepare', check: { file: 'ready' }, install: `touch ready; printf '%s' '${secret}' > /dev/null` }] }));
+    const mock = adapter(); mock.forge = registerMaintenance(mock.pi, mock.Type, root);
+    mock.approve();
+    await mock.forge('setup', mock.ctx);
+    assert.equal(existsSync(join(root, 'ready')), false);
+    assert.equal(mock.dialogs.length, 0);
+    assert.ok(mock.notices.some(([message, level]) => level === 'error' && /Setup refused/.test(message)));
+    assert.doesNotMatch(JSON.stringify([mock.notices, mock.dialogs, mock.messages]), new RegExp(secret));
+  }
+});
+
+test('interactive setup refuses a sensitive description without prompting or executing', async t => {
+  const root = project(t);
+  const secret = 'ghp_0123456789abcdefghijklmnop';
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify({ ...model, setup: [{ description: `prepare ${secret}`, check: { file: 'ready' }, install: 'touch ready' }] }));
+  const mock = adapter(); mock.forge = registerMaintenance(mock.pi, mock.Type, root);
+  mock.approve();
+  await mock.forge('setup', mock.ctx);
+  assert.equal(existsSync(join(root, 'ready')), false);
+  assert.equal(mock.dialogs.length, 0);
+  assert.ok(mock.notices.some(([message, level]) => level === 'error' && /Setup refused/.test(message)));
+  assert.doesNotMatch(JSON.stringify([mock.notices, mock.dialogs, mock.messages]), new RegExp(secret));
 });
 
 test('proposal approval displays new setup check and install commands', async t => {

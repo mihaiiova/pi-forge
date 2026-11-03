@@ -1,6 +1,5 @@
-/** Project `.env` values for declared `integrations.env` names. Values are
- * written only from a direct user command and never returned to the model. */
-import { readText, atomicWrite, safePath } from './maintenance-store.mjs';
+/** Status of declared environment variables, without returning their values. */
+import { readText, safePath } from './maintenance-store.mjs';
 import { constants, openSync, fstatSync, readFileSync, closeSync } from 'node:fs';
 import { integrationSecrets, secretFileProblem } from './integration-secrets.mjs';
 
@@ -39,26 +38,4 @@ export function envStatus(root, model, environment = process.env) {
     secret: e.secret === true,
     set: fromFile.has(e.name) ? '.env' : environment[e.name] ? 'shell environment' : secretNames.find(([, names]) => names.has(e.name))?.[0] ?? 'not set',
   }));
-}
-
-/** Replace (or append) one NAME=value line, keeping every other line. */
-export function withEnvValue(text, name, value) {
-  if (/[\r\n\0]/.test(value)) throw new Error('Values must be a single line');
-  const lines = String(text ?? '').split('\n');
-  if (lines.at(-1) === '') lines.pop();
-  const entry = `${name}=${value}`;
-  const index = lines.findIndex(line => line.match(LINE)?.[1] === name);
-  if (index >= 0) lines[index] = entry;
-  else lines.push(entry);
-  return `${lines.join('\n')}\n`;
-}
-
-export function setEnvValue(root, model, name, value, destination = '.env') {
-  if (!declaredEnv(model).some(e => e.name === name)) throw new Error(`${name} is not declared in integrations.env; propose declaring it first`);
-  if (destination !== '.env') {
-    if (!integrationSecrets(model).includes(destination)) throw new Error('Destination is not a declared integration secretsFile');
-    const problem = secretFileProblem(root, destination);
-    if (problem) throw new Error(`Integration secretsFile ${destination}: ${problem}`);
-  }
-  atomicWrite(root, destination, withEnvValue(readText(root, destination), name, value));
 }
