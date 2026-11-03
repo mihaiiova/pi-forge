@@ -1,12 +1,9 @@
 schema: 1
-name: seo-agent-system
-description: "SEO analysis + article drafting"
+name: notes-helper
+description: Answers questions about the notes in this folder
 orchestrator:
-  name: orchestrator
-  description: "Primary SEO agent that coordinates the system"
+  name: helper
   prompt: |
-    You coordinate the SEO system. Delegate analysis to specialists and draft
-    articles, then write outputs under data/.
-  model: provider-a/model-large
-  thinking: medium
-  tools: [read, grep, find, ls, bash, edit, write, subagent]
+    You answer questions about the notes in this folder. Cite file paths.
+  model: anthropic/claude-sonnet-5-5
+  tools: [read, grep, find, ls]

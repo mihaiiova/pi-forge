@@ -11,9 +11,9 @@ working as your needs change.
 
 **The specialized agent is the product. Pi is its runtime.** Forge composes
 Pi's own resources and adds no workflow engine or scheduler of its own. In
-this release a generated agent runs with Pi plus the Forge package it pins
-(which supplies memory, declared commands and approval gates), started through
-`./run`.
+this release a generated agent runs on Pi alone, plus the Forge package only
+when its design needs one (declared commands, MCP approval gates or headless
+workflows), started through `./run`.
 
 > **Direction (2026-11-02).** Forge is becoming **Faur**, and generated
 > projects are becoming ordinary Pi projects that run with plain `pi`, with
@@ -184,27 +184,17 @@ See [`schema.md`](skills/forge/schema.md) for every field, validation
 rule and the file-ownership contract, and [docs/agent-factory.md](docs/agent-factory.md)
 for the original architecture and MVP plan (kept as history).
 
-### Memory: the orchestrator learns across sessions
-
-Always on. The orchestrator keeps short notes (up to 4000 characters) in
-`.pi/MEMORY.md`:
-corrections, preferences, and tools or specialists that failed and what worked
-instead. It writes them itself with a `memory` tool, is reminded to after a task
-with failed tool calls, and loads them at the start of each session. Subagents
-don't see them. The file is plain Markdown you can edit. `/faur review`
-reads it, so a lesson that should always hold can become a previewed change to a
-prompt, skill or tool.
-
 ### Prompts: roles, not tool manuals
 
 Each agent's prompt describes its role, goals and rules. What it can use —
 tools, MCP servers, commands, skills, and for the orchestrator its specialists —
 is generated from `system.yaml` into a "What you can use" section, so removing
 an integration also removes it from what agents are told. The section is part of
-the generated project (each agent file, and `.pi/CAPABILITIES.md` for the
-orchestrator), so it changes when the system is regenerated, never because the
-Forge tooling was updated. The same holds for the runtime agents use (memory,
-command tools, `request_permission`): it comes from the Forge version that
+the generated project (each agent file, and after the orchestrator's prompt in
+`.pi/APPEND_SYSTEM.md`, between markers), so it changes when the system is
+regenerated, never because the Forge tooling was updated. The same holds for
+the runtime agents use when the design needs one (command tools,
+`request_permission`, MCP approvals): it comes from the Forge version that
 last built the project, recorded in `.forge/build.json`. A change that removes
 a capability lists any prompt, workflow or policy that still mentions it, and
 `/faur review` flags prompts that describe specific tools.
@@ -239,27 +229,16 @@ A generated project starts with `./run`, which isolates it from your global Pi
 configuration (own config dir, own Pi logins: `/login` once per project). Your
 shell environment, including any credentials in it, is still inherited, and
 `./run` is not an OS sandbox.
-On interactive startup Forge warns about declared model providers without
-configured credentials. For example, use `/login deepseek` in `./run` or set
+`/faur check` reports declared model providers without configured
+credentials. For example, use `/login deepseek` in `./run` or set
 `DEEPSEEK_API_KEY` before starting it. Run `./run` once to install the pinned
 packages before checking extension-provided tools or starting a named workflow.
 On first installation Pi may leave npm output pipes open briefly after exit.
 
-A coding orchestrator can opt into repository instructions in `.pi/system.yaml`:
-
-```yaml
-orchestrator:
-  # Keep the existing name, model and tools; add:
-  projectContext: [AGENTS.md]
-```
-
-Regenerate the project through `/faur` and restart `./run`. The listed files
-are appended in order to the orchestrator's prompt; missing files and paths
-resolving outside the project are skipped and reported by `/faur check`.
-Their contents are sent to the model, so do not list credentials, and review
-untrusted instructions for prompt injection. A non-empty list also enables
-Pi's `edit` tool, which can edit **any accessible file**, not just those listed.
-This is not a filesystem sandbox.
+Pi loads the project's `AGENTS.md`, and any in parent folders, into the
+orchestrator's prompt, with or without `./run`; generation warns about files
+from outside the project. Their contents are sent to the model, so review
+untrusted instructions for prompt injection. Specialists do not receive them.
 
 Inside it, `/faur` is the one command:
 
@@ -309,12 +288,14 @@ adversarial evidence.
 
 #### The Forge package: pin, update, roll back
 
-A generated project pins one Forge release as a Pi package in its
-`.pi/settings.json`, for example `git:github.com/mihaiiova/pi-forge@v0.19.0`.
+A generated project whose design needs the Forge runtime pins one Forge
+release as a Pi package in its `.pi/settings.json`, for example
+`git:github.com/mihaiiova/pi-forge@v0.19.0`; a project that does not pins
+none and is maintained from a Faur installed in your own Pi.
 Nothing is copied into the project. On the first `./run`, Pi installs that
 exact tag under `.pi/git/` in the project (ignored by the generated
 `.gitignore`, like `.pi/npm/`) and loads the
-agent runtime (memory, declared commands, `request_permission`) and
+agent runtime (declared commands, `request_permission`, MCP approvals) and
 `/faur` from it. The first start therefore needs network access to
 GitHub. Pi never moves a pinned tag by itself.
 

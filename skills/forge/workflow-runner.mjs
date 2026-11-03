@@ -99,7 +99,9 @@ if (!concurrent) {
   }
   process.on('exit', () => { try { if (readFileSync(lock, 'utf8') === String(process.pid)) rmSync(lock, { force: true }); } catch {} });
 }
-const piArgs = ['--approve', '--no-context-files', ...prompts, '--mode', 'json', '-p', prompt];
+// Pi loads the project's APPEND_SYSTEM.md and AGENTS.md itself; prompt args
+// are only for callers that pass their own.
+const piArgs = ['--approve', ...prompts, '--mode', 'json', '-p', prompt];
 const subagentRoot = join(temp, 'subagents');
 const env = { ...process.env, FORGE_WORKFLOW: workflow.name, FORGE_TRIGGER: 'headless', FORGE_RUN_ID: runId, FORGE_APPROVAL_FILE: approvalFile, PI_SUBAGENTS_TEMP_ROOT: subagentRoot };
 delete env.PI_SUBAGENT_CHILD;

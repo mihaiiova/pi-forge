@@ -15,7 +15,7 @@ test('CLI generation installs no copied Forge tooling', t => {
   copyFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), join(root, '.pi/system.yaml'));
   execFileSync(process.execPath, [join(repo, 'skills/forge/forge.mjs'), 'generate', root]);
   const settings = JSON.parse(readFileSync(join(root, '.pi/settings.json'), 'utf8'));
-  assert.ok(settings.packages.includes(`git:github.com/mihaiiova/pi-forge@v${version}`));
+  assert.equal(settings.packages, undefined, 'the minimal agent pins no Forge package and nothing else');
   assert.deepEqual(readdirSync(join(root, '.forge')).sort(), ['build.json', 'capabilities.json']);
   assert.deepEqual(JSON.parse(readFileSync(join(root, '.forge/build.json'), 'utf8')), { version, declarations: { scaffolds: [], vendoredSkills: [], registrySkills: [] } }, 'the build records declaration identities, not ownership fingerprints');
 });

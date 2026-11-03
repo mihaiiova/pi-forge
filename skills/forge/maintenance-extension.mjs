@@ -9,6 +9,7 @@ import { inspectProject, planChange, applyChange, publicChangePreview, withSkill
 import { checkProject } from './check.mjs';
 import { searchSkills, resolveRegistrySkill } from './registry-skills.mjs';
 import { checkRelease, proposeUpdate, previewUpdate, applyUpdate, discardUpdate, forgePin } from './package-update.mjs';
+import { FORGE_SOURCE } from './deps.mjs';
 import { json, readText, readJson } from './maintenance-store.mjs';
 import { fetchDocument, documentSlice, checkUrl, fetchJson } from './maintenance-fetch.mjs';
 import { envStatus, setEnvValue } from './maintenance-env.mjs';
@@ -18,6 +19,9 @@ import { launchCheck } from './launch-check.mjs';
 import { checkAgent } from './check.mjs';
 import { registerAgent } from './agent-extension.mjs';
 import { unmetSetup, installSetup } from './setup.mjs';
+
+/** The environment variable Pi reads for a provider's API key, when it has a common one. */
+const PROVIDER_ENV = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', openrouter: 'OPENROUTER_API_KEY', google: 'GEMINI_API_KEY' };
 
 export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, updates = {} } = {}) {
   let armed = false;
@@ -191,8 +195,9 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     } catch { /* an invalid model is reported by the commands that use it */ }
   });
   pi.on('session_shutdown', () => { armed = false; pending = null; });
-  // What agents use while working comes from the pinned Forge package.
-  const permissions = registerAgent(pi, Type, root, { maintaining: () => armed });
+  // What agents use while working comes from the pinned Forge package, when
+  // the design needs one.
+  const permissions = registerAgent(pi, Type, root);
   /**
    * Regenerate from system.yaml with this version. Text agents read is
    * rewritten without asking; anything that changes what they can run or
@@ -219,7 +224,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
   const check = (ctx) => {
     const report = checkAgent(root, loaded());
     const result = report.checks;
-    const evidence = report.capabilities.map(c => `- ${c.agent}: ${c.name} (${c.provider}): ${c.status}; ${c.fix}`).join('\n');
+    const evidence = [report.capabilities.map(c => `- ${c.agent}: ${c.name} (${c.provider}): ${c.status}; ${c.fix}`).join('\n'), credentialNotes(ctx)].filter(Boolean).join('\n');
     const versions = report.versions ? `Build: ${report.versions.build ?? 'unknown'}; tooling: ${report.versions.tooling}.${report.versions.fix ? ` ${report.versions.fix}` : ''}` : '';
     if (result.ok && report.ok) {
       const summary = report.capabilities.some(c => c.status === 'not verifiable' || c.status.startsWith('last seen ')) ? 'No missing capabilities found; some are not verified now.' : 'All checks passed: system.yaml is valid and the generated files match it.';
@@ -236,10 +241,26 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
       evidence,
     ].join('\n\n'), 'warning');
   };
+  /** Providers this session's Pi has no credentials for. Only Pi's
+   * configured-auth status is queried; no credential value is read. */
+  const credentialNotes = (ctx) => {
+    if (typeof ctx?.modelRegistry?.getProviderAuthStatus !== 'function') return '';
+    let model;
+    try { model = parsedModel(readText(root, '.pi/system.yaml')); } catch { return ''; }
+    const providers = [...new Set([model.orchestrator, ...(model.agents ?? [])].map(agent => agent?.model?.split('/')[0]).filter(Boolean))];
+    return providers.filter(provider => !ctx.modelRegistry.getProviderAuthStatus(provider).configured)
+      .map(provider => `- credentials: provider ${provider} has none in this Pi. Use /login ${provider}${PROVIDER_ENV[provider] ? ` or set ${PROVIDER_ENV[provider]}` : ''} before running the agent (inside ./run for its own login).`).join('\n');
+  };
+  /** The pinned Forge release tag, or null for a project that runs on Pi alone. */
+  const pinnedTag = () => {
+    const packages = (() => { try { return readJson(root, '.pi/settings.json').packages ?? []; } catch { return []; } })();
+    return packages.some(p => (typeof p === 'string' ? p : p?.source)?.startsWith(`${FORGE_SOURCE}@`)) ? forgePin(root).tag : null;
+  };
   const status = async (ctx) => {
     const s = projectStatus(root);
     let forge;
-    try {
+    if (pinnedTag() === null) forge = 'not pinned; the project runs on Pi alone. /faur sync rebuilds it with this Faur.';
+    else try {
       const release = await checkRelease(root, updates);
       forge = `${release.installed} (${release.newer ? `${release.latest} available: /faur sync` : 'newest release'})`;
     } catch (error) {
@@ -266,6 +287,14 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, u
     await ctx.waitForIdle();
     hide();
     pending = null;
+    if (pinnedTag() === null) {
+      // No pin to move: the Faur running this command is the one that builds it.
+      const { message, plan } = await rebuild(ctx);
+      const text = `This project pins no Forge package. ${message}`;
+      if (plan?.applied && !plan.restart) { await reload(ctx, text); return; }
+      tell(ctx, text);
+      return;
+    }
     const proposal = await proposeUpdate(root, updates);
     if (proposal.kind === 'current') {
       const { message, plan } = await rebuild(ctx);

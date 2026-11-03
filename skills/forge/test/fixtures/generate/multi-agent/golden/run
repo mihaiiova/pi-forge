@@ -15,28 +15,19 @@ if ! command -v pi >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
+export PI_CODING_AGENT_DIR="$ROOT/.forge/pi-home"
+mkdir -p "$PI_CODING_AGENT_DIR"
+
+if [[ "${1:-}" == "--workflow" ]]; then
+  if [[ ! -f "$ROOT/.pi/git/github.com/mihaiiova/pi-forge/skills/forge/workflow-runner.mjs" ]]; then echo '{"workflow":null,"runId":null,"status":"configuration_error","answer":"","message":"The Forge package is not installed in this project yet. Run ./run once, then retry."}'; exit 2; fi
+  exec node "$ROOT/.pi/git/github.com/mihaiiova/pi-forge/skills/forge/workflow-runner.mjs" 'W3sibmFtZSI6ImFuYWx5emUtYW5kLWRyYWZ0IiwiZGVzY3JpcHRpb24iOiJBbmFseXplIFNFTyBkYXRhLCBwaWNrIG9wcG9ydHVuaXRpZXMsIGRyYWZ0IGFydGljbGVzIiwic2tpbGwiOiJhbmFseXplLWFuZC1kcmFmdCIsInRyaWdnZXIiOnsia2luZCI6Im1hbnVhbCJ9LCJlbnRyeSI6Im9yY2hlc3RyYXRvciIsImFnZW50cyI6WyJzZW8tYW5hbHlzdCIsImFydGljbGUtd3JpdGVyIiwicmVzZWFyY2hlciJdLCJpbnB1dHMiOlsiZGF0YS9vcHBvcnR1bml0aWVzLyoubWQiXSwib3V0cHV0cyI6WyJkYXRhL2FuYWx5c2VzLyIsImRhdGEvYXJ0aWNsZXMvIl0sImFwcHJvdmFsIjoicHVibGlzaCIsInZlcmlmeSI6ImEgZHJhZnQgZXhpc3RzIHVuZGVyIGRhdGEvYXJ0aWNsZXMvIiwibGVhZCI6Im9yY2hlc3RyYXRvciJ9XQ==' -- "$@"
+fi
 
 if [[ ! -f ".pi/system.yaml" ]]; then
-  if [[ "${1:-}" == "--workflow" ]]; then
-    if [[ ! -f "$ROOT/.pi/git/github.com/mihaiiova/pi-forge/skills/forge/workflow-runner.mjs" ]]; then echo '{"workflow":null,"runId":null,"status":"configuration_error","answer":"","message":"The Forge package is not installed in this project yet. Run ./run once, then retry."}'; exit 2; fi
-    exec node "$ROOT/.pi/git/github.com/mihaiiova/pi-forge/skills/forge/workflow-runner.mjs" 'W3sibmFtZSI6ImFuYWx5emUtYW5kLWRyYWZ0IiwiZGVzY3JpcHRpb24iOiJBbmFseXplIFNFTyBkYXRhLCBwaWNrIG9wcG9ydHVuaXRpZXMsIGRyYWZ0IGFydGljbGVzIiwic2tpbGwiOiJhbmFseXplLWFuZC1kcmFmdCIsInRyaWdnZXIiOnsia2luZCI6Im1hbnVhbCJ9LCJlbnRyeSI6Im9yY2hlc3RyYXRvciIsImFnZW50cyI6WyJzZW8tYW5hbHlzdCIsImFydGljbGUtd3JpdGVyIiwicmVzZWFyY2hlciJdLCJpbnB1dHMiOlsiZGF0YS9vcHBvcnR1bml0aWVzLyoubWQiXSwib3V0cHV0cyI6WyJkYXRhL2FuYWx5c2VzLyIsImRhdGEvYXJ0aWNsZXMvIl0sImFwcHJvdmFsIjoicHVibGlzaCIsInZlcmlmeSI6ImEgZHJhZnQgZXhpc3RzIHVuZGVyIGRhdGEvYXJ0aWNsZXMvIiwibGVhZCI6Im9yY2hlc3RyYXRvciJ9XQ==' -- "$@"
-  fi
   echo "run: .pi/system.yaml not found in $ROOT" >&2
   exit 1
 fi
 
-export PI_CODING_AGENT_DIR="$ROOT/.forge/pi-home"
-mkdir -p "$PI_CODING_AGENT_DIR"
-
 # The Pi config is separate; the caller's environment is still inherited.
 # Log in for this context (`./run`, then `/login`), or export a provider key.
-# The orchestrator's prompt: authored instructions, then what it can use.
-prompts=()
-for f in .pi/APPEND_SYSTEM.md .pi/CAPABILITIES.md; do
-  if [[ -f "$f" ]]; then prompts+=(--append-system-prompt "$f"); fi
-done
-if [[ "${1:-}" == "--workflow" ]]; then
-  if [[ ! -f "$ROOT/.pi/git/github.com/mihaiiova/pi-forge/skills/forge/workflow-runner.mjs" ]]; then echo '{"workflow":null,"runId":null,"status":"configuration_error","answer":"","message":"The Forge package is not installed in this project yet. Run ./run once, then retry."}'; exit 2; fi
-  exec node "$ROOT/.pi/git/github.com/mihaiiova/pi-forge/skills/forge/workflow-runner.mjs" 'W3sibmFtZSI6ImFuYWx5emUtYW5kLWRyYWZ0IiwiZGVzY3JpcHRpb24iOiJBbmFseXplIFNFTyBkYXRhLCBwaWNrIG9wcG9ydHVuaXRpZXMsIGRyYWZ0IGFydGljbGVzIiwic2tpbGwiOiJhbmFseXplLWFuZC1kcmFmdCIsInRyaWdnZXIiOnsia2luZCI6Im1hbnVhbCJ9LCJlbnRyeSI6Im9yY2hlc3RyYXRvciIsImFnZW50cyI6WyJzZW8tYW5hbHlzdCIsImFydGljbGUtd3JpdGVyIiwicmVzZWFyY2hlciJdLCJpbnB1dHMiOlsiZGF0YS9vcHBvcnR1bml0aWVzLyoubWQiXSwib3V0cHV0cyI6WyJkYXRhL2FuYWx5c2VzLyIsImRhdGEvYXJ0aWNsZXMvIl0sImFwcHJvdmFsIjoicHVibGlzaCIsInZlcmlmeSI6ImEgZHJhZnQgZXhpc3RzIHVuZGVyIGRhdGEvYXJ0aWNsZXMvIiwibGVhZCI6Im9yY2hlc3RyYXRvciJ9XQ==' "${prompts[@]}" -- "$@"
-fi
-exec pi --approve --no-context-files ${prompts[@]+"${prompts[@]}"} "$@"
+exec pi --approve "$@"

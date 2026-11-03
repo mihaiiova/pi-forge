@@ -42,14 +42,16 @@ async function confirmChange(root, ctx, title, ops) {
   return applyChange(root, plan, true);
 }
 
-export function registerPermissions(pi, Type, root) {
+/** `runtime: false` returns only the /faur permissions handler: the design
+ * declares no commands, so no command tools or request_permission load. */
+export function registerPermissions(pi, Type, root, { runtime = true } = {}) {
   const child = process.env.PI_SUBAGENT_CHILD === '1';
   const model = loadModel(root);
   const allowedForSession = new Set();
   pi.on('session_start', () => allowedForSession.clear());
 
   const mayRun = (entry) => child || cliAgents(model, entry.name).includes(model.orchestrator?.name);
-  for (const entry of model ? cliEntries(model).filter(mayRun) : []) {
+  for (const entry of runtime && model ? cliEntries(model).filter(mayRun) : []) {
     const params = placeholders(entry.args);
     pi.registerTool({
       name: cliToolName(entry.name),
@@ -77,7 +79,7 @@ export function registerPermissions(pi, Type, root) {
   }
 
   if (child) return;
-  pi.registerTool({
+  if (runtime) pi.registerTool({
     name: 'request_permission',
     label: 'Request permission',
     description: 'Ask the user to let you run a command you have no tool for. Propose a reusable shape: fixed words in args, and "{name}" for a value you supply (including an existing path), or "{name:file}" to write your text to a temporary file and pass its path for the parts that change, with their values for this call. The user can allow it once, save it as a permanent command tool, or deny it. Runs without a shell.',

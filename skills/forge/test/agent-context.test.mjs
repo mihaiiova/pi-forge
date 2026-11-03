@@ -67,7 +67,7 @@ test("each agent's section lists exactly what it has", () => {
   assert.equal(capabilitySection(model, 'nobody'), '');
 });
 
-test('CAPABILITIES.md lists exactly the MCP tools .pi/mcp.json exposes', () => {
+test("the lead's generated section lists exactly the MCP tools .pi/mcp.json exposes", () => {
   const doc = { ...model, integrations: { ...model.integrations, mcp: [
     { name: 'posthog', config: { url: 'https://mcp.posthog.com/mcp', includeTools: ['query', 'list_insights', 'delete_*'], excludeTools: ['delete_*'], approveTools: ['query'] } },
     { name: 'openseo', config: { url: 'http://localhost:3002/mcp', excludeTools: ['drop_site'], approveTools: true } },
@@ -76,7 +76,7 @@ test('CAPABILITIES.md lists exactly the MCP tools .pi/mcp.json exposes', () => {
   const { files } = generateProject(doc, {}, { piPackages: pkg.pi.packages });
   const read = (path) => files.find((f) => f.path === path).content;
   const servers = JSON.parse(read('.pi/mcp.json')).mcpServers;
-  const capabilities = read('.pi/CAPABILITIES.md');
+  const capabilities = read('.pi/APPEND_SYSTEM.md');
   const line = (name) => capabilities.split('\n').find((l) => l.startsWith(`  - \`${name}\` (`));
   const tools = (name, exposure) => Object.entries(servers[name].toolExposure ?? {}).filter(([, e]) => e === exposure).map(([t]) => `\`mcp__${name}__${t}\``);
 
@@ -93,12 +93,13 @@ test('CAPABILITIES.md lists exactly the MCP tools .pi/mcp.json exposes', () => {
   assert.match(line('plain'), /\(all tools; tools named `mcp__plain__<tool>`, found with tool_search\)$/);
 });
 
-test('subagent files carry their section; the orchestrator file stays the authored prompt', () => {
+test('every agent file carries its own section: specialists in frontmatter, the lead after its prompt', () => {
   const { files } = generateProject(model, {}, { piPackages: pkg.pi.packages });
   const seo = files.find((f) => f.path === '.pi/agents/seo.md').content;
   assert.match(seo, /systemPrompt: \|\n  Research\.\n  \n  ## What you can use\n/);
   const append = files.find((f) => f.path === '.pi/APPEND_SYSTEM.md').content;
-  assert.doesNotMatch(append, /What you can use/);
+  assert.ok(append.includes(`${model.orchestrator.prompt}\n<!-- forge:derived v1 begin`), 'authored prompt first');
+  assert.ok(append.includes(capabilitySection(model, 'lead')), 'then the generated section');
 });
 
 test('removing a capability lists the instructions that still mention it', () => {
@@ -128,28 +129,10 @@ test('the change preview carries stale mentions so the proposal can fix them', (
   assert.equal(fixed.preview.staleMentions, undefined);
 });
 
-test("the orchestrator's section is build output, added at session start only when Pi was not launched with it", (t) => {
-  const root = project(t);
-  const capabilities = readFileSync(join(root, '.pi/CAPABILITIES.md'), 'utf8');
-  assert.equal(capabilities, capabilitySection(model, 'lead'));
-  assert.match(readFileSync(join(root, 'run'), 'utf8'), /for f in \.pi\/APPEND_SYSTEM\.md \.pi\/CAPABILITIES\.md; do/);
-  const start = (argv) => {
-    const events = {};
-    const pi = { registerTool: () => {}, registerCommand: () => {}, on: (n, cb) => { (events[n] ??= []).push(cb); }, getActiveTools: () => [], setActiveTools: () => {}, getAllTools: () => [], sendUserMessage: () => {} };
-    const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map((k) => [k, (v) => v]));
-    registerAgent(pi, Type, root, { argv });
-    events.session_start.forEach((cb) => cb({}, { hasUI: false, ui: {} }));
-    let prompt = 'BASE';
-    for (const cb of events.before_agent_start) prompt = cb({ systemPrompt: prompt })?.systemPrompt ?? prompt;
-    return prompt;
-  };
-  const launched = start(['node', 'pi', '--append-system-prompt', '.pi/CAPABILITIES.md']);
-  assert.doesNotMatch(launched, /What you can use/, './run appends the generated file; the runtime adds nothing');
-  assert.match(launched, /## Memory/);
-  writeFileSync(join(root, '.pi/CAPABILITIES.md'), '## What you can use\n\nFROM THE BUILD\n');
-  assert.match(start(['node', 'pi']), /FROM THE BUILD/, 'an old launcher or plain pi: the built file is added');
-  rmSync(join(root, '.pi/CAPABILITIES.md'));
-  assert.match(start(['node', 'pi']), /## What you can use\n[\s\S]*`cli_create_issue`/, 'a project from before the file: rendered');
+test('the lead mentions request_permission only when the Forge runtime that provides it is pinned', () => {
+  assert.match(capabilitySection(model, 'lead'), /ask with request_permission/);
+  const plain = { schema: 1, name: 'p', orchestrator: { name: 'lead', model: 'fixture/large', tools: ['read'] } };
+  assert.doesNotMatch(capabilitySection(plain, 'lead'), /request_permission/);
 });
 
 test("settings keep Pi's built-in MCP on and the user's other extension entries", () => {
@@ -161,30 +144,17 @@ test("settings keep Pi's built-in MCP on and the user's other extension entries"
   assert.deepEqual(merged.extensions, ['./my-ext.ts']);
 });
 
-test('session start warns once per missing provider without reading credentials', t => {
-  const root = project(t, { ...model, orchestrator: { ...model.orchestrator, model: 'deepseek/chat' }, agents: [{ name: 'one', model: 'openai/a' }, { name: 'two', model: 'openai/b' }] });
+test('the runtime no longer injects prompts or notices at session start', t => {
+  const root = project(t, { ...model, orchestrator: { ...model.orchestrator, model: 'deepseek/chat' } });
   const events = {};
-  const pi = { registerTool() {}, on(n, cb) { (events[n] ??= []).push(cb); }, getActiveTools: () => [], setActiveTools() {} };
+  const pi = { registerTool() {}, registerCommand() {}, on(n, cb) { (events[n] ??= []).push(cb); }, getActiveTools: () => [], setActiveTools() {} };
   const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map(k => [k, v => v]));
   registerAgent(pi, Type, root);
   const notices = [];
-  const ctx = { hasUI: true, ui: { notify: text => notices.push(text) }, modelRegistry: { getProviderAuthStatus: provider => ({ configured: provider === 'openai' }) } };
-  for (const cb of events.session_start) cb({}, ctx);
-  assert.equal(notices.length, 1);
-  assert.match(notices[0], /deepseek.*\/login deepseek.*DEEPSEEK_API_KEY/);
-});
-
-test('credential notice skips headless sessions and missing models', t => {
-  const root = project(t, model);
-  const events = {};
-  const pi = { registerTool() {}, on(n, cb) { (events[n] ??= []).push(cb); }, getActiveTools: () => [], setActiveTools() {} };
-  const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map(k => [k, v => v]));
-  registerAgent(pi, Type, root);
-  const notices = [];
-  const ctx = { hasUI: false, ui: { notify: x => notices.push(x) }, modelRegistry: { getProviderAuthStatus: () => ({ configured: false }) } };
-  for (const cb of events.session_start) cb({}, ctx);
+  const ctx = { hasUI: true, ui: { notify: text => notices.push(text) }, modelRegistry: { getProviderAuthStatus: () => ({ configured: false }) } };
+  for (const cb of events.session_start ?? []) cb({}, ctx);
   assert.deepEqual(notices, []);
-  rmSync(join(root, '.pi/system.yaml'));
-  for (const cb of events.session_start) cb({}, { ...ctx, hasUI: true });
-  assert.deepEqual(notices, []);
+  let prompt = 'BASE';
+  for (const cb of events.before_agent_start ?? []) prompt = cb({ systemPrompt: prompt })?.systemPrompt ?? prompt;
+  assert.equal(prompt, 'BASE', 'Pi loads the prompt and capability section from .pi/APPEND_SYSTEM.md');
 });

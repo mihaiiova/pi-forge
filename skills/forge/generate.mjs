@@ -9,12 +9,17 @@ import { configurationAdvisories } from './advisories.mjs';
  * the CLI reads disk, calls this, and applies the result.
  *
  * Ownership (see schema.md §4 / docs §C.6):
- *   - Derived files (`.pi/settings.json`, `.pi/mcp.json`, `.pi/CAPABILITIES.md`)
- *     regenerate every run, merge-preserving unknown keys.
- *   - Authored files (`.pi/APPEND_SYSTEM.md`, `README.md`, `.gitignore`,
- *     `.env.example`) scaffold once and are fingerprint-protected with a
- *     header marker; a user edit is never silently overwritten. The only
- *     exception is appending missing safety entries to an existing .gitignore.
+ *   - Derived files (`.pi/settings.json`, `.pi/mcp.json`) regenerate every
+ *     run, merge-preserving unknown keys.
+ *   - Authored files (`README.md`, `.gitignore`, `.env.example`) scaffold once
+ *     and are fingerprint-protected with a header marker; a user edit is never
+ *     silently overwritten. The only exception is appending missing safety
+ *     entries to an existing .gitignore.
+ *   - `.pi/APPEND_SYSTEM.md` has both: the authored prompt, then a marked
+ *     derived section (what the lead can use) that regenerates, and is a
+ *     conflict, not an overwrite, when edited by hand.
+ * Files a design does not use are not generated: `.pi/mcp.json` only with MCP
+ * servers, `.env.example` only with declared env names.
  */
 import { createHash } from "node:crypto";
 import { splitModelRef } from "./models.mjs";
@@ -23,7 +28,7 @@ import { workflowSkill } from "./workflow-skill.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
 import { buildRuntimePlan } from "./runtime.mjs";
-import { orchestratorTools } from './project-context.mjs';
+import { runtimeNeeds } from "./deps.mjs";
 import { integrationSecrets, gitignoreSafety, REQUIRED_IGNORES } from './integration-secrets.mjs';
 import { cliRef, cliToolName } from "./cli-tools.mjs";
 import { capabilitySection } from "./agent-context.mjs";
@@ -38,10 +43,7 @@ const MARKER_HTML_TRAILING_RE = /\n<!-- forge:generated v1 sha256=([0-9a-f]{64})
 
 // .pi/git/ and .pi/npm/ hold the packages Pi installs for the project.
 const GITIGNORE_BODY = [
-  "data/*",
-  "!data/knowledge/",
-  "data/knowledge/*",
-  "!data/knowledge/.gitkeep",
+  "data/",
   ...REQUIRED_IGNORES,
   "",
 ].join("\n");
@@ -66,18 +68,23 @@ function backgroundAgents(model) {
     needsBackground(enforcedAgentTools(agent.name, model.policies, agent.tools)));
 }
 
-/** Project-relative paths the single-agent generator materializes. */
+/** Project-relative paths every generated project has. */
 export const GENERATED_PATHS = [
   ".pi/settings.json",
-  ".pi/mcp.json",
   ".pi/APPEND_SYSTEM.md",
-  ".pi/CAPABILITIES.md",
   "README.md",
   ".gitignore",
-  ".env.example",
-  "data/knowledge/.gitkeep",
   "run",
 ];
+
+const hasMcp = (model) => Array.isArray(model?.integrations?.mcp) && model.integrations.mcp.length > 0;
+const hasEnv = (model) => Array.isArray(model?.integrations?.env) && model.integrations.env.length > 0;
+
+/** Markers around the derived section of `.pi/APPEND_SYSTEM.md`. The end
+ * marker fingerprints the section, so a hand edit is detected. */
+const DERIVED_BEGIN = "<!-- forge:derived v1 begin: generated from system.yaml; edits here are reported, not kept -->";
+const DERIVED_END_RE = /^<!-- forge:derived v1 end sha256=([0-9a-f]{64}) -->$/m;
+const derivedEnd = (body) => `<!-- forge:derived v1 end sha256=${sha256(body)} -->`;
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -181,9 +188,41 @@ function gitignoreFile(existing, model) {
   return { path: ".gitignore", content: `${existing}${separator}# forge: required ignores\n${missing.join("\n")}\n`, action: "write" };
 }
 
-function sentinelFile(path, existing) {
-  if (existing === undefined) return { path, content: "", action: "create" };
-  return { path, content: existing, action: "none" };
+/**
+ * `.pi/APPEND_SYSTEM.md`: the authored prompt (header-marked, as other
+ * authored files) followed by the derived section between markers. Each part
+ * keeps its own rule: the prompt is never overwritten once edited, the
+ * section is rewritten unless it was edited by hand, which is a conflict.
+ */
+function promptFile(path, prompt, derived, existing) {
+  const section = (body) => `${DERIVED_BEGIN}\n${body}\n${derivedEnd(body)}\n`;
+  const join = (head, body) => `${head.replace(/\n*$/, "\n")}\n${section(body)}`;
+  if (existing === undefined) return { path, content: join(markedContent("html", prompt), derived), action: "create" };
+  const begin = existing.indexOf(DERIVED_BEGIN);
+  const head = begin === -1 ? existing : existing.slice(0, begin).replace(/\n$/, "");
+  const authored = authoredFile(path, "html", prompt, head === "" ? undefined : head);
+  if (begin === -1) {
+    // A hand-written file without Faur's markers stays the developer's.
+    if (authored.action === "none" && parseMarked(existing, "html") === null) return { path, content: existing, action: "none", reason: "no derived section" };
+    if (authored.action === "conflict") return { ...authored, content: existing, action: "conflict" };
+    return { ...authored, content: join(authored.content, derived), action: "write" };
+  }
+  const tail = existing.slice(begin + DERIVED_BEGIN.length + 1);
+  const end = tail.match(DERIVED_END_RE);
+  const current = end ? tail.slice(0, end.index).replace(/\n$/, "") : null;
+  const edited = current === null || sha256(current) !== end[1];
+  if (edited && current !== derived) {
+    return { path, content: existing, desired: join(authored.content, derived), action: "conflict", reason: "the generated section was edited by hand" };
+  }
+  const content = join(authored.content, derived);
+  if (authored.action === "conflict") return { ...authored, content: existing, action: "conflict" };
+  // Text after the end marker is the developer's: never dropped by a rewrite.
+  const after = end ? tail.slice(end.index + end[0].length).replace(/^\n/, "") : "";
+  if (after.trim()) {
+    if (content === existing.slice(0, existing.length - after.length)) return { path, content: existing, action: "none" };
+    return { path, content: existing, desired: content, action: "conflict", reason: "text after the generated section; move it above the section" };
+  }
+  return { path, content, action: content === existing ? "none" : "write" };
 }
 
 function buildSettings(model, existingText, packages) {
@@ -223,7 +262,7 @@ function buildSettings(model, existingText, packages) {
   // registers only the ones it lists; defaultTools bounds Pi's own tools.
   // MCP reach is set by exposure and the launcher, not by defaultTools.
   const tools = Array.isArray(orchestrator.tools)
-    ? orchestratorTools(orchestrator).filter((tool) => !cliRef(tool) && tool !== "mcp" && !tool.startsWith("mcp:"))
+    ? orchestrator.tools.filter((tool) => !cliRef(tool) && tool !== "mcp" && !tool.startsWith("mcp:"))
     : undefined;
   if (tools !== undefined) out.defaultTools = tools;
   else delete out.defaultTools;
@@ -281,13 +320,20 @@ function buildSubagentConfig(existingText) {
   return `${JSON.stringify({ ...existing, forceTopLevelAsync: true }, null, 2)}\n`;
 }
 
-function orchestratorBody(model) {
+/** The lead's authored prompt, as written in system.yaml. */
+function orchestratorPrompt(model) {
   const orchestrator = isPlainObject(model.orchestrator) ? model.orchestrator : {};
   const prompt = typeof orchestrator.prompt === "string" ? orchestrator.prompt : "";
+  // One trailing newline, so the marker fingerprint survives the section join.
+  return prompt ? `${prompt.replace(/\n*$/, "")}\n` : "";
+}
+
+/** What the lead can use, how to launch its specialists and its document
+ * formats: all derived from declarations. */
+function orchestratorDerived(model) {
+  const name = isPlainObject(model.orchestrator) ? model.orchestrator.name : undefined;
   const background = backgroundAgents(model).map((agent) => `\`${agent.name}\``);
-  // The orchestrator's "What you can use" section is its own derived file
-  // (.pi/CAPABILITIES.md), so capability changes never rewrite this one.
-  const parts = [prompt.replace(/\n$/, "")];
+  const parts = [capabilitySection(model, name)];
   if (background.length > 0) {
     parts.push([
       "## Running specialists",
@@ -295,13 +341,10 @@ function orchestratorBody(model) {
       `${background.join(", ")} use MCP or extension tools, so they always run in the`,
       "background. Launch them, then wait for their completion notice before using",
       "their results. A foreground launch cannot give them their tools.",
-      "",
     ].join("\n"));
   }
-  if (isNonEmptyString(orchestrator.name)) parts.push(documentInstructions(model, orchestrator.name));
-  const body = parts.filter(Boolean).join("\n\n");
-  // Unchanged prompt text stays byte-identical for systems without additions.
-  return body === prompt.replace(/\n$/, "") ? prompt : body;
+  if (isNonEmptyString(name)) parts.push(documentInstructions(model, name));
+  return parts.filter(Boolean).map((part) => part.replace(/\n+$/, "")).join("\n\n");
 }
 
 function policySection(model) {
@@ -329,9 +372,10 @@ function policySection(model) {
   return lines.join("\n");
 }
 
-function readmeBody(model) {
+function readmeBody(model, packages) {
   const name = typeof model.name === "string" ? model.name : "";
   const description = typeof model.description === "string" ? model.description : "";
+  const forge = runtimeNeeds(model).forge;
   return [
     `# ${name}`,
     "",
@@ -343,7 +387,9 @@ function readmeBody(model) {
     "project's own Pi configuration and logins, without your global Pi settings,",
     "MCP servers or extensions. Your environment, including any credentials in",
     "it, is inherited, and it is not an OS sandbox. Skills in the shared Agent",
-    "Skills folder (`~/.agents/skills/`) do load, for the orchestrator.",
+    "Skills folder (`~/.agents/skills/`) and `AGENTS.md` files in parent folders",
+    "do load, for the orchestrator. Plain `pi` in this folder runs the same",
+    "project with your global Pi configuration added.",
     "",
     "```sh",
     "./run             # interactive",
@@ -371,10 +417,12 @@ function readmeBody(model) {
       "instructions are model-directed, not a hard guarantee of execution.",
       "",
     ] : []),
-    "On the first interactive run, Pi may start npm package installation processes",
-    "that continue briefly after Pi exits and may keep output pipes open. Callers",
-    "should allow extra time before assuming the output stream has closed.",
-    "",
+    ...(packages.length ? [
+      "On the first interactive run, Pi may start npm package installation processes",
+      "that continue briefly after Pi exits and may keep output pipes open. Callers",
+      "should allow extra time before assuming the output stream has closed.",
+      "",
+    ] : []),
     "Authenticate inside `./run` with `/login`, or export",
     "the provider-specific key (for example `DEEPSEEK_API_KEY`). See the policy",
     "section below for which",
@@ -390,14 +438,22 @@ function readmeBody(model) {
     ] : []),
     '## Maintain',
     '',
-    '`/faur <request>` proposes a change; when the turn ends, Forge asks you',
-    'to discuss, apply or discard it. Replies continue the conversation until',
-    'then; `/faur exit` leaves. `/faur review` is read-only.',
-    '`/faur check` verifies the agent, `/faur status` summarizes it, and',
-    '`/faur sync` moves to the newest Forge release after two confirmations.',
-    'Roll back with git. `/faur permissions` lists the commands agents may run',
-    'and adds, removes or reviews them; agents ask for a command they need with',
-    '`request_permission`. Restart `./run` when the launcher or packages change.',
+    ...(forge ? [
+      '`/faur <request>` proposes a change; when the turn ends, Forge asks you',
+      'to discuss, apply or discard it. Replies continue the conversation until',
+      'then; `/faur exit` leaves. `/faur review` is read-only.',
+      '`/faur check` verifies the agent, `/faur status` summarizes it, and',
+      '`/faur sync` moves to the newest Forge release after two confirmations.',
+      'Roll back with git. `/faur permissions` lists the commands agents may run',
+      'and adds, removes or reviews them; agents ask for a command they need with',
+      '`request_permission`. Restart `./run` when the launcher or packages change.',
+    ] : [
+      'This project runs on Pi alone and pins no Faur package. Maintain it from',
+      'your own Pi with Faur installed: run `pi` in this folder and use',
+      '`/faur <request>` to propose a change (discuss, apply or discard it when the',
+      'turn ends), `/faur check` to verify the agent and `/faur status` to',
+      'summarize it. Without Faur, edit the files directly; roll back with git.',
+    ]),
     '',
     policySection(model),
   ].join("\n");
@@ -517,6 +573,8 @@ export function declarationInventory(model) {
 /** Every project-relative path `generate` may write for a given model. */
 export function managedPaths(model) {
   const paths = [...GENERATED_PATHS];
+  if (hasMcp(model)) paths.push(".pi/mcp.json");
+  if (hasEnv(model)) paths.push(".env.example");
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
   for (const skill of skillEntries(model)) paths.push(skillPath(skill));
   if (backgroundAgents(model).length > 0) paths.push(SUBAGENT_CONFIG);
@@ -531,7 +589,7 @@ export function managedPaths(model) {
  * @param {Record<string, string>} [existingFiles] project-relative path → text.
  * @param {{ piPackages?: string[], contextFiles?: string[] }} [opts] extra
  *   deterministic inputs: the pinned dependency list for `.pi/settings.json`
- *   `packages`, and the AGENTS.md/CLAUDE.md files the launcher would skip.
+ *   `packages`, and the AGENTS.md/CLAUDE.md files Pi loads for the project.
  * @returns {{ files: Array<{ path: string, content: string, action: string, desired?: string }>, warnings: string[], errors: string[] }}
  */
 export function generateProject(model, existingFiles = {}, opts = {}) {
@@ -539,20 +597,17 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
   const piPackages = isPlainObject(opts) ? opts.piPackages : undefined;
   const contextFiles = isPlainObject(opts) && Array.isArray(opts.contextFiles) ? opts.contextFiles : [];
   const plan = buildRuntimePlan(model, { piPackages, contextFiles, firstBuild: existing["run"] === undefined });
-  const prompt = orchestratorBody(model);
   const subagentConfig = backgroundAgents(model).length > 0
     ? [derivedFile(SUBAGENT_CONFIG, buildSubagentConfig(existing[SUBAGENT_CONFIG]), existing[SUBAGENT_CONFIG])]
     : [];
 
   const files = [
     derivedFile(".pi/settings.json", buildSettings(model, existing[".pi/settings.json"], plan.packages), existing[".pi/settings.json"]),
-    derivedFile(".pi/mcp.json", buildMcpJson(model, existing[".pi/mcp.json"]), existing[".pi/mcp.json"]),
-    authoredFile(".pi/APPEND_SYSTEM.md", "html", prompt, existing[".pi/APPEND_SYSTEM.md"]),
-    derivedFile(".pi/CAPABILITIES.md", capabilitySection(model, model.orchestrator?.name), existing[".pi/CAPABILITIES.md"]),
-    authoredFile("README.md", "html", readmeBody(model), existing["README.md"]),
+    ...(hasMcp(model) ? [derivedFile(".pi/mcp.json", buildMcpJson(model, existing[".pi/mcp.json"]), existing[".pi/mcp.json"])] : []),
+    promptFile(".pi/APPEND_SYSTEM.md", orchestratorPrompt(model), orchestratorDerived(model), existing[".pi/APPEND_SYSTEM.md"]),
+    authoredFile("README.md", "html", readmeBody(model, plan.packages), existing["README.md"]),
     gitignoreFile(existing[".gitignore"], model),
-    authoredFile(".env.example", "plain", envBody(model), existing[".env.example"]),
-    sentinelFile("data/knowledge/.gitkeep", existing["data/knowledge/.gitkeep"]),
+    ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
     { ...derivedFile("run", plan.launcherScript, existing["run"]), executable: true },
     ...subagentConfig,
     ...agentFiles(model, existing),
@@ -560,5 +615,8 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
   ];
 
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return { files, warnings: [...plan.warnings, ...configurationAdvisories(model)], errors: plan.errors };
+  const unmanagedPrompt = files.some((f) => f.path === ".pi/APPEND_SYSTEM.md" && f.reason === "no derived section")
+    ? [".pi/APPEND_SYSTEM.md is hand-written without Faur's generated section, so the orchestrator is not told what it can use. Add the section by deleting the file and regenerating, or keep it as is."]
+    : [];
+  return { files, warnings: [...plan.warnings, ...unmanagedPrompt, ...configurationAdvisories(model)], errors: plan.errors };
 }

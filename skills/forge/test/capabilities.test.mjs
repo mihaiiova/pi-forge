@@ -59,7 +59,9 @@ test("checkCapabilities passes for consistent generated config", () => {
   const { ok, errors } = checkCapabilities(MODEL, generated, { piPackages: PI_PACKAGES });
   assert.equal(ok, true, `expected consistent: ${errors.join("; ")}`);
   const lead = { ...MODEL, orchestrator: { ...MODEL.orchestrator, tools: [...MODEL.orchestrator.tools, "mcp"] } };
-  assert.equal(checkCapabilities(lead, generated, { piPackages: PI_PACKAGES }).ok, true, "mcp is reached through exposure, not defaultTools");
+  // A lead with mcp needs no runtime boundary, so its expected pins differ; its defaultTools do not.
+  const leadPins = effectiveCapabilities(lead, { piPackages: PI_PACKAGES }).packages;
+  assert.equal(checkCapabilities(lead, { ...generated, settings: { ...generated.settings, packages: leadPins } }, { piPackages: PI_PACKAGES }).ok, true, "mcp is reached through exposure, not defaultTools");
   const unhidden = { ...generated, mcpJson: { mcpServers: { openseo: { url: "http://localhost:3002/mcp", exposure: "deferred" } }, autoEnableCodemode: false } };
   assert.ok(checkCapabilities(MODEL, unhidden, { piPackages: PI_PACKAGES }).errors.some((e) => e.includes("toolExposure mismatch")), "a hidden tool made reachable is flagged");
   const codemode = { ...generated, mcpJson: { ...generated.mcpJson, autoEnableCodemode: true } };

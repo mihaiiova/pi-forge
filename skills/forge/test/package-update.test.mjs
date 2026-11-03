@@ -50,7 +50,9 @@ function project(t) {
   const root = mkdtempSync(join(tmpdir(), 'forge-update-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, '.pi'));
-  copyFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), join(root, '.pi/system.yaml'));
+  // One declared command: the design needs the Forge runtime, so the project pins a release to sync.
+  const minimal = readFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), 'utf8');
+  writeFileSync(join(root, '.pi/system.yaml'), minimal.replace('tools: [read, grep, find, ls]', 'tools: [read, grep, find, ls, "cli:hello"]') + 'integrations:\n  cli:\n    - name: hello\n      command: echo\n      args: [hi]\n      approve: false\n');
   execFileSync(process.execPath, [join(repo, 'skills/forge/forge.mjs'), 'generate', root], { stdio: 'ignore' });
   return root;
 }

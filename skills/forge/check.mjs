@@ -16,7 +16,6 @@ import { skillSourceKind } from './skill-sources.mjs';
 import { enforcedAgentTools } from './policy.mjs';
 import { mcpToolName } from './mcp-gen.mjs';
 import { leadTools } from './asking.mjs';
-import { orchestratorTools } from './project-context.mjs';
 
 const BUILTIN = new Set(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']);
 
@@ -26,7 +25,7 @@ export function checkProject(root, { registeredTools, mcpTools } = {}) {
   const validation = validateSystem(doc).errors;
   if (validation.length) return { ok: false, validation, consistency: null, launch: null, advisories: [] };
   const piPackages = readJson(root, '.pi/settings.json').packages ?? [];
-  const consistency = checkCapabilities(doc, { settings: readJson(root, '.pi/settings.json'), mcpJson: readJson(root, '.pi/mcp.json') }, { piPackages }).errors;
+  const consistency = checkCapabilities(doc, { settings: readJson(root, '.pi/settings.json'), mcpJson: readText(root, '.pi/mcp.json') === null ? {} : readJson(root, '.pi/mcp.json') }, { piPackages }).errors;
   const launch = launchCheck(root, doc, { registeredTools, mcpTools }).problems.map(p => `${p.agent}: ${p.problem}`);
   for (const step of unmetSetup(root, doc)) launch.push(`${step.owner}: setup ${step.description}; fix: ${step.install}${step.needsRoot ? ' (run manually; needs root)' : ''}`);
   for (const path of new Set(integrationSecrets(doc))) {
@@ -95,7 +94,7 @@ export function checkAgent(root, options = {}) {
   const commands = new Map(cliEntries(model).map(c => [c.name, c]));
   const skills = new Map((model.skills ?? []).map(s => [s.name, s]));
   for (const agent of [model.orchestrator, ...(model.agents ?? [])]) {
-    const tools = agent === model.orchestrator ? (orchestratorTools(agent) ?? cliEntries(model).map(c => `cli:${c.name}`)) : enforcedAgentTools(agent.name, model.policies, agent.tools);
+    const tools = agent === model.orchestrator ? (agent.tools ?? cliEntries(model).map(c => `cli:${c.name}`)) : enforcedAgentTools(agent.name, model.policies, agent.tools);
     for (const name of tools ?? []) {
       if (name.startsWith('mcp:')) {
         const [server, tool] = name.slice(4).split('/');

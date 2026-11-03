@@ -7,10 +7,11 @@
  * global Pi skills, MCP servers, extensions, instructions, settings, or
  * login files; the caller's environment, including credentials, is
  * inherited. Pi still reads the shared Agent Skills folders
- * (`~/.agents/skills/`, project `.agents/skills/`) by design. No filesystem or CLI work happens here; `generate.mjs` composes
+ * (`~/.agents/skills/`, project `.agents/skills/`) and `AGENTS.md` files in
+ * parent directories. No filesystem or CLI work happens here; `generate.mjs` composes
  * the launcher content into the generated `run` file.
  */
-import { runtimePackages, FORGE_SOURCE } from "./deps.mjs";
+import { runtimePackages, runtimeNeeds, FORGE_SOURCE } from "./deps.mjs";
 import { declaredPackages } from "./skill-sources.mjs";
 
 /** Project-relative isolated Pi config directory. */
@@ -52,27 +53,18 @@ export function envNames(model) {
   return Array.isArray(env) ? [...new Set(env.map(e => e?.name).filter(n => typeof n === "string"))] : [];
 }
 
-/** The generated `run` launcher script content. */
-/** The lead's prompt files: the authored instructions, then the generated
- * "What you can use" section. Passing them explicitly (which replaces Pi's
- * APPEND_SYSTEM.md discovery) puts build output in the prompt, not runtime code. */
-const PROMPT_FILES = [
-  "# The orchestrator's prompt: authored instructions, then what it can use.",
-  "prompts=()",
-  "for f in .pi/APPEND_SYSTEM.md .pi/CAPABILITIES.md; do",
-  '  if [[ -f "$f" ]]; then prompts+=(--append-system-prompt "$f"); fi',
-  "done",
-];
-const LAUNCH = 'pi --approve --no-context-files ${prompts[@]+"${prompts[@]}"} "$@"';
 /** The headless workflow runner, from the Forge package Pi installs into the project. */
 const RUNNER = `.pi/git/${FORGE_SOURCE.slice("git:".length)}/skills/forge/workflow-runner.mjs`;
 const NO_RUNNER = '{"workflow":null,"runId":null,"status":"configuration_error","answer":"","message":"The Forge package is not installed in this project yet. Run ./run once, then retry."}';
-/** Runs a named workflow with the installed runner, or reports that it is missing (exit 2). */
-const runWorkflow = (indent, args) => [
-  `${indent}if [[ ! -f "$ROOT/${RUNNER}" ]]; then echo '${NO_RUNNER}'; exit 2; fi`,
-  `${indent}exec node "$ROOT/${RUNNER}" ${args}`,
-];
-export function launcherScript(names = [], workflows = [], lead = '', projectContext = []) {
+
+/**
+ * The generated `run` launcher. Pi finds the project's prompt
+ * (`.pi/APPEND_SYSTEM.md`) and context files (`AGENTS.md`) itself, so the
+ * launcher only selects the isolated Pi home, loads declared env names and,
+ * when workflows exist, hands `--workflow` to the runner (before the
+ * system.yaml check, so a caller always gets the runner's JSON line).
+ */
+export function launcherScript(names = [], workflows = [], lead = '') {
   const manifest = Buffer.from(JSON.stringify(workflows.map(w => ({ ...w, lead })))).toString('base64');
   return [
     "#!/usr/bin/env bash",
@@ -92,38 +84,25 @@ export function launcherScript(names = [], workflows = [], lead = '', projectCon
     "fi",
     "",
     'cd "$ROOT"',
-    "",
-    'if [[ ! -f ".pi/system.yaml" ]]; then',
-    '  if [[ "${1:-}" == "--workflow" ]]; then',
-    ...runWorkflow('    ', `'${manifest}' -- "$@"`),
-    '  fi',
-    '  echo "run: .pi/system.yaml not found in $ROOT" >&2',
-    "  exit 1",
-    "fi",
-    "",
     'export PI_CODING_AGENT_DIR="$ROOT/.forge/pi-home"',
     'mkdir -p "$PI_CODING_AGENT_DIR"',
     "",
     ...envLoader(names),
+    ...(workflows.length ? [
+      'if [[ "${1:-}" == "--workflow" ]]; then',
+      `  if [[ ! -f "$ROOT/${RUNNER}" ]]; then echo '${NO_RUNNER}'; exit 2; fi`,
+      `  exec node "$ROOT/${RUNNER}" '${manifest}' -- "$@"`,
+      "fi",
+      "",
+    ] : []),
+    'if [[ ! -f ".pi/system.yaml" ]]; then',
+    '  echo "run: .pi/system.yaml not found in $ROOT" >&2',
+    "  exit 1",
+    "fi",
+    "",
     "# The Pi config is separate; the caller's environment is still inherited.",
     "# Log in for this context (`./run`, then `/login`), or export a provider key.",
-    // Pi's agent-dir does not suppress ancestor instruction discovery.
-    // APPEND_SYSTEM.md still supplies the project's operational instructions.
-    ...PROMPT_FILES,
-    ...(projectContext.length ? [
-      '# Append opted-in project files after the generated prompts; reject symlinks outside the project.',
-      ...projectContext.flatMap(path => {
-        const quoted = "'" + path.replaceAll("'", "'\\''") + "'";
-        return [
-          `f=${quoted}`,
-          'if [[ -f "$f" ]] && node -e \'const fs=require("fs"),p=require("path");try{const root=fs.realpathSync(process.argv[1]),file=fs.realpathSync(process.argv[2]);process.exit(file.startsWith(root+p.sep)?0:1)}catch{process.exit(1)}\' "$ROOT" "$f"; then prompts+=(--append-system-prompt "$f"); fi',
-        ];
-      }),
-    ] : []),
-    'if [[ "${1:-}" == "--workflow" ]]; then',
-    ...runWorkflow('  ', `'${manifest}' "\${prompts[@]}" -- "$@"`),
-    'fi',
-    `exec ${LAUNCH}`,
+    'exec pi --approve "$@"',
     "",
   ].join("\n");
 }
@@ -132,26 +111,22 @@ export function launcherScript(names = [], workflows = [], lead = '', projectCon
  * @param {object} model the validated `system.yaml` document.
  * @param {object} [opts] `{ piPackages?: string[], firstBuild?: boolean, contextFiles?: string[] }`:
  *   the forge's `pi.packages`; whether the project has no launcher yet (warn
- *   about logins once); context files Pi would load here but the launcher skips.
+ *   about logins once); context files Pi loads here, relative to the project.
  * @returns {{ agentDir: string, packages: string[], launcherScript: string, warnings: string[], errors: string[] }}
  */
 export function buildRuntimePlan(model, opts = {}) {
   const piPackages = opts?.piPackages;
   const contextFiles = Array.isArray(opts?.contextFiles) ? opts.contextFiles : [];
-  const declared = declaredPackages(model);
-  const { packages, errors } = runtimePackages(piPackages, declared);
+  const outside = contextFiles.filter(path => path.startsWith('..'));
+  const { packages, errors } = runtimePackages(piPackages, declaredPackages(model), runtimeNeeds(model));
 
   return {
     agentDir: AGENT_DIR,
     packages,
-    launcherScript: launcherScript(envNames(model), model.workflows ?? [], model.orchestrator?.name ?? '', model.orchestrator?.projectContext ?? []),
+    launcherScript: launcherScript(envNames(model), model.workflows ?? [], model.orchestrator?.name ?? ''),
     warnings: [
       ...(opts?.firstBuild ? ["Pi login files are not inherited from the host; use /login or export a provider key. The caller's environment is inherited by the run and its tools."] : []),
-      ...(model.orchestrator?.projectContext?.length
-        ? ["the launcher disables automatic context discovery; only explicitly listed project files are appended. They can contain untrusted instructions; projectContext enables edit for all accessible files."]
-        : contextFiles.length
-          ? [`the launcher disables AGENTS.md/CLAUDE.md discovery with --no-context-files, so ${contextFiles.join(", ")} will not load; list a project file in orchestrator.projectContext, or move its instructions into the prompt.`]
-          : []),
+      ...(outside.length ? [`Pi also loads ${outside.join(", ")} from outside this project into the orchestrator's prompt, with or without ./run. Move what the agent needs into the project, or accept those instructions.`] : []),
     ],
     errors,
   };

@@ -129,7 +129,7 @@ test('generated agents get cli_ tools and run in the background; defaultTools ke
   assert.deepEqual(settings.defaultTools, ['read']);
   const caps = effectiveCapabilities(model, { piPackages: pkg.pi.packages });
   assert.deepEqual(caps.commands.map((c) => [c.name, c.approve, c.agents]), [['echo-title', true, ['lead']], ['show-body', false, ['writer']], ['unused', true, []]]);
-  assert.equal(checkCapabilities(model, { settings, mcpJson: JSON.parse(generated.files.find((f) => f.path === '.pi/mcp.json').content) }, { piPackages: pkg.pi.packages }).ok, true);
+  assert.equal(checkCapabilities(model, { settings, mcpJson: JSON.parse(generated.files.find((f) => f.path === '.pi/mcp.json')?.content ?? '{}') }, { piPackages: pkg.pi.packages }).ok, true);
 });
 
 test('a grant to a subagent with no tools list starts one', () => {

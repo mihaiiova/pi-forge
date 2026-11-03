@@ -8,25 +8,26 @@ const PI_PACKAGES = ["npm:pi-subagents@0.83.1", "npm:pi-web-access@0.27.0"];
 test("buildRuntimePlan derives the isolated agent dir, packages, and warnings", () => {
   const plan = buildRuntimePlan({ packages: ["npm:foo@1.0.0"] }, { piPackages: PI_PACKAGES });
   assert.equal(plan.agentDir, ".forge/pi-home");
-  assert.deepEqual(plan.packages, [expectedForgePin, "npm:pi-subagents@0.83.1", "npm:foo@1.0.0"]);
+  assert.deepEqual(plan.packages, ["npm:foo@1.0.0"], "nothing the design does not use");
+  const workflow = buildRuntimePlan({ orchestrator: { name: "l", tools: ["read", "subagent"] }, workflows: [{ name: "w" }] }, { piPackages: PI_PACKAGES });
+  assert.deepEqual(workflow.packages, [expectedForgePin, "npm:pi-subagents@0.83.1"]);
   assert.deepEqual(plan.errors, []);
   assert.deepEqual(plan.warnings, [], "no warning that does not apply");
 });
 
-test("buildRuntimePlan warns about logins on the first build and skipped context files only when there are some", () => {
+test("buildRuntimePlan warns about logins on the first build and context files from outside the project", () => {
   const first = buildRuntimePlan({}, { piPackages: PI_PACKAGES, firstBuild: true });
   assert.equal(first.warnings.length, 1);
   assert.match(first.warnings[0], /login files are not inherited.*environment is inherited/);
-  const skipped = buildRuntimePlan({}, { piPackages: PI_PACKAGES, contextFiles: ["AGENTS.md", "../CLAUDE.md"] });
-  assert.equal(skipped.warnings.length, 1);
-  assert.match(skipped.warnings[0], /AGENTS\.md, \.\.\/CLAUDE\.md will not load/);
-  const listed = buildRuntimePlan({ orchestrator: { projectContext: ["AGENTS.md"] } }, { piPackages: PI_PACKAGES });
-  assert.match(listed.warnings.join("\n"), /untrusted instructions/, "projectContext always carries its warning");
+  assert.deepEqual(buildRuntimePlan({}, { piPackages: PI_PACKAGES, contextFiles: ["AGENTS.md"] }).warnings, [], "the project's own AGENTS.md loads natively; nothing to warn about");
+  const outside = buildRuntimePlan({}, { piPackages: PI_PACKAGES, contextFiles: ["AGENTS.md", "../CLAUDE.md", "../../AGENTS.md"] });
+  assert.equal(outside.warnings.length, 1);
+  assert.match(outside.warnings[0], /\.\.\/CLAUDE\.md, \.\.\/\.\.\/AGENTS\.md from outside this project/);
 });
 
 test("buildRuntimePlan propagates dependency errors", () => {
-  const plan = buildRuntimePlan({}, { piPackages: [] });
-  assert.ok(plan.errors.length >= 1, "missing primitives surface as errors");
+  const plan = buildRuntimePlan({ packages: ["npm:unpinned"] }, { piPackages: [] });
+  assert.ok(plan.errors.some((e) => e.includes("npm:unpinned")), "an invalid declared package surfaces as an error");
 });
 
 test("launcherScript sets the isolated agent dir and never copies auth.json", () => {

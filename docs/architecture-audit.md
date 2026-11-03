@@ -278,7 +278,7 @@ that rested on unconfirmed Pi or package behavior; the results follow the table.
 | R7 | `pi-subagents` pin | every agent | 2, verified | Kept, only when `agents[]` is non-empty. A project pin replaces a user-level install of the same package, whatever its version (A: host 0.65.0, project 0.83.1 loaded) |
 | R8 | `forceTopLevelAsync` in `.forge/pi-home/extensions/subagent/config.json` | agents with background specialists | removable, corrected | pi-subagents 0.83.1 reads `config.json` only from the agent directory, and per-agent `async: true` is only a default the caller can override (`agents.js`, `subagent-executor.js:2592`). Neither is needed: built-in MCP tools work in foreground children (S1), and a foreground child loads an extension tool when the agent's `tools` lists the extension path (S3; without it the run is refused, S2). Drop the config file and generate extension paths into agent frontmatter |
 | R9 | `memory` tool and `.pi/MEMORY.md` injection (`agent-extension.mjs`) | every orchestrator | 3 | Packages exist (`@henryqw/pi-memory` 10.2.0, `pi-hermes-memory` 0.10.0, both MIT, active) but add stores, search and policy the agents do not need. A project convention: a notes file the lead may edit, referenced from its prompt. Not verified by a run |
-| R10 | MCP `approveTools` per-call approval, blocked without UI (`registerMcpBoundary`) | agents with approvals | 2, candidates | Two maintained MIT packages with project-level native config, loaded only after trust, that gate built-in MCP tools and block an `ask` with no UI: `@gotgenes/pi-permission-system` 42.0.0 (`.pi/extensions/pi-permission-system/config.json`, server/tool rules, `confirmation_unavailable`) and `pi-allowlist-plugin` 1.3.4 (`.pi/allowlist-gate.json`, `mcp:<server>:<tool>` rules). Read from their documentation only; a real-Pi run against the stub server is the first task of stage 3 |
+| R10 | MCP `approveTools` per-call approval, blocked without UI (`registerMcpBoundary`) | agents with approvals | 2, candidates | Two maintained MIT packages with project-level native config, loaded only after trust, that gate built-in MCP tools and block an `ask` with no UI: `@gotgenes/pi-permission-system` 42.0.0 (`.pi/extensions/pi-permission-system/config.json`, server/tool rules, `confirmation_unavailable`) and `pi-allowlist-plugin` 1.3.4 (`.pi/allowlist-gate.json`, `mcp:<server>:<tool>` rules). Read from their documentation only. **Chosen (2026-11-03): `@gotgenes/pi-permission-system`**: 48,130 downloads in the last month, 262 releases since 2026-05, 22 contributors, against 1,013 downloads and one author for `pi-allowlist-plugin`. It churns (major 42), so projects pin an exact version. A real-Pi run against the stub server is the first task of stage 3 |
 | R11 | Orchestrator without `mcp` cannot call MCP tools (`registerMcpBoundary`) | agents whose lead has no `mcp` | 2 or 4, corrected | No native setting scopes MCP to subagents: project `defaultTools` does not remove MCP tools (R11a), server `exposure` applies to every process, and only the CLI `--tools` allowlist does (R11b), which a plain `pi` launch cannot carry. A deny rule in the R10 package, or an advisory statement |
 | R12 | Declared `cli:` command tools: no shell, placeholders, approval (`permissions-extension.mjs`, `cli-tools.mjs`) | agents with `integrations.cli` (B, C) | 4, confirmed | No package or Pi built-in defines named, no-shell command tools; the gates above match `bash` command lines, which still run in a shell. One small generic package configured natively, or a project-owned extension when only one project needs it |
 | R13 | `request_permission`, pending requests, "always allow" saves to `system.yaml` | every orchestrator | remove | Asking once comes from the R10 package. Saving a command is a design change: the developer asks Faur. Drop the runtime write path |
@@ -355,6 +355,33 @@ text. Either generate the whole file from the design record (drift reconcile
 in #64 handles hand edits), or keep a marked generated block in an authored
 file.
 
+### Stage 1 results (2026-11-03, #61)
+
+- The lead's capability section, specialist launch note and document formats
+  follow its prompt in `.pi/APPEND_SYSTEM.md`, between `forge:derived`
+  markers. The prompt keeps the authored-file rule; the section is rewritten
+  with the declarations, and a hand edit inside it, or text after it, is a
+  conflict. `.pi/CAPABILITIES.md`, the launcher's prompt flags and
+  `--no-context-files` are gone (R2, R3); `orchestrator.projectContext` is
+  removed from the schema. Generation warns about `AGENTS.md` files from
+  outside the project.
+- Memory is removed (R9, decided 2026-11-03: no package is worth its
+  surface, and a notes file named in a prompt covers the need). The session
+  credential notice moved to `/faur check` (R14); the pre-`CAPABILITIES.md`
+  fallback is deleted (R15).
+- Pins by need (`deps.mjs` `runtimeNeeds`): Forge only for declared commands,
+  MCP approvals, a lead kept from MCP, or workflows; `pi-subagents` only for
+  specialists or the `subagent` tool. The Forge runtime also stays unloaded
+  for such a design when Faur is installed in the developer's Pi. `/faur sync`
+  on an unpinned project rebuilds it with the running Faur.
+- Pay-per-use files: no `mcp.json` without MCP servers, no `.env.example`
+  without env names, no `data/knowledge/`, no `.pi/agents/` without
+  specialists, and the workflow block in `run` once, only with workflows.
+- Proof: `package-sdk.test.mjs` generates the minimal agent, deletes
+  `system.yaml` and loads it in real Pi with an empty agent directory: the
+  prompt holds the authored text and the generated section, the tools are
+  the four declared built-ins, and no Faur tool or command loads.
+
 **Upstream proposal, draft (not filed).**
 
 > **Let a project ignore user-level resources.** A trusted project often
@@ -386,7 +413,7 @@ workflow runner) moves before the runner is removed.
 | Stage | Outcome | Removes | Acceptance |
 |---|---|---|---|
 | 0. Verify (done 2026-11-03) | Confirm the "verify" rows: global-resource merging (including the `pi-mcp-adapter` conflict) in plain and isolated mode, pi-subagents project configuration, existing packages for R9/R10/R12, Pi structured or JSON output for R16. Draft the upstream Pi proposal for ignoring user-level resources | nothing | Stage 0 results above; `skills/forge/test/pi-lab/stage0.sh` reproduces them |
-| 1. Native prompt and output | Capability section and context load natively; output is pay-per-use (no `pi-subagents` without specialists; no empty `mcp.json`, `.env.example`, `data/knowledge/`) | R2, R3, R14, R15, `projectContext` | The minimal agent runs with plain `pi` and no Faur installed |
+| 1. Native prompt and output (done 2026-11-03, #61) | Capability section and context load natively; output is pay-per-use (no `pi-subagents` without specialists; no empty `mcp.json`, `.env.example`, `data/knowledge/`) | R2, R3, R14, R15, `projectContext` | The minimal agent runs with plain `pi` and no Faur installed |
 | 2. Launch and headless | `run` optional and minimal; documented environment; workflows invoked with `pi -p`; Faur's check reports host-config conflicts and setup | R1 (as requirement), R4, R5, R16 runner after Revisor migrates | Marketing agent without approvals or commands runs headless with plain `pi`; isolated mode excludes global packages, proven with the `pi-mcp-adapter` conflict |
 | 3. Enforcement without Faur | Approvals, declared commands, headless blocking from an existing or one new generic package; first run the R10 candidates against the lab's stub server | R10–R13, R17 from Faur | B and C run with plain `pi`; enforcement tests (approval asks, blocks headless; commands run without a shell) pass without Faur installed |
 | 4. Faur as maker | Faur runs only in the developer's Pi; projects pin no Faur; `system.yaml` is the design record with drift reconcile (reuse `import`, generate, diff); metadata location decided; rename to Faur | R6, R18, R19 relocation | Generate → edit native files by hand → reopen with Faur → adopt → revise again, with no manual edit lost |

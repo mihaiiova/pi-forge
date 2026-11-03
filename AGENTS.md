@@ -149,8 +149,8 @@ configuration, a skill or an existing package cannot do it.
   change: review the diff and say why each generated file changed.
 - Schema changes update `schema.md`, `validate.mjs` and its tests together.
   The validator rejects unknown keys; keep it that way.
-- Security-relevant wording (README templates, `schema.md`, generated
-  `CAPABILITIES.md`) must match what tests prove.
+- Security-relevant wording (README templates, `schema.md`, the generated
+  "What you can use" sections) must match what tests prove.
 - Version bumps and releases happen only when the user asks.
 - Backlog: GitHub issues are authoritative; record decisions as dated
   amendments on the issue and update `docs/roadmap.md` when order or scope

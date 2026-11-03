@@ -141,12 +141,11 @@ first; the user decides.
   be given the `vercel-labs/skills@find-skills` skill plus `bash`; tell it, as
   a document rule or in its prompt, to install project-locally (`--agent pi`,
   no `-g`).
-- **Project instructions:** for a coding agent in a repository with an
-  `AGENTS.md`, recommend `orchestrator.projectContext: [AGENTS.md]` so it can
-  use the repository's own conventions. Explain that instruction content can
-  be untrusted, and a non-empty list automatically enables the orchestrator's
-  `edit` tool for all accessible files, not only the listed files. Ask before
-  granting that broader editing access.
+- **Project instructions:** Pi loads the project's `AGENTS.md`, and those in
+  parent folders, into the orchestrator's prompt by itself; nothing to
+  declare. For an agent generated inside another repository, say that the
+  repository's instructions will reach it too (generation warns), and that
+  instruction content can be untrusted.
 - **Prompts:** write each agent's prompt about its role — goals, judgement,
   rules, boundaries — and keep it short. Never list its tools, MCP servers,
   commands or skills, or explain how to call them: the Forge renders a
@@ -192,12 +191,9 @@ first; the user decides.
   can use" sections tell both sides, so prompts don't need to. Validation
   rejects a subagent that can reach a call that asks; in an existing project
   the change preview lists each one with a ready fix.
-- **Memory** is built in, not a decision: every orchestrator keeps short
-  notes across sessions in `.pi/MEMORY.md` (corrections, preferences, tools
-  or specialists that failed and what worked), writes them itself, and loads
-  them at session start. Mention it when it matters, e.g. a read-only system
-  still writes this one file. `/faur review` turns lasting lessons
-  into proposed changes.
+- **Notes across sessions** are not built in. When an agent should keep
+  them, give it `edit` and a notes file named in its prompt; propose this
+  only when the user wants the agent to remember something.
 - **Generated files:** generation also writes `.forge/capabilities.json` —
   the deterministic effective-capability manifest (orchestrator/subagent tools,
   skills, MCP servers + exclusions, packages) derived from `system.yaml`, used
@@ -413,7 +409,7 @@ prior approvals cannot grant that authority.
 Agent prompts state the role, goals, judgement, rules and boundaries. They
 never list tools, MCP servers, commands or skills, or explain how to call
 them: the Forge renders a "What you can use" section from the declarations
-(in each subagent's file, and in .pi/CAPABILITIES.md for the orchestrator),
+(in each subagent's file, and after the orchestrator's prompt in .pi/APPEND_SYSTEM.md),
 so it always matches what the agent actually has. Keep a rule about an action
 as an outcome ("never modify an existing issue; check for duplicates first"),
 and put approval in approve/approveTools, not prose. When a preview has
@@ -431,9 +427,8 @@ workflow simplification; enforced versus advisory permissions; document
 formats (declared, or missing for documents agents keep writing); and available
 execution evidence, including subagentRuns (repeated failures of one agent
 point to a configuration problem, quoted by its diagnostic) and launchCheck
-(tools, MCP servers or skills an agent is declared to have but would not get),
-and the orchestrator's memory notes (a lesson that should always hold is a
-candidate for a prompt, skill, document or tool change). Flag prompts that
+(tools, MCP servers or skills an agent is declared to have but would not get).
+Flag prompts that
 describe specific tools, MCP servers or commands (especially ones no longer
 declared) as a configuration inconsistency, and suggest the role-only wording.
 Suggest skills.sh skills for agents whose role a skill could serve. Absence of observed use is not proof a tool is unused.

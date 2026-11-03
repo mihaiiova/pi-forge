@@ -26,25 +26,36 @@ pass "forge generate --dry-run exits 0 and writes nothing"
 # ── generate materializes the single-agent tree ─────────────────
 first="$(node "$forge" generate "$work" 2>&1 >/dev/null)"
 grep -q 'login files are not inherited' <<<"$first" || fail "first build should explain Pi logins"
-grep -q 'no-context-files' <<<"$first" && fail "context-file warning without a context file"
+grep -q 'from outside this project' <<<"$first" && fail "context-file warning without a context file"
 echo '# notes' > "$work/AGENTS.md"
 again="$(node "$forge" modify "$work" 2>&1 >/dev/null || true)"
 grep -q 'login files' <<<"$again" && fail "login warning repeated on a rebuild"
-grep -q 'so AGENTS.md will not load' <<<"$again" || fail "skipped AGENTS.md not reported"
+grep -q 'from outside this project' <<<"$again" && fail "the project's own AGENTS.md loads natively; no warning"
 rm "$work/AGENTS.md"
+nested="$work/nested"; mkdir -p "$nested/.pi"; cp "$work/.pi/system.yaml" "$nested/.pi/"
+outside="$(node "$forge" generate "$nested" 2>&1 >/dev/null)"
+grep -q '\.\./AGENTS.md from outside this project' <<<"$outside" && fail "no parent AGENTS.md yet"
+echo '# parent rules' > "$work/AGENTS.md"
+outside="$(node "$forge" modify "$nested" 2>&1 >/dev/null || true)"
+grep -q '\.\./AGENTS.md from outside this project' <<<"$outside" || fail "a parent AGENTS.md is reported"
+rm -rf "$work/AGENTS.md" "$nested"
 pass "generation warnings appear only when they apply"
-for f in .pi/settings.json .pi/mcp.json .pi/APPEND_SYSTEM.md README.md .gitignore .env.example data/knowledge/.gitkeep; do
+for f in .pi/settings.json .pi/APPEND_SYSTEM.md README.md .gitignore run; do
   [[ -f "$work/$f" ]] || fail "generate did not create $f"
 done
-[[ -d "$work/.pi/agents" ]] || fail "generate did not create the empty .pi/agents/ directory"
+for f in .pi/mcp.json .pi/CAPABILITIES.md .env.example data/knowledge/.gitkeep; do
+  [[ -e "$work/$f" ]] && fail "generate created $f, which the minimal agent does not use"
+done
+[[ -e "$work/.pi/agents" ]] && fail "generate created .pi/agents/ for an agent without specialists"
 pass "forge generate creates the single-agent tree"
 
 # ── settings.json carries orchestrator model + defaultTools ─────
 node -e '
 const s = require(process.argv[1]);
-if (s.defaultProvider !== "provider-a") process.exit(1);
-if (s.defaultModel !== "model-large") process.exit(1);
-if (!Array.isArray(s.defaultTools) || !s.defaultTools.includes("subagent")) process.exit(1);
+if (s.defaultProvider !== "anthropic") process.exit(1);
+if (s.defaultModel !== "claude-sonnet-5-5") process.exit(1);
+if (JSON.stringify(s.defaultTools) !== JSON.stringify(["read", "grep", "find", "ls"])) process.exit(1);
+if (s.packages !== undefined) process.exit(1);
 ' "$work/.pi/settings.json" || fail "settings.json missing orchestrator model/defaultTools"
 pass "settings.json carries orchestrator model + defaultTools"
 

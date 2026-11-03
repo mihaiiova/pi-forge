@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runtimePackages } from "../deps.mjs";
+import { runtimePackages, runtimeNeeds } from "../deps.mjs";
 
 import { expectedForgePin as FORGE } from './version-helper.mjs';
 const PI_PACKAGES = [
@@ -45,10 +45,29 @@ test("runtimePackages never emits dev-only, web, local-path, or secret-shaped en
   assert.deepEqual(packages, [FORGE, "npm:pi-subagents@0.83.1"]);
 });
 
-test("a missing required primitive is an error, never silently omitted", () => {
+test("a primitive the caller does not pin takes this release's own pin, never none", () => {
   const { packages, errors } = runtimePackages(["npm:pi-web-access@0.27.0"]);
-  assert.deepEqual(packages, [FORGE]);
-  assert.ok(errors.some((e) => e.includes('"pi-subagents"')), "names the missing primitive");
+  assert.deepEqual(packages, [FORGE, "npm:pi-subagents@0.83.1"]);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(runtimePackages(["npm:pi-subagents@0.80.0"]).packages, [FORGE, "npm:pi-subagents@0.80.0"], "the caller's pin wins");
+});
+
+test("runtimePackages pins only what the design needs", () => {
+  assert.deepEqual(runtimePackages(PI_PACKAGES, [], { forge: false, subagents: false }).packages, []);
+  assert.deepEqual(runtimePackages(PI_PACKAGES, ["npm:foo@1.0.0"], { forge: false, subagents: true }).packages, ["npm:pi-subagents@0.83.1", "npm:foo@1.0.0"]);
+  assert.deepEqual(runtimePackages(PI_PACKAGES, ["npm:pi-subagents@0.83.1"], { forge: false, subagents: false }).packages, ["npm:pi-subagents@0.83.1"], "a declared pi-subagents is kept");
+});
+
+test("runtimeNeeds: the Forge runtime for commands, MCP approvals, a lead kept from MCP and workflows", () => {
+  const lead = (tools, extra = {}) => runtimeNeeds({ orchestrator: { name: "l", tools }, ...extra });
+  assert.deepEqual(lead(["read"]), { forge: false, subagents: false });
+  assert.deepEqual(lead(["read", "subagent"]), { forge: false, subagents: true });
+  assert.equal(lead(["read"], { agents: [{ name: "a" }] }).subagents, true);
+  assert.equal(lead(["read", "cli:x"], { integrations: { cli: [{ name: "x", command: "echo" }] } }).forge, true);
+  assert.equal(lead(["read", "mcp"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }).forge, false);
+  assert.equal(lead(["read", "mcp"], { integrations: { mcp: [{ name: "s", config: { url: "u", approveTools: ["x"] } }] } }).forge, true);
+  assert.equal(lead(["read"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }).forge, true, "a lead without mcp next to a server");
+  assert.equal(lead(["read"], { workflows: [{ name: "w" }] }).forge, true);
 });
 
 test("pi-mcp-adapter is rejected: it would replace Pi's built-in MCP", () => {
@@ -75,8 +94,8 @@ test("runtimePackages output is deterministic", () => {
   assert.deepEqual(a, b);
 });
 
-test("runtimePackages tolerates empty inputs by reporting missing primitives", () => {
+test("runtimePackages tolerates empty inputs", () => {
   const { packages, errors } = runtimePackages(undefined, undefined);
-  assert.deepEqual(packages, [FORGE]);
-  assert.equal(errors.length, 1, "the missing primitive is reported");
+  assert.deepEqual(packages, [FORGE, "npm:pi-subagents@0.83.1"]);
+  assert.deepEqual(errors, []);
 });

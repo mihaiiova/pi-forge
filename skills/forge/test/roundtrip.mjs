@@ -63,8 +63,8 @@ test("round-trip: modify adds an agent and preserves unrelated authored content"
   // First generate, then simulate a user edit to an authored file.
   const first = generateProject(system, {}, { piPackages: ["npm:pi-subagents@0.83.1"] });
   const existing = Object.fromEntries(first.files.map((f) => [f.path, f.content]));
-  const appendMarker = existing[".pi/APPEND_SYSTEM.md"].split("\n", 1)[0];
-  existing[".pi/APPEND_SYSTEM.md"] = `${appendMarker}\nUser-added orchestrator line.\n`;
+  const begin = existing[".pi/APPEND_SYSTEM.md"].indexOf("<!-- forge:derived v1 begin");
+  existing[".pi/APPEND_SYSTEM.md"] = existing[".pi/APPEND_SYSTEM.md"].slice(0, begin).replace(/\n$/, "") + "User-added orchestrator line.\n\n" + existing[".pi/APPEND_SYSTEM.md"].slice(begin);
 
   // Modify: add a new agent.
   const changed = {
@@ -76,6 +76,9 @@ test("round-trip: modify adds an agent and preserves unrelated authored content"
   const researcher = plan.files.find((f) => f.path === ".pi/agents/researcher.md");
   assert.equal(researcher.action, "create", "the added agent is scaffolded");
 
+  // The lead's generated section lists the new specialist; the authored edit stays.
   const append = plan.files.find((f) => f.path === ".pi/APPEND_SYSTEM.md");
-  assert.equal(append.action, "none", "unrelated authored edit is preserved, not overwritten");
+  assert.equal(append.action, "write");
+  assert.match(append.content, /User-added orchestrator line\./, "the authored edit is preserved, not overwritten");
+  assert.match(append.content, /`researcher` — Researches/, "the derived section follows the declarations");
 });

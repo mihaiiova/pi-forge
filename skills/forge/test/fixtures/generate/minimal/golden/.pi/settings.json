@@ -1,19 +1,10 @@
 {
-  "defaultProvider": "provider-a",
-  "defaultModel": "model-large",
-  "defaultThinkingLevel": "medium",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-5-5",
   "defaultTools": [
     "read",
     "grep",
     "find",
-    "ls",
-    "bash",
-    "edit",
-    "write",
-    "subagent"
-  ],
-  "packages": [
-    "git:github.com/mihaiiova/pi-forge@v<PACKAGE_VERSION>",
-    "npm:pi-subagents@0.83.1"
+    "ls"
   ]
 }

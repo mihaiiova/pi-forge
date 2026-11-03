@@ -1,7 +1,7 @@
-<!-- forge:generated v1 sha256=e0a2aee85a55b904a3c95de0c56b0b80dddcff469cbbc2688a5b37835102059a -->
-# seo-agent-system
+<!-- forge:generated v1 sha256=5c12e0a599b808239a6efc10c46001ae7af721dacabd7dc01a91adaad4e56846 -->
+# notes-helper
 
-SEO analysis + article drafting
+Answers questions about the notes in this folder
 
 ## Run
 
@@ -9,16 +9,14 @@ The generated `./run` launcher is the entry point. It starts Pi with the
 project's own Pi configuration and logins, without your global Pi settings,
 MCP servers or extensions. Your environment, including any credentials in
 it, is inherited, and it is not an OS sandbox. Skills in the shared Agent
-Skills folder (`~/.agents/skills/`) do load, for the orchestrator.
+Skills folder (`~/.agents/skills/`) and `AGENTS.md` files in parent folders
+do load, for the orchestrator. Plain `pi` in this folder runs the same
+project with your global Pi configuration added.
 
 ```sh
 ./run             # interactive
 ./run -p "..."   # headless one-shot
 ```
-
-On the first interactive run, Pi may start npm package installation processes
-that continue briefly after Pi exits and may keep output pipes open. Callers
-should allow extra time before assuming the output stream has closed.
 
 Authenticate inside `./run` with `/login`, or export
 the provider-specific key (for example `DEEPSEEK_API_KEY`). See the policy
@@ -27,14 +25,11 @@ capabilities are enforced vs advisory.
 
 ## Maintain
 
-`/faur <request>` proposes a change; when the turn ends, Forge asks you
-to discuss, apply or discard it. Replies continue the conversation until
-then; `/faur exit` leaves. `/faur review` is read-only.
-`/faur check` verifies the agent, `/faur status` summarizes it, and
-`/faur sync` moves to the newest Forge release after two confirmations.
-Roll back with git. `/faur permissions` lists the commands agents may run
-and adds, removes or reviews them; agents ask for a command they need with
-`request_permission`. Restart `./run` when the launcher or packages change.
+This project runs on Pi alone and pins no Faur package. Maintain it from
+your own Pi with Faur installed: run `pi` in this folder and use
+`/faur <request>` to propose a change (discuss, apply or discard it when the
+turn ends), `/faur check` to verify the agent and `/faur status` to
+summarize it. Without Faur, edit the files directly; roll back with git.
 
 ## Policy
 

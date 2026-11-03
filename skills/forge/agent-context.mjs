@@ -10,7 +10,7 @@ import { advisoryText, enforcedAgentTools } from "./policy.mjs";
 import { cliEntries, cliRef, cliToolName, formatCommand } from "./cli-tools.mjs";
 import { askingReach, leadTools } from "./asking.mjs";
 import { mcpExposure, mcpToolName } from "./mcp-gen.mjs";
-import { orchestratorTools } from './project-context.mjs';
+import { runtimeNeeds } from './deps.mjs';
 
 const BUILTIN = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
 
@@ -44,7 +44,7 @@ export function capabilitySection(model, name) {
   const isLead = orchestrator?.name === name;
   const agent = isLead ? orchestrator : list(model?.agents).find((a) => isPlainObject(a) && a.name === name);
   if (!agent) return "";
-  const declared = isLead ? orchestratorTools(agent) : enforcedAgentTools(name, model.policies, agent.tools);
+  const declared = isLead ? (Array.isArray(agent.tools) ? agent.tools : undefined) : enforcedAgentTools(name, model.policies, agent.tools);
   const all = !Array.isArray(declared);
   const tools = list(declared);
   const servers = list(model?.integrations?.mcp).filter(isPlainObject);
@@ -112,7 +112,9 @@ export function capabilitySection(model, name) {
       const write = all || tools.includes("write");
       lines.push("", `Only you can make the calls above that ask the user: specialists run in the background, where nobody can answer the prompt. When a specialist needs one, get the user's approval, make the call and pass the result on${write ? " (save it to a project file and give the specialist its path)" : ""}.`);
     }
-    lines.push("", "If a task needs something not listed, say what is missing; for a command-line task, ask with request_permission. Don't work around a missing capability.");
+    // request_permission comes from the Forge runtime, pinned only when the design needs it.
+    const ask = runtimeNeeds(model).forge ? "; for a command-line task, ask with request_permission" : "";
+    lines.push("", `If a task needs something not listed, say what is missing${ask}. Don't work around a missing capability.`);
   } else {
     // Asking tools on servers this agent uses are the orchestrator's to call.
     const used = new Set(tools.filter((t) => t === "mcp" || t.startsWith("mcp:")).flatMap((t) => (t === "mcp" ? servers.map((s) => s.name) : [t.slice(4).split("/")[0]])));

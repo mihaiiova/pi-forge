@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, symlinkSync, existsSync, chmodSync, realpathSync, cpSync, statSync } from 'node:fs';
@@ -20,17 +21,25 @@ const model = {
   schema: 1, name: 'maintenance-test', description: 'A focused research system',
   orchestrator: { name: 'lead', model: 'fixture/large', tools: ['read'], prompt: 'Coordinate research.\n' },
 };
-function project(t) {
+/** A design that needs the Forge runtime (one declared command), so it pins a release. */
+const pinnedModel = { ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'cli:hello'] }, integrations: { cli: [{ name: 'hello', command: 'echo', args: ['hi'], approve: false }] } };
+/** Make the lead's derived section look like an older release wrote it (intact fingerprint). */
+function olderSection(root) {
+  const body = '## What you can use\n\nOlder wording.';
+  const text = readText(root, '.pi/APPEND_SYSTEM.md').replace(/(<!-- forge:derived v1 begin[^\n]*-->\n)[\s\S]*\n(<!-- forge:derived v1 end sha256=)[0-9a-f]{64}( -->)/, `$1${body}\n$2${createHash('sha256').update(body).digest('hex')}$3`);
+  writeFileSync(join(root, '.pi/APPEND_SYSTEM.md'), text);
+}
+function project(t, design = model) {
   const root = mkdtempSync(join(tmpdir(), 'forge-maintenance-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const generated = generateProject(model, {}, { piPackages: pkg.pi.packages });
+  const generated = generateProject(design, {}, { piPackages: pkg.pi.packages });
   assert.deepEqual(generated.errors, []);
   for (const f of generated.files) {
     mkdirSync(dirname(join(root, f.path)), { recursive: true });
     writeFileSync(join(root, f.path), f.content);
     if (f.executable) chmodSync(join(root, f.path), 0o755);
   }
-  writeFileSync(join(root, '.pi/system.yaml'), '# Preserve this purpose comment\n' + yaml.stringify(model));
+  writeFileSync(join(root, '.pi/system.yaml'), '# Preserve this purpose comment\n' + yaml.stringify(design));
   mkdirSync(join(root, '.forge'), { recursive: true });
   // As forge generate does: record the build and its capabilities.
   applyChange(root, rebuildPlan(root), true);
@@ -94,7 +103,7 @@ test('generated files preserve existing modes and use regular creation modes wit
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(model));
   writeFileSync(join(root, '.env'), 'TOKEN=private\n', { mode: 0o600 });
   applyChange(root, planChange(root, [{ op: 'reconcile' }], { piPackages: pkg.pi.packages }), true);
-  for (const path of ['README.md', '.pi/settings.json', '.pi/mcp.json', '.pi/APPEND_SYSTEM.md', '.pi/CAPABILITIES.md']) {
+  for (const path of ['README.md', '.pi/settings.json', '.pi/APPEND_SYSTEM.md']) {
     assert.equal(statSync(join(root, path)).mode & 0o777, 0o666 & ~process.umask(), path);
   }
   assert.equal(statSync(join(root, 'run')).mode & 0o777, 0o755);
@@ -228,7 +237,7 @@ test('structured changes preserve comments, add/update/remove all schema entitie
   ]), true);
   assert.equal(readText(root, '.pi/agents/reviewer.md'), null);
   assert.equal(readText(root, '.pi/skills/keywords/SKILL.md'), null);
-  assert.deepEqual(readJson(root, '.pi/mcp.json').mcpServers, {});
+  assert.equal(readText(root, '.pi/mcp.json'), null, 'the last server removed takes .pi/mcp.json with it');
 });
 
 test('conflicts, stale previews, malformed references and infrastructure names cannot bypass validation', t => {
@@ -313,9 +322,9 @@ test('unmarked instructions and unrelated derived drift never get silently recon
 
 test('a rebuild that only changes text agents read is automatic', t => {
   const root = project(t);
-  writeFileSync(join(root, '.pi/CAPABILITIES.md'), '## What you can use\n\nOlder wording.\n');
+  olderSection(root);
   const plan = rebuildPlan(root);
-  assert.deepEqual(plan.rebuild.changed, ['.pi/CAPABILITIES.md']);
+  assert.deepEqual(plan.rebuild.changed, ['.pi/APPEND_SYSTEM.md']);
   assert.deepEqual(plan.rebuild.reach, []);
   assert.equal(plan.rebuild.automatic, true);
   writeFileSync(join(root, '.forge/capabilities.json'), '{}\n');
@@ -513,7 +522,7 @@ test('CLI generate/change dry runs and noninteractive unapproved calls write not
   execFileSync(process.execPath, [forge, 'generate', fresh]);
   assert.equal(readJson(fresh, '.forge/build.json').version, pkg.version);
   assert.equal(readText(fresh, '.forge/installation.json'), null);
-  assert.ok(readJson(fresh, '.pi/settings.json').packages.includes(`git:github.com/mihaiiova/pi-forge@v${pkg.version}`));
+  assert.equal(readJson(fresh, '.pi/settings.json').packages, undefined, 'a design that needs no runtime pins nothing');
 });
 
 test('fetch is maintenance-only, asks nothing, and never creates an applicable proposal', async t => {
@@ -623,15 +632,26 @@ test('inspect summarizes subagent launches and the latest failure diagnostic onl
   assert.doesNotMatch(JSON.stringify(runs), /secret task text/);
 });
 
-test('/faur sync on the newest release rebuilds: text directly, reach changes after confirmation', async t => {
+test('/faur sync on a project that pins no Forge package rebuilds it with this Faur', async t => {
   const root = project(t);
+  const mock = adapter();
+  mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
+  const run = async (request) => { mock.notices.length = 0; await mock.forge(request, mock.ctx); return mock.notices.map(n => n[0]).join('\n'); };
+  assert.match(await run('sync'), new RegExp(`pins no Forge package\\. Already built with Forge ${pkg.version}; nothing to rebuild`));
+  olderSection(root);
+  assert.match(await run('sync'), /pins no Forge package\. Rebuilt with Forge [^:]+: \.pi\/APPEND_SYSTEM\.md/);
+  assert.match(await run('status'), /Forge: not pinned; the project runs on Pi alone/);
+});
+
+test('/faur sync on the newest release rebuilds: text directly, reach changes after confirmation', async t => {
+  const root = project(t, pinnedModel);
   const mock = adapter();
   mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
   const run = async (request, ctx = mock.ctx) => { mock.notices.length = 0; await mock.forge(request, ctx); return mock.notices.map(n => n[0]).join('\n'); };
   assert.match(await run('sync'), new RegExp(`v${pkg.version} is the newest release[\\s\\S]*Already built with Forge ${pkg.version}; nothing to rebuild`));
-  writeFileSync(join(root, '.pi/CAPABILITIES.md'), 'Older wording.\n');
-  assert.match(await run('sync'), new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/CAPABILITIES\\.md\\.`), 'no confirmation for text');
-  assert.notEqual(readText(root, '.pi/CAPABILITIES.md'), 'Older wording.\n');
+  olderSection(root);
+  assert.match(await run('sync'), new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/APPEND_SYSTEM\\.md\\.`), 'no confirmation for text');
+  assert.doesNotMatch(readText(root, '.pi/APPEND_SYSTEM.md'), /Older wording/);
   writeFileSync(join(root, 'run'), readText(root, 'run') + '# custom launcher\n');
   const write = process.stderr.write;
   let stderr = '';
@@ -656,10 +676,10 @@ test('applied changes and rebuilds reload Pi unless the launcher or packages cha
   const reloads = [];
   mock.ctx.reload = async () => { reloads.push('reload'); };
   mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });
-  writeFileSync(join(root, '.pi/CAPABILITIES.md'), 'Older wording.\n');
+  olderSection(root);
   await mock.forge('sync', mock.ctx);
   assert.deepEqual(reloads, ['reload']);
-  assert.match(mock.notices.at(-1)[0], new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/CAPABILITIES\\.md\\. Reloading\\.$`));
+  assert.match(mock.notices.at(-1)[0], new RegExp(`Rebuilt with Forge ${pkg.version}: \\.pi/APPEND_SYSTEM\\.md\\. Reloading\\.$`));
 });
 
 test('/faur check verifies the agent without a model turn', async t => {
@@ -682,7 +702,7 @@ test('/faur check verifies the agent without a model turn', async t => {
 });
 
 test('/faur status shows the agents, the Forge pin, newer releases and pending requests', async t => {
-  const root = project(t);
+  const root = project(t, pinnedModel);
   writeFileSync(join(root, '.forge/permission-requests.json'), json([{ name: 'list-files', command: 'ls', args: ['-la'], reason: 'Look around', requestedAt: '2026-10-29T00:00:00.000Z' }]));
   const mock = adapter();
   mock.forge = registerMaintenance(mock.pi, mock.Type, root, { updates: { remote: releaseRemote(t) } });

@@ -12,17 +12,17 @@ const fixtureRoot = resolve(here, "fixtures/generate/minimal");
 const minimalYaml = readFileSync(resolve(fixtureRoot, ".pi/system.yaml"), "utf-8");
 const model = parseSystem(minimalYaml);
 
+// The minimal agent (generated-agent audit, A): nothing it does not use.
 const EXPECTED_PATHS = [
-  ".env.example",
   ".gitignore",
   ".pi/APPEND_SYSTEM.md",
-  ".pi/CAPABILITIES.md",
-  ".pi/mcp.json",
   ".pi/settings.json",
   "README.md",
-  "data/knowledge/.gitkeep",
   "run",
 ];
+/** A design that needs the Forge runtime: one declared command. */
+const withCommand = { ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "cli:hello"] }, integrations: { cli: [{ name: "hello", command: "echo", args: ["hi"] }] } };
+const withServer = { ...model, integrations: { mcp: [{ name: "openseo", config: { url: "http://localhost:3002/mcp" } }] } };
 
 function byPath(files, path) {
   return files.find((f) => f.path === path);
@@ -40,22 +40,32 @@ test("fresh generate creates the full single-agent tree", () => {
   }
 
   const settings = JSON.parse(byPath(files, ".pi/settings.json").content);
-  assert.equal(settings.defaultProvider, "provider-a");
-  assert.equal(settings.defaultModel, "model-large");
-  assert.equal(settings.defaultThinkingLevel, "medium");
-  assert.deepEqual(settings.defaultTools, [
-    "read", "grep", "find", "ls", "bash", "edit", "write", "subagent",
-  ]);
+  assert.equal(settings.defaultProvider, "anthropic");
+  assert.equal(settings.defaultModel, "claude-sonnet-5-5");
+  assert.deepEqual(settings.defaultTools, ["read", "grep", "find", "ls"]);
+  assert.equal(settings.packages, undefined, "the minimal agent pins no packages");
   assert.equal(settings.subagents, undefined, "no routing overrides: agents carry their own models");
-
-  const mcp = JSON.parse(byPath(files, ".pi/mcp.json").content);
-  assert.deepEqual(mcp, { mcpServers: {}, autoEnableCodemode: false });
 });
 
-test("generated project pins the Forge package to its release", () => {
-  const { files } = generateProject(model, {});
-  const settings = JSON.parse(byPath(files, ".pi/settings.json").content);
-  assert.ok(settings.packages.includes(expectedForgePin));
+test("the Forge release is pinned only when the design needs its runtime", () => {
+  const pins = (m) => JSON.parse(byPath(generateProject(m, {}).files, ".pi/settings.json").content).packages ?? [];
+  assert.deepEqual(pins(model), []);
+  assert.ok(pins(withCommand).includes(expectedForgePin), "declared commands come from the Forge runtime");
+  assert.ok(pins({ ...withServer, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "mcp"] } }).length === 0, "a lead with mcp and no approvals runs on built-in MCP alone");
+  assert.ok(pins(withServer).includes(expectedForgePin), "a lead declared without mcp is kept from it by the runtime");
+  assert.ok(pins({ ...model, workflows: [{ name: "w", entry: "helper" }] }).includes(expectedForgePin), "workflows use the runner");
+  assert.deepEqual(pins({ ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "subagent"] } }), ["npm:pi-subagents@0.83.1"], "subagent alone pins pi-subagents at this release's version");
+});
+
+test("files a design does not use are not generated", () => {
+  const paths = (m) => generateProject(m, {}).files.map((f) => f.path);
+  assert.ok(!paths(model).includes(".pi/mcp.json") && !paths(model).includes(".env.example"));
+  assert.ok(paths(withServer).includes(".pi/mcp.json"));
+  assert.ok(paths({ ...model, integrations: { env: [{ name: "TOKEN" }] } }).includes(".env.example"));
+  const run = (m) => byPath(generateProject(m, {}).files, "run").content;
+  assert.doesNotMatch(run(model), /workflow/, "no workflow block without workflows");
+  assert.equal(run({ ...model, workflows: [{ name: "w", entry: "helper" }] }).match(/workflow-runner\.mjs" '/g).length, 1, "one workflow block");
+  assert.doesNotMatch(run(model), /--no-context-files|--append-system-prompt/, "Pi loads the prompt and context files itself");
 });
 
 test("re-running generate is a no-op (idempotent)", () => {
@@ -81,7 +91,7 @@ test("unrelated keys in .pi/settings.json survive regeneration", () => {
   const settings = JSON.parse(byPath(files, ".pi/settings.json").content);
 
   assert.equal(settings.theme, "dark", "unrelated key preserved");
-  assert.equal(settings.defaultModel, "model-large", "model-owned key overwritten");
+  assert.equal(settings.defaultModel, "claude-sonnet-5-5", "model-owned key overwritten");
   assert.deepEqual(settings.subagents, { maxDepth: 2 }, "stale routing overrides dropped, other subagent settings kept");
 });
 
@@ -128,31 +138,29 @@ test("sourced skills generate no SKILL.md and packaged sources join runtime pack
   });
   assert.ok(!files.some((f) => f.path.startsWith(".pi/skills/packaged") || f.path.startsWith(".pi/skills/local")));
   const settings = JSON.parse(byPath(files, ".pi/settings.json").content);
-  assert.deepEqual(settings.packages, [expectedForgePin, "npm:pi-subagents@0.83.1", "npm:@acme/skills@1.0.0"]);
+  assert.deepEqual(settings.packages, ["npm:@acme/skills@1.0.0"]);
 });
 
 test("unrelated keys in .pi/mcp.json survive regeneration", () => {
   const existing = {
     ".pi/mcp.json": JSON.stringify({
-      mcpServers: { openseo: { url: "http://localhost:3002/mcp" } },
+      mcpServers: { stale: { url: "http://localhost:3003/mcp" } },
       extra: true,
     }),
   };
 
-  const { files } = generateProject(model, existing);
+  const { files } = generateProject(withServer, existing);
   const mcp = JSON.parse(byPath(files, ".pi/mcp.json").content);
 
   assert.equal(mcp.extra, true, "non-capability key preserved");
-  // system.yaml is authoritative: the model declares no MCP servers, so a
-  // previously-present (undeclared) server is dropped, not preserved.
-  assert.deepEqual(mcp.mcpServers, {}, "undeclared server removed");
+  // system.yaml is authoritative: an undeclared server is dropped, not preserved.
+  assert.deepEqual(Object.keys(mcp.mcpServers), ["openseo"], "undeclared server removed");
 });
 
 test("user edits to an authored file survive when the model is unchanged", () => {
   const first = generateProject(model, {});
   const original = byPath(first.files, ".pi/APPEND_SYSTEM.md").content;
-  const markerLine = original.split("\n", 1)[0];
-  const userEdited = `${markerLine}\nI added my own orchestrator instructions.\n`;
+  const userEdited = original.replace(model.orchestrator.prompt, "I added my own orchestrator instructions.\n");
 
   const { files } = generateProject(model, { ".pi/APPEND_SYSTEM.md": userEdited });
   const entry = byPath(files, ".pi/APPEND_SYSTEM.md");
@@ -174,8 +182,7 @@ test("user-authored files without a forge marker are never touched", () => {
 test("conflict when a user edits an authored file AND the model changes it", () => {
   const first = generateProject(model, {});
   const original = byPath(first.files, ".pi/APPEND_SYSTEM.md").content;
-  const markerLine = original.split("\n", 1)[0];
-  const userEdited = `${markerLine}\nUser's own instructions.\n`;
+  const userEdited = original.replace(model.orchestrator.prompt, "User's own instructions.\n");
 
   const changedModel = {
     ...model,
@@ -194,7 +201,8 @@ test("authored scaffold carries an forge marker and the scaffolded body", () => 
   const { files } = generateProject(model, {});
   const append = byPath(files, ".pi/APPEND_SYSTEM.md").content;
   assert.match(append, /^<!-- forge:generated v1 sha256=[0-9a-f]{64} -->\n/);
-  assert.ok(append.endsWith(model.orchestrator.prompt));
+  assert.ok(append.indexOf(model.orchestrator.prompt) < append.indexOf("## What you can use"), "the authored prompt, then the derived section");
+  assert.match(append, /<!-- forge:derived v1 begin[^\n]*-->\n## What you can use[\s\S]*\n<!-- forge:derived v1 end sha256=[0-9a-f]{64} -->\n$/);
 
   const gitignore = byPath(files, ".gitignore").content;
   assert.match(gitignore, /^# forge:generated v1 sha256=[0-9a-f]{64}\n/);
@@ -212,6 +220,7 @@ test("golden tree: minimal fixture produces the committed snapshot", () => {
   const goldenDir = resolve(fixtureRoot, "golden");
   const { files } = generateProject(model, {}, {
     piPackages: ["npm:pi-subagents@0.83.1", "npm:pi-web-access@0.27.0"],
+    contextFiles: [],
   });
 
   const produced = new Map(files.map((f) => [f.path, f.content]));
@@ -243,23 +252,50 @@ test("runtime packages are computed from piPackages + declared model packages", 
     { piPackages },
   );
   const settings = JSON.parse(byPath(withDeclared.files, ".pi/settings.json").content);
-  assert.deepEqual(settings.packages, [
-    expectedForgePin,
-    "npm:pi-subagents@0.83.1",
-        "npm:foo@1.0.0",
-  ]);
+  assert.deepEqual(settings.packages, ["npm:foo@1.0.0"]);
 
-  // Without piPackages, the Forge pin is still present (but primitives are missing).
-  const plain = generateProject(model, {});
-  const plainSettings = JSON.parse(byPath(plain.files, ".pi/settings.json").content);
-  assert.deepEqual(plainSettings.packages, [expectedForgePin]);
+  const commands = generateProject({ ...withCommand, agents: [{ name: "w", model: "p/m", tools: ["read"] }] }, {}, { piPackages });
+  assert.deepEqual(JSON.parse(byPath(commands.files, ".pi/settings.json").content).packages, [expectedForgePin, "npm:pi-subagents@0.83.1"]);
 });
 
-test("generateProject reports missing runtime primitives as errors", () => {
-  const { files, errors } = generateProject(model, {}, { piPackages: [] });
-  assert.ok(errors.some((e) => e.includes('"pi-subagents"')), "the missing primitive is reported");
-  const settings = JSON.parse(byPath(files, ".pi/settings.json").content);
-  assert.deepEqual(settings.packages, [expectedForgePin]);
+test("a primitive the caller does not pin takes this release's version", () => {
+  const { files, errors } = generateProject({ ...model, agents: [{ name: "w", model: "p/m", tools: ["read"] }] }, {}, { piPackages: [] });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(JSON.parse(byPath(files, ".pi/settings.json").content).packages, ["npm:pi-subagents@0.83.1"]);
+});
+
+test("APPEND_SYSTEM.md: the derived section follows declarations; the authored prompt is never overwritten", () => {
+  const first = byPath(generateProject(model, {}).files, ".pi/APPEND_SYSTEM.md").content;
+  const edited = first.replace(model.orchestrator.prompt, "My own prompt.\n");
+  const added = { ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "bash"] } };
+  const next = byPath(generateProject(added, { ".pi/APPEND_SYSTEM.md": edited }).files, ".pi/APPEND_SYSTEM.md");
+  assert.equal(next.action, "write", "a capability change rewrites only the derived section");
+  assert.match(next.content, /My own prompt\./);
+  assert.match(next.content, /\*\*Built-in tools:\*\* read, grep, find, ls, bash/);
+  assert.equal(byPath(generateProject(added, { ".pi/APPEND_SYSTEM.md": next.content }).files, ".pi/APPEND_SYSTEM.md").action, "none", "idempotent");
+
+  const handEdited = first.replace("Use only what is listed here.", "Use anything.");
+  const conflict = byPath(generateProject(added, { ".pi/APPEND_SYSTEM.md": handEdited }).files, ".pi/APPEND_SYSTEM.md");
+  assert.equal(conflict.action, "conflict", "a hand edit of the derived section is reported, not overwritten");
+  assert.equal(conflict.content, handEdited);
+  assert.match(conflict.reason, /edited by hand/);
+});
+
+test("text after the generated section is never dropped", () => {
+  const first = byPath(generateProject(model, {}).files, ".pi/APPEND_SYSTEM.md").content;
+  const noted = `${first}\nMy note.\n`;
+  assert.equal(byPath(generateProject(model, { ".pi/APPEND_SYSTEM.md": noted }).files, ".pi/APPEND_SYSTEM.md").action, "none", "kept while nothing changes");
+  const added = { ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "bash"] } };
+  const entry = byPath(generateProject(added, { ".pi/APPEND_SYSTEM.md": noted }).files, ".pi/APPEND_SYSTEM.md");
+  assert.equal(entry.action, "conflict");
+  assert.equal(entry.content, noted);
+  assert.match(entry.reason, /move it above the section/);
+});
+
+test("a hand-written APPEND_SYSTEM.md without Faur markers is left alone, with a warning", () => {
+  const { files, warnings } = generateProject(model, { ".pi/APPEND_SYSTEM.md": "Mine.\n" });
+  assert.equal(byPath(files, ".pi/APPEND_SYSTEM.md").action, "none");
+  assert.ok(warnings.some((w) => w.includes("without Faur's generated section")));
 });
 
 test("generateProject emits the executable run launcher", () => {

@@ -16,9 +16,6 @@ export function configurationAdvisories(model) {
     if (warning) out.push(`Command ${c.name}: ${warning}`);
   }
   const lead = model.orchestrator;
-  if (Array.isArray(lead?.projectContext) && lead.projectContext.length) {
-    out.push('Project context is sent to the model and may contain untrusted instructions or credentials. It also enables edit for any accessible file, not only the listed files.');
-  }
   if (lead && Array.isArray(lead.tools)) {
     const tools = lead.tools;
     const canRead = tools.includes('read') || tools.includes('bash') || commands.some(c => tools.includes(`cli:${c.name}`) && ['cat', 'head', 'less', 'sed', 'awk'].includes(c.command.split('/').pop()));

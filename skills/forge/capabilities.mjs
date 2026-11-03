@@ -12,14 +12,12 @@
  * states this instead of claiming they are absent.
  */
 import { enforcedAgentTools } from "./policy.mjs";
-import { runtimePackages } from "./deps.mjs";
+import { runtimePackages, runtimeNeeds } from "./deps.mjs";
 import { declaredPackages, skillSourceKind } from "./skill-sources.mjs";
 import { splitModelRef } from "./models.mjs";
 import { needsBackground } from "./generate.mjs";
-import { DEFAULT_MAX_CHARS, MEMORY_FILE } from "./memory.mjs";
 import { cliAgents, cliEntries, cliRef } from "./cli-tools.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
-import { orchestratorTools } from './project-context.mjs';
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -46,15 +44,13 @@ export function effectiveCapabilities(model, opts = {}) {
   const mcpList = Array.isArray(integrations.mcp) ? integrations.mcp : [];
 
   const declared = declaredPackages(model);
-  const { packages } = runtimePackages(opts?.piPackages, declared);
+  const { packages } = runtimePackages(opts?.piPackages, declared, runtimeNeeds(model));
 
   return {
     schema: model?.schema,
     name: model?.name,
     orchestratorModel: orchestrator.model,
-    orchestratorTools: sortUnique(orchestratorTools(orchestrator)),
-    // The memory tool is extension-provided and writes only this file.
-    orchestratorMemory: { tool: "memory", file: MEMORY_FILE, maxChars: DEFAULT_MAX_CHARS },
+    orchestratorTools: sortUnique(orchestrator.tools),
     agents: (Array.isArray(model.agents) ? model.agents : []).map((agent) => ({
       name: agent.name,
       tools: sortUnique(enforcedAgentTools(agent.name, model.policies, agent.tools)),
@@ -94,7 +90,7 @@ export function effectiveCapabilities(model, opts = {}) {
       proposalTool: 'forge_plan (hidden outside a direct maintenance request)',
       applicationAuthority: 'direct user command plus interactive confirmation',
       operationalToolExpansion: false,
-      dependencies: 'the Forge package pinned in .pi/settings.json',
+      dependencies: runtimeNeeds(model).forge ? 'the Forge package pinned in .pi/settings.json' : 'Faur installed in the developer\'s Pi; the project pins no Forge package',
     },
     notes: [
       "subagent tools are enforced by pi-subagents allowlists (a child lacks unlisted tools)",

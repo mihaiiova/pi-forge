@@ -9,9 +9,9 @@
  * on it. MCP servers connect after session start, so their tools are checked
  * only when `mcpTools` is given.
  */
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { enforcedAgentTools } from './policy.mjs';
 import { needsBackground, SUBAGENT_CONFIG } from './generate.mjs';
 import { skillSourceKind } from './skill-sources.mjs';
@@ -64,14 +64,6 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
     }
   };
   if (model?.orchestrator) {
-    for (const path of model.orchestrator.projectContext ?? []) {
-      try {
-        const target = realpathSync(resolve(root, path));
-        if (!target.startsWith(realpathSync(root) + sep) || !statSync(target).isFile()) throw new Error('not an in-project file');
-      } catch {
-        problems.push({ agent: model.orchestrator.name, problem: `projectContext "${path}" is missing or not an in-project file` });
-      }
-    }
     const tools = Array.isArray(model.orchestrator.tools) ? model.orchestrator.tools : cliEntries(model).map((c) => `cli:${c.name}`);
     checkCommands(model.orchestrator.name, tools);
     for (const tool of tools) {

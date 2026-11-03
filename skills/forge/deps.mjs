@@ -4,16 +4,23 @@
  * Pure seam: `runtimePackages(piPackages, declared) -> string[]`.
  *
  * A generated system is self-contained by declaration, not by wholesale
- * package inheritance. The runtime keeps only the two Pi runtime primitives it
- * needs — `pi-subagents` (subagent support; MCP is Pi's built-in) — plus
- * whatever the model explicitly declares. The forge's own dev-only
+ * package inheritance. It pins only what its declarations use (`runtimeNeeds`):
+ * the Forge package while the design needs its runtime, `pi-subagents` for
+ * specialists (MCP is Pi's built-in), and whatever the model explicitly
+ * declares. A minimal agent pins nothing. The forge's own dev-only
  * packages (web access, the YAML parser, question helpers) and any git pin are
  * never emitted; local-path and secret-shaped entries are rejected.
  */
 
 import { readFileSync } from 'node:fs';
+import { cliEntries } from './cli-tools.mjs';
+import { mcpApprovals } from './mcp-gen.mjs';
+import { leadTools } from './asking.mjs';
 
-const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+const PACKAGE = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+const VERSION = PACKAGE.version;
+/** This Forge release's own pins, used for a primitive the caller does not pin. */
+const OWN_PACKAGES = Array.isArray(PACKAGE.pi?.packages) ? PACKAGE.pi.packages : [];
 /** The Forge package source; generated projects pin it to a release tag. */
 export const FORGE_SOURCE = 'git:github.com/mihaiiova/pi-forge';
 const FORGE_PACKAGE = `${FORGE_SOURCE}@v${VERSION}`;
@@ -63,23 +70,46 @@ function declaredSpecError(spec) {
 }
 
 /**
+ * Which runtime packages a design uses. The Forge runtime registers declared
+ * commands (and request_permission), asks before approved MCP calls, keeps
+ * MCP away from a lead declared without it, and runs headless workflows; a
+ * design with none of these runs on Pi alone. pi-subagents serves declared
+ * specialists and a lead that lists the `subagent` tool.
+ */
+export function runtimeNeeds(model) {
+  const lead = leadTools(model);
+  const servers = Array.isArray(model?.integrations?.mcp) ? model.integrations.mcp.length : 0;
+  const agents = Array.isArray(model?.agents) ? model.agents.length : 0;
+  return {
+    forge: cliEntries(model).length > 0 || mcpApprovals(model).length > 0 || (servers > 0 && !lead.includes('mcp'))
+      || (Array.isArray(model?.workflows) && model.workflows.length > 0),
+    subagents: agents > 0 || lead.includes('subagent'),
+  };
+}
+
+/**
  * @param {string[]} [piPackages] the forge's own `pi.packages` (`npm:<name>@<version>`).
  * @param {string[]} [declared] the model's declared `packages` (npm:/git: specs).
+ * @param {{ forge?: boolean, subagents?: boolean }} [needs] from `runtimeNeeds`;
+ *   both default to true.
  * @returns {{ packages: string[], errors: string[] }} primitives first, then declared;
  *   `errors` is non-empty when a required primitive is missing/unpinned or a
  *   declared spec is invalid/conflicting (never silently incomplete).
  */
-export function runtimePackages(piPackages, declared = []) {
+export function runtimePackages(piPackages, declared = [], { forge = true, subagents = true } = {}) {
   const errors = [];
-  const pins = [FORGE_PACKAGE];
+  const pins = forge ? [FORGE_PACKAGE] : [];
 
+  // The caller's pins (a project's current ones) win; a primitive the project
+  // does not pin yet, such as pi-subagents for a first specialist, takes this
+  // release's version.
   const byName = new Map();
-  for (const entry of Array.isArray(piPackages) ? piPackages : []) {
+  for (const entry of [...OWN_PACKAGES, ...(Array.isArray(piPackages) ? piPackages : [])]) {
     const parsed = parseNpmSpec(entry);
     if (parsed) byName.set(parsed.name, entry);
   }
 
-  for (const name of RUNTIME_PRIMITIVES) {
+  for (const name of subagents ? RUNTIME_PRIMITIVES : []) {
     const entry = byName.get(name);
     if (!entry) {
       errors.push(`required runtime dependency "${name}" is not present in the forge's pi.packages`);
@@ -95,7 +125,7 @@ export function runtimePackages(piPackages, declared = []) {
 
   for (const spec of Array.isArray(declared) ? declared : []) {
     const parsed = parseNpmSpec(spec);
-    if (parsed && RUNTIME_PRIMITIVES.includes(parsed.name)) {
+    if (parsed && RUNTIME_PRIMITIVES.includes(parsed.name) && subagents) {
       const pinned = byName.get(parsed.name);
       if (pinned && pinned !== spec) {
         errors.push(`declared package "${spec}" conflicts with the pinned runtime primitive "${pinned}"`);

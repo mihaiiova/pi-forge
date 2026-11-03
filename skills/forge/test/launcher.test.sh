@@ -42,16 +42,9 @@ export PATH="$bin:$PATH"
 (cd "$work" && "$proj/run" alpha "two words")
 grep -Fq "cwd=$proj" "$LAUNCHER_LOG" || fail "launcher did not cd into the project root"
 grep -Fq "agent_dir=$proj/.forge/pi-home" "$LAUNCHER_LOG" || fail "launcher did not set the isolated agent dir"
-grep -Fq 'args=--approve --no-context-files --append-system-prompt .pi/APPEND_SYSTEM.md --append-system-prompt .pi/CAPABILITIES.md alpha two words' "$LAUNCHER_LOG" || fail "launcher did not isolate context, pass the prompt files and forward arguments"
+# Pi finds .pi/APPEND_SYSTEM.md and AGENTS.md itself; the launcher adds no prompt or context flags.
+grep -Fxq 'args=--approve alpha two words' "$LAUNCHER_LOG" || fail "launcher did not forward arguments unchanged"
 pass "launcher: cwd/env/args correct from an arbitrary working directory"
-
-# ── Missing prompt files are skipped, not passed ────────────────
-mv "$proj/.pi/APPEND_SYSTEM.md" "$proj/.pi/CAPABILITIES.md" "$work/"
-: > "$LAUNCHER_LOG"
-(cd "$work" && "$proj/run" alpha)
-grep -Fxq 'args=--approve --no-context-files alpha' "$LAUNCHER_LOG" || fail "launcher passed a missing prompt file"
-mv "$work/APPEND_SYSTEM.md" "$work/CAPABILITIES.md" "$proj/.pi/"
-pass "launcher: skips missing prompt files"
 
 # ── Exit code passthrough ───────────────────────────────────────
 set +e

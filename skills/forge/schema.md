@@ -63,28 +63,12 @@ level go into its own `.pi/agents/<name>.md` frontmatter. No routing overrides
 ### `orchestrator`
 
 Allowed keys: `name` (required string), `description`, `prompt`, `model`
-(required `provider/id`), `thinking`, `tools` (array of strings), and
-`projectContext` (array of project-relative file paths).
+(required `provider/id`), `thinking` and `tools` (array of strings).
 
-`projectContext: [AGENTS.md]` explicitly appends those files, in order, after
-`.pi/APPEND_SYSTEM.md` and `.pi/CAPABILITIES.md` on interactive and workflow
-launches. Missing files or files resolving outside the project are skipped and
-reported by the launch check. Absolute paths, `..`, and backslashes are
-rejected. This opts in to file contents as instructions sent to the model:
-never list credential files; untrusted project files may contain prompt injection. A non-empty list automatically enables
-Pi's `edit` tool even when not listed in `tools`. **That tool can edit other
-files accessible to the process**, not just listed instruction files. An
-absent or empty list does not add a tool. This path check is not a filesystem
-sandbox or a defense against concurrent hostile filesystem changes.
-
-The orchestrator always has memory: notes it keeps across sessions in
-`.pi/MEMORY.md`, one `- ` entry per line, up to 4000 characters. They load
-into its prompt at session start. It writes them freely with the `memory` tool
-(add, replace, remove), and is told to record lessons before finishing a task,
-and after a task with failed tool calls. Subagents neither see nor write them.
-`/faur review` reads the notes; making a lesson permanent (a prompt,
-skill or tool change) is a normal previewed change. The file is the user's to
-edit, and no generated file depends on it.
+Pi loads the project's `AGENTS.md` (and `AGENTS.md` files in parent folders)
+into the orchestrator's prompt by itself, with or without `./run`. Generation
+warns about files from outside the project. They are instructions sent to the
+model; treat them as untrusted input. Specialists do not receive them.
 
 ### Prompts and the generated "What you can use" section
 
@@ -94,10 +78,11 @@ Forge renders a "What you can use" section from the declarations — built-in
 tools, MCP servers (with `config.description` and which tools ask first),
 commands, other tools, skills, and for the orchestrator its specialists. A
 subagent's section is written into its agent file after its prompt; the
-orchestrator's is generated into `.pi/CAPABILITIES.md`, which `./run` appends
-after `.pi/APPEND_SYSTEM.md`, so that file stays exactly the authored prompt.
-Both are build output: they change when the system is regenerated, not when
-the Forge tooling is updated. A change
+orchestrator's follows its prompt in `.pi/APPEND_SYSTEM.md`, between
+`<!-- forge:derived v1 … -->` markers, so Pi loads both natively. The
+orchestrator's specialist launch note and document formats are in the same
+section. Both are build output: they change when the system is regenerated,
+not when the Forge tooling is updated. A change
 that removes an MCP server, command or skill reports `staleMentions`: the
 prompts, workflows, documents and advisory policies that still name it.
 
@@ -303,8 +288,8 @@ The skill name `forge` is reserved (it is the Forge skill) and cannot be declare
 `skills[]`. Operational model edits use the structured operations of
 `/faur`, which reuse this validator and reject dangling references.
 The Forge version is the pinned package in `.pi/settings.json` (recorded in
-`.forge/build.json`), never part of this operational model. An explicit empty orchestrator `tools: []` remains empty unless non-empty
-`projectContext` enables `edit`; omitted tools use Pi defaults.
+`.forge/build.json`), never part of this operational model. An explicit empty orchestrator `tools: []` stays empty; omitted tools use Pi
+defaults.
 
 ## 3. Schema versions
 
@@ -319,13 +304,20 @@ Full text of `docs/agent-factory.md` §C.6:
 1. **Derived files** (`settings.json` model fragment + `packages` + `defaultTools`,
    `mcp.json`, and the `run` launcher) are forge-owned and regenerated on
    every `generate`; **unknown keys the forge does not own are preserved**
-   The `packages` list is a forge-owned derived key computed from the Pi
-   runtime primitive (`pi-subagents`) plus any `system.yaml`
-   `packages` and packaged skill sources the model declares (`deps.mjs`
-   `runtimePackages`). Hand-editing a derived file is
-   unsupported — change the model instead.
-2. **Authored files** (agents, skills, prompts, `APPEND_SYSTEM.md`, README,
-   `.gitignore`, `.env.example`) are user-owned. The forge scaffolds them
+   The `packages` list is a forge-owned derived key holding only what the
+   design uses (`deps.mjs` `runtimeNeeds`, `runtimePackages`): the Forge
+   package while the design needs its runtime (declared commands, MCP
+   `approveTools`, MCP servers next to an orchestrator without `mcp`, or
+   workflows), `pi-subagents` with `agents[]` or the `subagent` tool, and any
+   `system.yaml` `packages` and packaged skill sources. A minimal agent pins
+   nothing. `mcp.json` exists only with MCP servers and `.env.example` only
+   with `integrations.env`; removing the last one removes the file.
+   Hand-editing a derived file is unsupported — change the model instead.
+2. **Authored files** (agents, skills, the orchestrator prompt in
+   `APPEND_SYSTEM.md`, README, `.gitignore`, `.env.example`) are user-owned.
+   `APPEND_SYSTEM.md` also holds the derived "What you can use" section after
+   the prompt, between markers: it is rewritten with the declarations, and a
+   hand edit inside it, or text after it, is a conflict rather than lost. The forge scaffolds them
    when absent. On modification it records a content fingerprint of what it
    last wrote; if a file differs from that fingerprint *and* the model wants to
    change it, the forge treats it as a **conflict** and proposes a diff,
@@ -359,7 +351,7 @@ Full text of `docs/agent-factory.md` §C.6:
 6. **Idempotence:** `generate`/`modify` are pure functions of (model, disk) —
    same inputs produce the same result and never duplicate content.
 
-The Forge package itself is the first entry of the derived `packages`
+When pinned, the Forge package is the first entry of the derived `packages`
 list, pinned to the release that generated the project. Maintenance
 change proposals delete removed agent/skill scaffolds only when intact, reject
 authored conflicts, and require separately confirmed drift reconciliation.
