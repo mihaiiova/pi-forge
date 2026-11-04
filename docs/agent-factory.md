@@ -1,7 +1,7 @@
 # Agent Factory — Architecture Analysis & MVP Plan
 
 > **Superseded as the product direction.** This is the historical MVP analysis
-> for what is now **Pi Forge**. Product direction, non-goals and priorities are
+> for what is now **Faur**. Product direction, non-goals and priorities are
 > in [product-direction.md](product-direction.md) and [roadmap.md](roadmap.md).
 > In particular, these MVP assumptions are revised there: "scheduling deferred"
 > (decision 2) is now Milestone 2, and capability discovery (§C.8) now also

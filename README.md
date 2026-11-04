@@ -1,51 +1,45 @@
-# Pi Forge
+# Faur
 
 **Design, generate, check, and revise specialized Pi agents.**
 
-Pi Forge (formerly **Pi Agent Factory**) is a conversational development tool
-for specialized agents. You describe the outcome you want. Forge recommends the
+Faur (formerly **Pi Agent Factory**) is a conversational development tool
+for specialized agents. You describe the outcome you want. Faur recommends the
 simplest agent that achieves it and generates it as an ordinary, project-local
 Pi project: an orchestrator, optional specialists, skills, packages, MCP
 integrations, commands, workflows and permissions. It then keeps that agent
 working as your needs change.
 
-**The specialized agent is the product. Pi is its runtime.** Forge composes
-Pi's own resources and adds no workflow engine or scheduler of its own. In
-this release a generated agent runs on Pi alone, plus the Forge package only
-when its design needs one (declared commands or MCP approval gates). It starts
-with `pi` in its folder, or with its `./run` when it uses MCP servers.
+**The specialized agent is the product. Pi is its runtime.** Faur composes
+Pi's own resources and adds no workflow engine or scheduler of its own. A
+project never pins Faur: declared commands and MCP approval gates use their
+own packages when needed. It starts with `pi` in its folder, or with `./run`
+when it uses MCP servers.
 
-> **Direction (2026-11-02).** Forge is becoming **Faur**, and generated
-> projects are becoming ordinary Pi projects that run with plain `pi`, with
-> Faur uninstalled. This README describes the current release.
+> **Direction (2026-11-02).** Faur is the maker; generated projects are
+> ordinary Pi projects that run with plain `pi`, with Faur uninstalled.
 > See the [product direction](docs/product-direction.md) and the
 > [migration plan](docs/architecture-audit.md#5-runtime-dependencies-and-the-migration).
 
-- [Product direction](docs/product-direction.md): what Forge is, how to judge
+- [Product direction](docs/product-direction.md): what Faur is, how to judge
   changes, and its non-goals. This is the authoritative document.
 - [Roadmap](docs/roadmap.md): the current audit, gaps, milestones and issues.
 - [AGENTS.md](AGENTS.md): engineering principles for anyone changing this
   repository.
 
-> **Renamed in v0.20.0.** The repository is `mihaiiova/pi-forge`, the package
-> `pi-forge`, and `/forge` replaced `/agent-factory`, `/factory-update` and
-> `/factory-permission`. There is no migration: regenerate projects built with
-> the old names from their `.pi/system.yaml`.
->
-> **Command renamed in v0.27.0:** `/faur` replaces `/forge`, with no alias.
-> Projects pick it up with their next sync (`/faur sync`); until then they
-> keep the pinned release and its `/forge`.
+> **Rename:** Faur was formerly Pi Forge. Older projects are regenerated
+> into a new directory; review and manually reconcile their authored files.
+> See [migration](#no-faur-in-the-project).
 
 ### Architecture in brief
 
 ```text
 you ──▶ /faur (builder, conversational)
-          │  forge CLI: discover · validate · generate --dry-run · generate
+          │  faur CLI: discover · validate · generate --dry-run · generate
           ▼
    <project>/.pi/system.yaml   compact desired state (schema 1)
    <project>/.pi/…             native Pi files: settings, agents, skills, mcp.json, prompts
    <project>/run               optional: its own Pi home and logins (MCP designs)
-   <project>/.forge/           build record, capability manifest, isolated Pi home
+   <project>/.faur/           build record, capability manifest, isolated Pi home
           │
           ▼
    pi, pi -p "/skill:…"   Pi runs the agent (or ./run); /faur revises it
@@ -60,7 +54,7 @@ you ──▶ /faur (builder, conversational)
   not necessarily verified; results distinguish live, last seen, missing and
   not verifiable. Checking actual behavior is on the [roadmap](docs/roadmap.md).
 - **Revise:** inside a project, `/faur <request>` proposes a small structured
-  change. When the turn ends, Forge shows the diff and applies it only if you
+  change. When the turn ends, Faur shows the diff and applies it only if you
   approve.
 
 The former personal Pi setup (spec lifecycle, domain skills, sync/state
@@ -68,33 +62,33 @@ extensions) now lives in the private
 [`pi-personal`](https://github.com/mihaiiova/pi-personal) repository; see
 [Personal Pi setup](#personal-pi-setup).
 
-## Using Forge today
+## Using Faur today
 
-Start it from any Pi session outside a Forge project with `/faur <outcome>`
-(or `/skill:forge`). The builder works as a design conversation, not an
+Start it from any Pi session outside a Faur project with `/faur <outcome>`
+(or `/skill:faur`). The builder works as a design conversation, not an
 interview: it uses what you've already said, recommends the simplest system
 that fits, and asks only questions that change the design. When you say
-"build it", it runs `forge discover`, writes a `.pi/system.yaml`, previews
+"build it", it runs `faur discover`, writes a `.pi/system.yaml`, previews
 the generated files and applies them only after you confirm. See the
-[conversational acceptance scenarios](docs/forge-conversation.md). The deterministic CLI behind it:
+[conversational acceptance scenarios](docs/faur-conversation.md). The deterministic CLI behind it:
 
 ```sh
-node skills/forge/forge.mjs discover [dir]          # models, your skills, MCP, CLIs
-node skills/forge/forge.mjs validate <dir>
-node skills/forge/forge.mjs generate <dir> --dry-run  # then without --dry-run
-node skills/forge/forge.mjs modify <dir> --dry-run
+node skills/faur/faur.mjs discover [dir]          # models, your skills, MCP, CLIs
+node skills/faur/faur.mjs validate <dir>
+node skills/faur/faur.mjs generate <dir> --dry-run  # then without --dry-run
+node skills/faur/faur.mjs modify <dir> --dry-run
 ```
 
 ### Models: chosen per agent
 
 Nothing is hardcoded. Every agent — the orchestrator and each subagent — names
 its own model from the machine's Pi line-up (`pi --list-models`, also reported by
-`forge discover`), with an optional thinking level. Agents may share a model or
+`faur discover`), with an optional thinking level. Agents may share a model or
 each use a different one, and any model can be changed later.
 
 ### Skills: chosen per agent, suggested from skills.sh
 
-The forge ships no skills of its own. When you set up a system, or add or
+The faur ships no skills of its own. When you set up a system, or add or
 change an agent, it searches the open skills registry ([skills.sh](https://skills.sh))
 for that agent's role and suggests a few candidates, with source, install count
 and page. It shows each skill's actual `SKILL.md` and files before you decide.
@@ -103,8 +97,8 @@ the project's own `.agents/skills/` (never globally), recorded in
 `skills-lock.json`:
 
 ```sh
-node skills/forge/forge.mjs search-skills seo audit
-node skills/forge/forge.mjs preview-skill coreyhaines31/marketingskills@seo-audit
+node skills/faur/faur.mjs search-skills seo audit
+node skills/faur/faur.mjs preview-skill coreyhaines31/marketingskills@seo-audit
 ```
 
 A skill can also be authored inline, come from a pinned package, or be vendored
@@ -139,7 +133,7 @@ orchestrator; subagents get only the skills listed for them.
 ### Documents: formats you agree on
 
 For each document an agent writes (or a report a subagent returns), the
-forge proposes a structure — purpose, sections in order, a word limit and a
+faur proposes a structure — purpose, sections in order, a word limit and a
 few rules — and you add, remove or change sections before it is recorded in
 `documents[]`. The agreed format goes into that agent's instructions, so each
 run produces the same shape. Any agent can have any number of documents, and a
@@ -148,13 +142,13 @@ Slack — with `deliver: [{ mcp, tool, with }]`. Change formats later with
 `/faur`.
 
 Subagents that use MCP or extension tools (web search, for example) always
-run in the background, where those tools load; the forge sets this up. On
+run in the background, where those tools load; the faur sets this up. On
 every start with Faur loaded (pinned, or in your own Pi), it checks that each agent will get the tools and skills it is
 declared to have, and names any that are missing. MCP servers connect after
 start, so `/faur check` also checks their tools. The last result is saved in
-`.forge/check.json` and shown by `/faur status`.
+`.faur/check.json` and shown by `/faur status`.
 
-Outside a session, run `node /path/to/pi-forge/skills/forge/forge.mjs check-agent <project>`.
+Outside a session, run `node /path/to/faur/skills/faur/faur.mjs check-agent <project>`.
 It makes no model calls and does not connect MCP by default; `--connect` runs
 `pi mcp list --json` using the project's isolated Pi home and may connect to
 networks and use configured credentials. Pi's shell commands read project MCP
@@ -165,7 +159,7 @@ checks test command presence only, not authentication or functionality. The
 CLI inspects installed Pi extensions using Pi's SDK without installing missing
 packages. If the project has auto-discovered extension code that Pi's SDK
 could load even when disabled, CLI extension results are `not verifiable`
-(configuration such as Forge's `subagent/config.json` doesn't count); use `/faur check` in
+(configuration such as Faur's `subagent/config.json` doesn't count); use `/faur check` in
 a running session. Extension loading runs the installed extensions' registration
 code. Results reflect observations, not a functional or credential test.
 
@@ -181,7 +175,7 @@ rely on Pi's built-in MCP, so such a project starts with `./run`. Use `/mcp`
 to see the servers, their tools and errors, and to sign in to
 servers that use OAuth.
 
-See [`schema.md`](skills/forge/schema.md) for every field, validation
+See [`schema.md`](skills/faur/schema.md) for every field, validation
 rule and the file-ownership contract, and [docs/agent-factory.md](docs/agent-factory.md)
 for the original architecture and MVP plan (kept as history).
 
@@ -193,12 +187,12 @@ is generated from `system.yaml` into a "What you can use" section, so removing
 an integration also removes it from what agents are told. The section is part of
 the generated project (each agent file, and after the orchestrator's prompt in
 `.pi/APPEND_SYSTEM.md`, between markers), so it changes when the system is
-regenerated, never because the Forge tooling was updated. What agents use at
+regenerated, never because the Faur tooling was updated. What agents use at
 run time comes from Pi and the packages the project pins, never from Faur:
 [pi-commands](https://github.com/mihaiiova/pi-commands) for declared commands
 and `@gotgenes/pi-permission-system` for MCP tools that ask, each only when
 declared. The Faur version that last built the project is recorded in
-`.forge/build.json`. A change that removes
+`.faur/build.json`. A change that removes
 a capability lists any prompt, workflow or policy that still mentions it, and
 `/faur review` flags prompts that describe specific tools.
 
@@ -253,9 +247,9 @@ Inside it, `/faur` is the one command:
 
 | Command | What it does |
 |---|---|
-| `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Forge prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. Without a request, or with `review`, the first answer is a read-only review. |
+| `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Faur prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. Without a request, or with `review`, the first answer is a read-only review. |
 | `/faur check` | Validate `system.yaml`, compare the generated files with it, and run the launch check. |
-| `/faur status` | Agents and models, capabilities, and whether the project still pins Forge from an earlier release. |
+| `/faur status` | Agents and models, capabilities, and whether the project still pins Faur from an earlier release. |
 | `/faur sync` | Preview rebuilding the project with this Faur and apply only after confirmation. |
 
 Lower-level: `/faur env` and `/faur permissions [add | remove
@@ -267,7 +261,7 @@ their values in the environment Pi starts in: export them, or load the
 project's gitignored `.env` with direnv. Configure values outside Faur. Generation and change previews also add missing
 secret and state paths to an existing `.gitignore` without rewriting your rules.
 Ignoring files does not remove credentials already committed to git: rotate any
-credentials that were committed, including those in `.env` or `.forge/`.
+credentials that were committed, including those in `.env` or `.faur/`.
 
 #### Credentials in trusted runs
 
@@ -280,7 +274,7 @@ credential values in a workflow request: it becomes prompt text.
 The Pi configuration directory is separate, but this is **not an OS security
 boundary**. Pi, agents, tools and their subprocesses can access inherited
 credentials; same-user processes may also access the environment or source
-files. Tool approval and `secret: true` do not isolate values, and Forge does
+files. Tool approval and `secret: true` do not isolate values, and Faur does
 not guarantee redaction of tool output, screenshots, logs or artifacts. Use only
 trusted agents and tools, and prefer a restricted test account. For Playwright,
 its `--secrets` option expects a dotenv file; environment inheritance alone
@@ -288,7 +282,7 @@ does not automatically create that file or change its MCP configuration.
 
 A trusted run is not a **protected integration**, where selected secrets
 reach only one authorized tool and not Pi, other agents, other tools or other
-runs. Forge does not provide protected integrations: separate files, file
+runs. Faur does not provide protected integrations: separate files, file
 modes, processes or path rules do not hide values from same-user code (see the
 [investigation](docs/protected-integration-investigation.md)). That boundary
 is deferred until an agent needs it, and will be claimed only with
@@ -303,49 +297,50 @@ until you run `/faur sync` in it, which rebuilds the generated files with the
 installed Faur and shows any change to what agents can run or reach before
 writing it. Roll back with git.
 
-Projects built with v0.30.0 or earlier pin
-`git:github.com/mihaiiova/pi-forge@vX.Y.Z`. `/faur status` says so, and
-`/faur sync` from a newer Faur drops the pin after confirmation. The old
-pinned `/faur sync` cannot update directly to releases without
-`maintenance-rebuild.mjs`. Instead, use a separate checkout of the new Faur:
+Projects made by older Pi Forge releases must be regenerated into a **new,
+empty directory**, not rebuilt in place: old generated markers and `.forge/`
+state are not recognized as Faur ownership. Projects pinned to Pi Forge
+v0.30.0 or earlier cannot use their old pinned `/faur sync` to update directly
+because `maintenance-rebuild.mjs` was removed. Keep the original untouched.
 
 ```sh
-node /path/to/faur/skills/forge/forge.mjs generate /path/to/project --dry-run
-node /path/to/faur/skills/forge/forge.mjs generate /path/to/project
+mkdir -p /path/to/new-project/.pi
+cp /path/to/old-project/.pi/system.yaml /path/to/new-project/.pi/system.yaml
+node /path/to/faur/skills/faur/faur.mjs generate /path/to/new-project --dry-run
+node /path/to/faur/skills/faur/faur.mjs generate /path/to/new-project
 ```
 
-Review the preview before approval. Resolve any reported authored-file or drift
-conflicts first; regeneration is not a silent overwrite.
-
-Projects generated before 1.0.0 pin `pi-agent-factory`. They are not
-migrated: regenerate them from their `.pi/system.yaml`.
+Review the copied design for old paths and unsupported declarations first;
+review the preview before approval. Compare the original native files and
+manually reconcile every authored prompt, skill, script and configuration
+change into the new project, without copying credentials or stale runtime
+state blindly. Verify the result before replacing or retiring the original.
+Projects predating Pi Forge need the same fresh regeneration.
 
 ### Tests
 
 ```sh
-bash skills/forge/test/test.sh
+bash skills/faur/test/test.sh
 ```
 
 ### Releasing
 
-Generated projects update from release tags. To publish one, merge
-`development` into `master`, set `package.json` `version` to `X.Y.Z`, tag the
-commit `vX.Y.Z` and push the tag.
+Generated projects do not update automatically. To publish Faur, set
+`package.json` `version` to `X.Y.Z` on a work branch, merge it into `master`,
+then tag the release commit `vX.Y.Z` and push the tag.
 
 ## Install
 
 ```sh
-git clone https://github.com/mihaiiova/pi-forge.git /path/to/pi-forge
-pi install /path/to/pi-forge
+git clone https://github.com/mihaiiova/faur.git /path/to/faur
+pi install /path/to/faur
 ```
 
-`/faur` is then available in any Pi session. Pi treats a local checkout and a
-project's git pin as different packages, so inside a generated project both
-load and each command appears twice. Install from the tag instead
-(`pi install git:github.com/mihaiiova/pi-forge@vX.Y.Z`) to let the project pin
-replace it. Forge pins only what
-generated systems need (`pi-subagents`, and `yaml` for its own
-parser) in `package.json` under `pi.packages`.
+`/faur` is then available in your Pi sessions. Generated projects do not pin
+Faur; they run with Pi and their own declared packages. To install a released
+Faur instead of a local checkout, use
+`pi install git:github.com/mihaiiova/faur@vX.Y.Z` with a release tag that includes the rename.
+Faur pins its own packages in `package.json` under `pi.packages`.
 
 ## Personal Pi setup
 
@@ -353,7 +348,7 @@ The spec lifecycle, domain skills and the `explore`, `pi-config`, `pi-sync`,
 `project-state`, `save-md`, `skills-select` and `startup-check` extensions moved,
 with their history, to [`mihaiiova/pi-personal`](https://github.com/mihaiiova/pi-personal).
 It is the reference for a new development-workflow integration that will be
-built from scratch with Pi Forge.
+built from scratch with Faur.
 
 To move a machine over, install it next to this repository, then pull this one:
 
@@ -361,7 +356,7 @@ To move a machine over, install it next to this repository, then pull this one:
 git clone https://github.com/mihaiiova/pi-personal.git /path/to/pi-personal
 pi install /path/to/pi-personal
 ln -sfn /path/to/pi-personal/AGENTS.md ~/.pi/agent/AGENTS.md   # global instructions moved too
-cd /path/to/pi-forge && git remote set-url origin https://github.com/mihaiiova/pi-forge.git && git pull
+cd /path/to/faur && git remote set-url origin https://github.com/mihaiiova/faur.git && git pull
 ```
 
 Then `/reload`. `/pi-sync` now syncs `pi-personal`; update this repository with
@@ -378,9 +373,9 @@ setup:
     install: npm run install-browser
 ```
 
-`/faur check` reports unmet steps; `/faur setup` previews installs and asks for confirmation. For non-interactive administration use `forge setup <dir> --yes`. Steps marked `needsRoot` are printed, not run. Workflow launches never install. **Command checks execute shell code with your permissions automatically**, including during checks and workflow startup; use only trusted declarations.
+`/faur check` reports unmet steps; `/faur setup` previews installs and asks for confirmation. For non-interactive administration use `faur setup <dir> --yes`. Steps marked `needsRoot` are printed, not run. Workflow launches never install. **Command checks execute shell code with your permissions automatically**, including during checks and workflow startup; use only trusted declarations.
 
-An MCP or CLI integration may also declare `secretsFile: .forge/service-secrets.env`. Forge creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env` and configure its value in that file outside Faur; do not send secrets to the model. Integrations must be configured to read their chosen file themselves; Forge does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.
+An MCP or CLI integration may also declare `secretsFile: .faur/service-secrets.env`. Faur creates a missing file privately, does not overwrite an existing file, and adds an ignore entry. Declare the variable in `integrations.env` and configure its value in that file outside Faur; do not send secrets to the model. Integrations must be configured to read their chosen file themselves; Faur does not load it into the launcher environment. Existing tracked files, unsafe permissions, and symlinks must be corrected by the user. Git ignore does not remove a previously committed secret.
 
 ## License
 

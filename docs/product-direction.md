@@ -4,10 +4,10 @@
 > changes to it. Where an older document disagrees with it, this one wins.
 > Engineering practice is in [AGENTS.md](../AGENTS.md).
 >
-> Faur is being prepared for open source under that name. It
-> was called **Pi Forge** (`pi-forge`, `/forge`), and before that **Pi Agent
-> Factory**. The code still uses the Forge names until the rename lands. No
-> rename carries a migration: agents built with old names are regenerated.
+> Faur is being prepared for open source under that name. It was formerly
+> **Pi Forge**, and before that **Pi Agent Factory**. The rename has no
+> compatibility aliases: agents built with old names are freshly regenerated
+> and their authored content is reconciled manually.
 
 ## Decisions recorded on 2026-11-02
 
@@ -34,7 +34,7 @@ decision:
    same-user confidentiality today; that stronger boundary is deferred (see
    §7) and will not be claimed without adversarial evidence.
 
-The current release still ships an agent runtime inside the Forge package and
+The current release still ships an agent runtime inside the Faur package and
 requires `./run`. The staged migration is in
 [architecture-audit.md §5](architecture-audit.md#5-runtime-dependencies-and-the-migration).
 
@@ -83,7 +83,7 @@ every decision is judged against.
   reviewer, tester or planner specialists only where they help.
 
 Revisor, a web and CLI testing agent (`~/projects/revisor`), is the first agent
-built with Forge and the QA reference in
+built with Faur and the QA reference in
 [generated-agent-audit.md](generated-agent-audit.md).
 
 ## 4. The specialized-agent model

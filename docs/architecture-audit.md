@@ -2,7 +2,7 @@
 
 Audit of the implementation at `79d1b6a` (v0.26.0, 2026-11-02) against the
 principles in [AGENTS.md](../AGENTS.md). It covers the code, not only the
-documents. `bash skills/forge/test/test.sh` passed (45 suites; live and
+documents. `bash skills/faur/test/test.sh` passed (45 suites; live and
 gated tests skipped). The generated output is audited separately in
 [generated-agent-audit.md](generated-agent-audit.md); backlog dispositions are
 in [backlog-review.md](backlog-review.md).
@@ -25,13 +25,13 @@ Line counts are for orientation only. Size is not a finding.
 ## 1. Current architecture
 
 Everything ships as one Pi package (`pi-forge`, pinned by every generated
-project). One extension entry, `extensions/forge/index.ts`, registers `/faur`
+project). One extension entry, `extensions/faur/index.ts`, registers `/faur`
 and, inside a trusted generated project, the agent runtime and the
 maintenance half of `/faur`.
 
-| Area | Modules (`skills/forge/`) | ≈Lines | Responsibility | Side effects |
+| Area | Modules (`skills/faur/`) | ≈Lines | Responsibility | Side effects |
 |---|---|---|---|---|
-| Conversational builder | `SKILL.md`, `extensions/forge/index.ts` | 460 + 30 | Design conversation; drives the CLI | none (LLM) |
+| Conversational builder | `SKILL.md`, `extensions/faur/index.ts` | 460 + 30 | Design conversation; drives the CLI | none (LLM) |
 | Discovery | `discover.mjs`, `registry-skills.mjs`, `maintenance-fetch.mjs`, `forge.mjs` `runDiscover` | 460 | Models, local skills/MCP/agents, named CLIs, skills.sh, public docs | network (consented), `pi --list-models` |
 | Schema and validation | `schema.md`, `parse.mjs`, `validate.mjs`, `models.mjs`, `changes.mjs`, `yaml-loader.mjs` | 890 | `system.yaml` v1, strict validation, structured change operations | none |
 | Generation | `generate.mjs`, `runtime.mjs`, `mcp-gen.mjs`, `policy.mjs`, `agent-context.mjs`, `documents.mjs`, `workflow-skill.mjs`, `deps.mjs`, `skill-sources.mjs`, `asking.mjs`, `advisories.mjs`, `project-context.mjs` | 1,500 | Pure `generateProject(model, existing)` → file plan | none (pure) |
@@ -298,7 +298,7 @@ natively, unaware of `system.yaml`) rather than a renamed Faur runtime.
 ### Stage 0 results (2026-11-03, #60)
 
 Pi 1.5.0, pi-subagents 0.83.1 (project) and 0.65.0 (host), pi-mcp-adapter
-2.32.1 (host). Reproduce with `bash skills/forge/test/pi-lab/stage0.sh`. It
+2.32.1 (host). Reproduce with `bash skills/faur/test/pi-lab/stage0.sh`. It
 builds a fake host agent directory and a target-shaped project with no Faur
 in it, and makes no model calls: a probe extension records what loaded, a stub
 MCP server answers tool calls, and a scripted fake model drives tool calls in
@@ -498,6 +498,12 @@ package (it knows parent from child) or becomes advisory.
 
 ### Stage 4 decisions (2026-11-03, #64)
 
+**Rename migration decision (2026-11-04, #67):** Faur does not recognize
+old Pi Forge ownership markers or pinned sync machinery. Regenerate into a
+new directory from the old design, keep the original intact, and manually
+review and reconcile authored files. Never replace old files silently. A
+GitHub issue amendment is required before closing #67.
+
 **Metadata location — approved:** keep the design
 record at `.pi/system.yaml` and maker records (`build.json`,
 `capabilities.json`, `check.json`) under `.forge/` until the rename. Moving
@@ -550,7 +556,7 @@ workflow runner) moves before the runner is removed.
 
 | Stage | Outcome | Removes | Acceptance |
 |---|---|---|---|
-| 0. Verify (done 2026-11-03) | Confirm the "verify" rows: global-resource merging (including the `pi-mcp-adapter` conflict) in plain and isolated mode, pi-subagents project configuration, existing packages for R9/R10/R12, Pi structured or JSON output for R16. Draft the upstream Pi proposal for ignoring user-level resources | nothing | Stage 0 results above; `skills/forge/test/pi-lab/stage0.sh` reproduces them |
+| 0. Verify (done 2026-11-03) | Confirm the "verify" rows: global-resource merging (including the `pi-mcp-adapter` conflict) in plain and isolated mode, pi-subagents project configuration, existing packages for R9/R10/R12, Pi structured or JSON output for R16. Draft the upstream Pi proposal for ignoring user-level resources | nothing | Stage 0 results above; `skills/faur/test/pi-lab/stage0.sh` reproduces them |
 | 1. Native prompt and output (done 2026-11-03, #61) | Capability section and context load natively; output is pay-per-use (no `pi-subagents` without specialists; no empty `mcp.json`, `.env.example`, `data/knowledge/`) | R2, R3, R14, R15, `projectContext` | The minimal agent runs with plain `pi` and no Faur installed |
 | 2. Launch and headless (done 2026-11-03, #62) | `run` optional and minimal; documented environment; workflows invoked with `pi -p`; Faur's check reports host-config conflicts and setup | R1 (as requirement), R4, R5, R16 runner after Revisor migrates | Marketing agent without approvals or commands runs headless with plain `pi`; isolated mode excludes global packages, proven with the `pi-mcp-adapter` conflict |
 | 3. Enforcement without Faur (done 2026-11-03, #63) | Approvals, declared commands, headless blocking from an existing or one new generic package; first run the R10 candidates against the lab's stub server | R10–R13, R17 from Faur | B and C run with plain `pi`; enforcement tests (approval asks, blocks headless; commands run without a shell) pass without Faur installed |

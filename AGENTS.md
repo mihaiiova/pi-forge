@@ -5,9 +5,8 @@ specialized Pi agents. These instructions apply to every coding session in this
 repository, whatever agent runs it. They are the one copy of the engineering
 principles; other entry points (`CLAUDE.md`) only point here.
 
-The command is `/faur`. The code, package, CLI and folders still use the
-Forge names (`skills/forge/`, `forge`, `forge_plan`, `.forge/`) until the rest
-of the rename (#67) lands. Use the existing names in code.
+The command, package, CLI and skill are `faur`; the maintenance tool is
+`faur_plan` and maker state lives in `.faur/`.
 
 ## Where the decisions live
 
@@ -17,8 +16,8 @@ of the rename (#67) lands. Use the existing names in code.
 | What is planned, in what order | GitHub issues (epic #24), indexed in [docs/roadmap.md](docs/roadmap.md) — the only roadmap |
 | Current architecture, known complexity and cleanup plan | [docs/architecture-audit.md](docs/architecture-audit.md) |
 | What generated agents contain and why | [docs/generated-agent-audit.md](docs/generated-agent-audit.md) |
-| `system.yaml` and file ownership | [skills/forge/schema.md](skills/forge/schema.md) |
-| Conversational builder behavior | [skills/forge/SKILL.md](skills/forge/SKILL.md), [docs/forge-conversation.md](docs/forge-conversation.md) |
+| `system.yaml` and file ownership | [skills/faur/schema.md](skills/faur/schema.md) |
+| Conversational builder behavior | [skills/faur/SKILL.md](skills/faur/SKILL.md), [docs/faur-conversation.md](docs/faur-conversation.md) |
 | Headless workflow contract | [docs/headless-workflows.md](docs/headless-workflows.md) |
 
 Where these disagree with this file on engineering practice, this file wins;
@@ -95,7 +94,7 @@ agent: projects never pin Faur, declared commands come from
 `@gotgenes/pi-permission-system`, each pinned by need and configured natively.
 Do not add run-time code to Faur.
 
-- **Faur** (`skills/forge/`, `extensions/forge/`): discover, validate,
+- **Faur** (`skills/faur/`, `extensions/faur/`): discover, validate,
   generate, diff, apply, reconcile, check. Pure functions where possible
   (`validateSystem`, `generateProject`, `effectiveCapabilities`); file I/O in
   one apply path. It runs in the developer's Pi, never inside a generated
@@ -144,10 +143,10 @@ configuration, a skill or an existing package cannot do it.
 - Node ESM (`.mjs`), no build step, no dependencies beyond pinned `yaml`.
   Match the surrounding style: short modules, pure seams, comments that explain
   why.
-- Run the suite: `bash skills/forge/test/test.sh`. Live tests are opt-in
-  (`RUN_FORGE_LIVE_TESTS=1`, `RUN_FACTORY_LIVE_TESTS=1`) and cost tokens.
+- Run the suite: `bash skills/faur/test/test.sh`. Live tests are opt-in
+  (`RUN_FAUR_LIVE_TESTS=1`, `RUN_FACTORY_LIVE_TESTS=1`) and cost tokens.
 - Generated output is pinned by golden fixtures in
-  `skills/forge/test/fixtures/generate/*/golden`. A golden change is a product
+  `skills/faur/test/fixtures/generate/*/golden`. A golden change is a product
   change: review the diff and say why each generated file changed.
 - Schema changes update `schema.md`, `validate.mjs` and its tests together.
   The validator rejects unknown keys; keep it that way.

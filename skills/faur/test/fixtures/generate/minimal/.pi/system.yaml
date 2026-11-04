@@ -1,0 +1,9 @@
+schema: 1
+name: notes-helper
+description: Answers questions about the notes in this folder
+orchestrator:
+  name: helper
+  prompt: |
+    You answer questions about the notes in this folder. Cite file paths.
+  model: anthropic/claude-sonnet-5-5
+  tools: [read, grep, find, ls]

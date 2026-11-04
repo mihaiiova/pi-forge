@@ -1,7 +1,7 @@
 # Protected integration boundary: investigation (#56, closed)
 
 **Status (2026-11-02):** investigation complete and closed; no protected
-backend was accepted or implemented. Forge uses **trusted-run credentials**:
+backend was accepted or implemented. Faur uses **trusted-run credentials**:
 Pi, every agent, every tool and their subprocesses can access the run's
 credentials, so there is **no same-user confidentiality**. See the product
 direction §7 and `README.md` for the current limits. #55, #57 and #58 were
@@ -41,10 +41,10 @@ resist termination. Hiding a value from the model is not sufficient.
 ## Reproduction and observed results
 
 ```sh
-node skills/forge/test/probes/same-user-boundary.mjs
-node skills/forge/test/probes/same-user-socket.mjs
-node --test skills/forge/test/mcp-runtime.test.mjs
-FORGE_TEST_SCOPE=1 node --test skills/forge/test/workflow-launcher.test.mjs
+node skills/faur/test/probes/same-user-boundary.mjs
+node skills/faur/test/probes/same-user-socket.mjs
+node --test skills/faur/test/mcp-runtime.test.mjs
+FAUR_TEST_SCOPE=1 node --test skills/faur/test/workflow-launcher.test.mjs
 ```
 
 On Linux 6.12.96+deb13-amd64 x86_64, UID 1000, Node and Pi 1.4.0,
@@ -68,7 +68,7 @@ verification mechanism.
 The built-in Pi MCP fixture's six tests passed on this host. A new SDK test
 registers the generated, secret-free connection using `pi.registerMcpServer`
 for the session, with no project `.pi/mcp.json` present. The real built-in MCP
-server exposes the same named tools, hides the excluded tool, and Forge's
+server exposes the same named tools, hides the excluded tool, and Faur's
 headless approval gate blocks the protected tool. The other tests cover
 specialist selection/registration. These tests do **not** prove a specialist
 actually called the server, a protected connection, reconnect behavior, or a
@@ -83,11 +83,11 @@ configuration: precedence must be addressed without mutating shared state.
 The registration is visible to Pi and is suitable only for a secret-free
 connection descriptor; it is not a secret-delivery channel.
 
-The existing workflow launcher suite with `FORGE_TEST_SCOPE=1` passed 19 tests
+The existing workflow launcher suite with `FAUR_TEST_SCOPE=1` passed 19 tests
 on this host, including timeout cleanup of a detached descendant, scope cleanup
 on successful completion, and reporting incomplete cleanup in another fixture.
-Two tests were skipped: they require `FORGE_VALIDATOR_PACKAGE` and
-`FORGE_SUBAGENTS_PACKAGE` respectively. These are existing workflow tests, not
+Two tests were skipped: they require `FAUR_VALIDATOR_PACKAGE` and
+`FAUR_SUBAGENTS_PACKAGE` respectively. These are existing workflow tests, not
 protected-integration conformance: they do not establish secret isolation,
 supervisor-crash recovery, or cleanup of every hostile descendant.
 
@@ -110,7 +110,7 @@ configurations have not been tested.
 ## Playwright 0.0.83 source inspection
 
 Revisor's checked-in `agent/.pi/mcp.json` invokes `@playwright/mcp@0.0.83`
-with `--secrets .forge/test-secrets.env`. The locally cached 0.0.83 package's
+with `--secrets .faur/test-secrets.env`. The locally cached 0.0.83 package's
 `playwright-core/lib/coreBundle.js` implements `--secrets` with a synchronous
 `readFileSync` and dotenv parsing; the server holds the resulting values in
 its configuration. `browser_type` and textbox/slider `browser_fill_form` look
@@ -123,7 +123,7 @@ A disposable local smoke test uses the cached exact `@playwright/mcp@0.0.83`
 package and an already-installed Chromium browser:
 
 ```sh
-node skills/forge/test/probes/playwright-secret-smoke.mjs /path/to/@playwright/mcp/cli.js
+node skills/faur/test/probes/playwright-secret-smoke.mjs /path/to/@playwright/mcp/cli.js
 ```
 
 On this host the local HTTP form received its random sentinel when the MCP

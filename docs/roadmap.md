@@ -1,7 +1,7 @@
-# Faur (Pi Forge) — roadmap
+# Faur — roadmap
 
 The single roadmap. Issues live in GitHub under epic
-[#24](https://github.com/mihaiiova/pi-forge/issues/24); this file orders them.
+[#24](https://github.com/mihaiiova/faur/issues/24); this file orders them.
 Engineering principles are in [AGENTS.md](../AGENTS.md). The 2026-11-02
 architecture review is recorded in
 [architecture-audit.md](architecture-audit.md),
@@ -27,7 +27,7 @@ architecture review is recorded in
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
-     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (drift reconciliation implementation under review; supported edits are previewed and approved, unsafe cases are refused and preserved; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)), then #67 (rename to Faur).
+     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (merged, unreleased; conservative drift reconciliation, see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (code rename under review; repository rename and combined release require approval).
   2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   3. #68, the public-alpha gate (harness early, criteria pass as issues land).
   4. Composition and evidence: #29, #30, #31, #35, #40.
@@ -64,8 +64,8 @@ reference agents.
 6. **Enforcement is real:** every "enforced" statement in generated text has a
    passing real-Pi test; nothing claims credential protection or OS isolation.
 7. **Isolation is what it says:** plain `pi` reports host conflicts (shown with
-   a global `pi-mcp-adapter`); the optional isolation script loads no host
-   resources.
+   a global `pi-mcp-adapter`); the optional isolation script excludes the host
+   Pi agent directory, not `~/.agents/skills` or parent context files.
 8. **Truthful capabilities and outcomes:** capability text matches exposure;
    headless runs report task outcome separately from run status.
 

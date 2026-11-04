@@ -1,8 +1,0 @@
-# forge:generated v1 sha256=384ffac6e287831a3c52b83d4f62f3ef592184e12b25adbc0be8e5894fca48af
-data/
-.env
-.forge/
-.pi/state.json
-.pi/sessions/
-.pi/git/
-.pi/npm/

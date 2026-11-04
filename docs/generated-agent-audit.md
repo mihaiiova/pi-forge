@@ -1,7 +1,7 @@
 # Generated-agent audit (v0.26.0)
 
 What Faur actually generates, judged against the minimal agent. Three
-systems were generated with `node skills/forge/forge.mjs generate` at
+systems were generated with the historical `node skills/forge/forge.mjs generate` at
 `79d1b6a` (v0.26.0):
 
 - **A. Minimal:** one orchestrator, one model, `tools: [read, grep, find, ls]`.

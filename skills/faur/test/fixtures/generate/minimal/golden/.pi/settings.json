@@ -1,0 +1,10 @@
+{
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-5-5",
+  "defaultTools": [
+    "read",
+    "grep",
+    "find",
+    "ls"
+  ]
+}

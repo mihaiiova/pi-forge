@@ -1,0 +1,8 @@
+# faur:generated v1 sha256=2abe2317115bb2e05fb0ba1d8401d5c10d7389ca76c6be5c9fbd157021a0efd9
+data/
+.env
+.faur/
+.pi/state.json
+.pi/sessions/
+.pi/git/
+.pi/npm/
