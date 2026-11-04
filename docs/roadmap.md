@@ -15,7 +15,7 @@ architecture review is recorded in
   prompt (v0.23.0); permission guidance (v0.24.0); trusted-run credential
   documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
   (v0.28.0); #66 (v0.29.0); regenerating projects that installed packages
-  (v0.29.1); #60, #61 and #62 (v0.30.0); #63 (v0.31.0).
+  (v0.29.1); #60, #61 and #62 (v0.30.0); #63 (v0.31.0); #64 and #67 (v0.32.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
@@ -27,7 +27,7 @@ architecture review is recorded in
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
-     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (merged, unreleased; conservative drift reconciliation, see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (code rename under review; repository rename and combined release require approval).
+     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (conservative drift reconciliation; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (rename; #64 and #67 released in v0.32.0). Complete #59 acceptance and issue bookkeeping.
   2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   3. #68, the public-alpha gate (harness early, criteria pass as issues land).
   4. Composition and evidence: #29, #30, #31, #35, #40.
