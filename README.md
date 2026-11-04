@@ -256,9 +256,9 @@ Inside it, `/faur` is the one command:
 | `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Forge prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. Without a request, or with `review`, the first answer is a read-only review. |
 | `/faur check` | Validate `system.yaml`, compare the generated files with it, and run the launch check. |
 | `/faur status` | Agents and models, capabilities, and whether the project still pins Forge from an earlier release. |
-| `/faur sync` | Rebuild the project with this Faur: text directly, changes to what agents can run or reach after a confirmation. |
+| `/faur sync` | Preview rebuilding the project with this Faur and apply only after confirmation. |
 
-Lower-level: `/faur env [set NAME]` and `/faur permissions [add | remove
+Lower-level: `/faur env` and `/faur permissions [add | remove
 <name>]`. Headless sessions never apply a change.
 While preparing a change, the maintainer can read public documentation (for
 example an MCP server's README and releases) to verify versions, tools and
@@ -305,9 +305,17 @@ writing it. Roll back with git.
 
 Projects built with v0.30.0 or earlier pin
 `git:github.com/mihaiiova/pi-forge@vX.Y.Z`. `/faur status` says so, and
-`/faur sync` from a newer Faur drops the pin (after confirmation). Their own
-pinned Faur's `/faur sync` also moves them to the newest release, which drops
-it in the same way.
+`/faur sync` from a newer Faur drops the pin after confirmation. The old
+pinned `/faur sync` cannot update directly to releases without
+`maintenance-rebuild.mjs`. Instead, use a separate checkout of the new Faur:
+
+```sh
+node /path/to/faur/skills/forge/forge.mjs generate /path/to/project --dry-run
+node /path/to/faur/skills/forge/forge.mjs generate /path/to/project
+```
+
+Review the preview before approval. Resolve any reported authored-file or drift
+conflicts first; regeneration is not a silent overwrite.
 
 Projects generated before 1.0.0 pin `pi-agent-factory`. They are not
 migrated: regenerate them from their `.pi/system.yaml`.
