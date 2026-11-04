@@ -52,7 +52,7 @@ pass "builder flow: discover → design → preview → apply → validate"
 
 # ── gated headless smoke (pi/model-gated) ────────────────────────
 if [[ "${RUN_FAUR_LIVE_TESTS:-0}" == 1 ]] && command -v pi >/dev/null 2>&1; then
-  if out="$(cd "$work" && timeout 60 ./run --approve -p "describe yourself" 2>&1)"; then
+  if out="$(cd "$work" && timeout 60 pi --approve -p "describe yourself" 2>&1)"; then
     pass "behavioral: pi -p ran on the generated project"
   else
     echo "ok - behavioral: pi -p SKIPPED (offline/model-gated)"

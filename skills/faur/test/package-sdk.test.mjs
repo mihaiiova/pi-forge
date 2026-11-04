@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync, realpathSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, realpathSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -12,7 +12,7 @@ const sdkModule = async () => {
   return import(pathToFileURL(resolve(dirname(realpathSync(binary)), '../index.js')).href);
 };
 
-test('generated run launches real Pi with the renamed isolated agent directory', async t => {
+test('plain Pi launches a generated MCP project without Faur or a launcher', async t => {
   const root = mkdtempSync(join(tmpdir(), 'faur-sdk-renamed-home-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, '.pi'));
@@ -28,14 +28,34 @@ test('generated run launches real Pi with the renamed isolated agent directory',
   const env = { ...process.env, PI_CODING_AGENT_DIR: host, PI_OFFLINE: '1', PROBE_WAIT: '0', PROBE_OUT: join(root, 'probe.json') };
   const generated = spawnSync(process.execPath, [join(repo, 'skills/faur/faur.mjs'), 'generate', root], { encoding: 'utf8', env });
   assert.equal(generated.status, 0, generated.stderr);
-  const launched = spawnSync(join(root, 'run'), ['-p', '--no-session', '--approve', '-e', join(import.meta.dirname, 'pi-lab/probe.ts'), '--model', 'probe/m', 'hi'], { cwd: root, env, input: '', encoding: 'utf8', timeout: 60000 });
+  const launched = spawnSync('pi', ['-p', '--no-session', '--approve', '-e', join(import.meta.dirname, 'pi-lab/probe.ts'), '--model', 'probe/m', 'hi'], { cwd: root, env, input: '', encoding: 'utf8', timeout: 60000 });
   assert.equal(launched.status, 0, launched.stderr);
   const probe = JSON.parse(readFileSync(env.PROBE_OUT, 'utf8'));
   assert.ok(probe.markers.includes('PROJECT-APPEND'));
-  assert.ok(!probe.markers.includes('HOST-APPEND'), 'run ignores the caller agent directory');
+  // Project APPEND_SYSTEM.md replaces the host append prompt in Pi.
   assert.ok(!probe.commands.some(name => /^faur /.test(name)));
   assert.ok(!probe.tools.some(name => /^faur_plan /.test(name)));
-  assert.equal(readFileSync(join(root, 'run'), 'utf8').includes('.faur/pi-home'), true);
+  assert.equal(existsSync(join(root, 'run')), false);
+});
+
+test('real Pi loads a generated project in RPC mode without Faur or a run script', t => {
+  const root = mkdtempSync(join(tmpdir(), 'faur-plain-pi-rpc-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, '.pi'));
+  const home = join(root, 'home');
+  mkdirSync(home);
+  copyFileSync(join(import.meta.dirname, 'fixtures/generate/minimal/.pi/system.yaml'), join(root, '.pi/system.yaml'));
+  const env = { ...process.env, PI_CODING_AGENT_DIR: home, PI_OFFLINE: '1' };
+  const generated = spawnSync(process.execPath, [join(repo, 'skills/faur/faur.mjs'), 'generate', root], { encoding: 'utf8', env });
+  assert.equal(generated.status, 0, generated.stderr);
+  assert.equal(existsSync(join(root, 'run')), false);
+  const result = spawnSync('pi', ['--mode', 'rpc', '--no-session', '--approve'], {
+    cwd: root, env, encoding: 'utf8', timeout: 30000,
+    input: JSON.stringify({ id: 'state', type: 'get_state' }) + '\n',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const state = result.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line)).find(event => event.id === 'state');
+  assert.equal(state?.success, true, result.stdout);
 });
 
 test('a v0.30 project is freshly regenerated and manual edits are reconciled in real Pi', async t => {

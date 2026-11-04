@@ -204,13 +204,10 @@ first; the user decides.
   every required credential is declared as a `${ENV}`/`.env.example` entry and
   no secret is committed.
 - **Validate** — `faur validate <dir>`, then a headless smoke run:
-  `pi --approve -p "/skill:<workflow> <request>"` in the project folder, or
-  `./run --approve -p …` when the project has `run`. Plain `pi` adds the
-  user's global Pi configuration. A design with MCP servers gets `run`, which
-  uses the project's own Pi config directory (`PI_CODING_AGENT_DIR=.faur/pi-home`)
-  so a user-level package cannot replace Pi's built-in MCP; `/faur check`
-  reports such a package. Neither is an OS sandbox, and the caller's
-  environment, including credentials, is inherited. Skills in
+  `pi --approve -p "/skill:<workflow> <request>"` in the project folder.
+  Plain `pi` adds the user's global Pi configuration; `/faur check` reports
+  known conflicts such as a package replacing built-in MCP. It is not an OS
+  sandbox, and the caller's environment, including credentials, is inherited. Skills in
   `~/.agents/skills/` (and `.agents/skills/` in the project and its parents)
   and parent-folder `AGENTS.md` files load for the orchestrator;
   subagents get only the skills listed for them.
@@ -320,8 +317,7 @@ prior approvals cannot grant that authority.
      per-call approval. Faur sets Pi's exposure; never write exposure
      or toolExposure. Say which tools create, change or delete things and
      what the credential can reach, then ask. OAuth servers need no
-     credentials in the config: the user signs in with /mcp (inside ./run when
-     the project has one).
+     credentials in the config: the user signs in with /mcp.
    - Reach: a subagent's tools list is a strict allowlist. Add
      "mcp:<server>/<tool>" for each MCP tool it should have (or
      "mcp:<server>" for the whole server); the orchestrator reaches every

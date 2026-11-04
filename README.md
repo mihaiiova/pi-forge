@@ -12,8 +12,8 @@ working as your needs change.
 **The specialized agent is the product. Pi is its runtime.** Faur composes
 Pi's own resources and adds no workflow engine or scheduler of its own. A
 project never pins Faur: declared commands use a separate
-package when needed; Faur does not provide MCP per-call approvals. It starts with `pi` in its folder, or with `./run`
-when it uses MCP servers.
+package when needed; Faur does not provide MCP per-call approvals. It starts
+with `pi` in its folder.
 
 > **Direction (2026-11-02).** Faur is the maker; generated projects are
 > ordinary Pi projects that run with plain `pi`, with Faur uninstalled.
@@ -38,11 +38,10 @@ you ──▶ /faur (builder, conversational)
           ▼
    <project>/.pi/system.yaml   compact desired state (schema 1)
    <project>/.pi/…             native Pi files: settings, agents, skills, mcp.json, prompts
-   <project>/run               optional: its own Pi home and logins (MCP designs)
    <project>/.faur/           build record, capability manifest, isolated Pi home
           │
           ▼
-   pi, pi -p "/skill:…"   Pi runs the agent (or ./run); /faur revises it
+   pi, pi -p "/skill:…"   Pi runs the agent; /faur revises it
 ```
 
 - **Design and generate:** `/faur` holds a design conversation, writes
@@ -171,7 +170,8 @@ gets: `mcp:<server>` or `mcp:<server>/<tool>` for a specialist, `mcp` for the
 orchestrator. In the server's config, `includeTools` lists the tools agents may
 use and `excludeTools` hides tools from everyone. Faur does not provide
 per-call MCP approvals. These rules
-rely on Pi's built-in MCP, so such a project starts with `./run`. Use `/mcp`
+rely on Pi's built-in MCP. A global extension can replace it; `/faur check`
+reports known conflicts. Use `/mcp`
 to see the servers, their tools and errors, and to sign in to
 servers that use OAuth.
 
@@ -223,13 +223,11 @@ without a shell, with your own CLI logins. In a running system:
 ### Running and maintaining a generated system
 
 A generated project starts with `pi` in its folder, which adds your global Pi
-configuration to the project's. A project with MCP servers also gets `./run`,
-which uses the project's own config dir and Pi logins (`/login` once per
-project) so a package you installed cannot replace Pi's built-in MCP; `/faur
-check` reports such a package for plain `pi`. Either way your shell
-environment, including any credentials in it, is inherited, and neither is an
-OS sandbox. Workflows run headless as skills: `pi --approve -p
-"/skill:<workflow> <request>"` (see [headless workflows](docs/headless-workflows.md)).
+configuration to the project's. `/faur check` reports known conflicts, including
+a package that replaces built-in MCP. The caller owns any isolation; plain Pi
+inherits the shell environment and is not an OS sandbox. Workflows run headless
+as skills: `pi --approve -p "/skill:<workflow> <request>"` (see
+[headless workflows](docs/headless-workflows.md)).
 `/faur check` reports declared model providers without configured
 credentials and declared environment variables that are unset. For example,
 use `/login deepseek` or set `DEEPSEEK_API_KEY` before starting it. Start the
@@ -238,7 +236,7 @@ extension-provided tools.
 On first installation Pi may leave npm output pipes open briefly after exit.
 
 Pi loads the project's `AGENTS.md`, and any in parent folders, into the
-orchestrator's prompt, with or without `./run`; generation warns about files
+orchestrator's prompt; generation warns about files
 from outside the project. Their contents are sent to the model, so review
 untrusted instructions for prompt injection. Specialists do not receive them.
 

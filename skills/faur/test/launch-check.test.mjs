@@ -171,11 +171,11 @@ test('the check reports a user-level package that replaces built-in MCP, and dec
   mkdirSync(host);
   writeFileSync(join(host, 'settings.json'), JSON.stringify({ packages: ['npm:pi-mcp-adapter@2.32.1', 'npm:pi-subagents@0.65.0'] }));
   const launch = checkProject(root, { env: {}, hostAgentDir: host }).launch;
-  assert.ok(launch.some(p => /plain pi: pi-mcp-adapter .* replaces Pi's built-in MCP support.*start it with \.\/run/.test(p)), launch.join('\n'));
+  assert.ok(launch.some(p => /plain pi: pi-mcp-adapter .* replaces Pi's built-in MCP support.*disable the conflicting extension/.test(p)), launch.join('\n'));
   assert.ok(launch.some(p => /integrations\.env DOCS_TOKEN: not set in this environment/.test(p)));
   assert.ok(!checkProject(root, { env: { DOCS_TOKEN: 'x' }, hostAgentDir: host }).launch.some(p => /DOCS_TOKEN/.test(p)), 'a set name is not reported');
   mkdirSync(join(root, '.faur/pi-home'), { recursive: true });
-  assert.deepEqual(hostConflicts(root, model, { agentDir: join(root, '.faur/pi-home') }), [], 'inside run there is no user configuration');
+  assert.deepEqual(hostConflicts(root, model, { agentDir: join(root, '.faur/pi-home') }), [], 'a caller-selected clean configuration has no conflict');
   assert.match(hostConflicts(root, model, { agentDir: join(root, 'none'), mcpCommand: 'npm:other-mcp@1.0.0' })[0], /\/mcp comes from npm:other-mcp@1\.0\.0/, 'the session reports who owns /mcp');
   assert.deepEqual(hostConflicts(root, model, { agentDir: join(root, 'none'), mcpCommand: 'builtin' }), []);
   assert.deepEqual(hostConflicts(root, { ...model, integrations: {} }, { agentDir: host }), [], 'a design without MCP does not depend on it');

@@ -20,7 +20,7 @@ import { ensureSecretFiles, preflightSecretFiles } from './integration-secrets.m
 import { existsSync, readdirSync, readFileSync, statSync, lstatSync, rmSync } from 'node:fs';
 import { join, resolve, dirname, relative } from 'node:path';
 
-/** Context files loaded by plain Pi that the current launcher skips. */
+/** Parent context files that plain Pi loads in addition to the project. */
 function skippedContextFiles(root) {
   const found = [];
   for (let dir = resolve(root); ; dir = dirname(dir)) {
@@ -485,7 +485,7 @@ export function planNativeReapply(root, path) {
   plan.restart = restartNeeded(root, plan.writes);
   plan.preview.files = [{ path, action: before === null ? 'create' : 'write', diff: diffLines(before ?? '', desired) }];
   plan.preview.reapply = { path, note: 'Reapply only this native configuration; the design and other native files stay unchanged.' };
-  plan.preview.restart = plan.restart ? 'Takes effect after restarting Pi: the launcher or packages change.' : 'Takes effect after /reload; no restart needed.';
+  plan.preview.restart = plan.restart ? 'Takes effect after restarting Pi: packages change.' : 'Takes effect after /reload; no restart needed.';
   return plan;
 }
 
@@ -572,9 +572,8 @@ export function projectStatus(root) {
     env: envStatus(root, model),
   };
 }
-/** Whether applying `writes` needs a new process: a new launcher, or packages to install. */
+/** Whether applying `writes` needs a new process for packages to install. */
 export function restartNeeded(root, writes) {
-  if (writes.run !== undefined) return true;
   if (writes['.pi/settings.json'] === undefined) return false;
   const packages = text => { try { return json(JSON.parse(text ?? '{}').packages ?? []); } catch { return null; } };
   return packages(readText(root, '.pi/settings.json')) !== packages(writes['.pi/settings.json']);
@@ -622,7 +621,7 @@ export function planChange(root, operations, options = {}) {
   const paths = [...new Set([...managedPaths(oldModel), ...managedPaths(model), ...(inventory?.scaffolds ?? [])])];
   const existing = Object.fromEntries(paths.map(p => [p, readText(root, p)]).filter(([,v]) => v !== null));
   const baseline = generateProject(oldModel, existing, opts);
-  const drift = baseline.files.filter(f => ['run', '.pi/settings.json', '.pi/mcp.json', '.pi/commands.json'].includes(f.path) && f.action === 'write').map(f => f.path);
+  const drift = baseline.files.filter(f => ['.pi/settings.json', '.pi/mcp.json', '.pi/commands.json'].includes(f.path) && f.action === 'write').map(f => f.path);
   // Configuration this version generates differently (a newer Faur, or a
   // hand edit) is rebuilt with the change and shown in its preview.
   const plan = generateProject(model, existing, opts);
@@ -718,7 +717,7 @@ export function planChange(root, operations, options = {}) {
   for (const f of files) {
     writes[f.path] = f.content;
     const path = safePath(root, f.path);
-    generatedModes[f.path] = f.path === 'run' ? 0o755 : existsSync(path) ? lstatSync(path).mode & 0o7777 : 0o666 & ~process.umask();
+    generatedModes[f.path] = existsSync(path) ? lstatSync(path).mode & 0o7777 : 0o666 & ~process.umask();
   }
   // The generator normalizes these native settings even on an unrelated
   // revision. Refuse rather than silently changing routing or MCP availability.
@@ -905,7 +904,7 @@ export function planChange(root, operations, options = {}) {
         remove: skills.remove.map(name => existsSync(join(root, installedDir(name))) ? `${installedDir(name)}/` : `${name}: prune skills-lock.json entry`),
         how: `On apply, npx ${SKILLS_CLI} runs in a temporary project and its checked files and skills-lock.json are applied here. The CLI is not OS-sandboxed. Installed SKILL.md must match the preview. Skills can instruct agents to run programs; read them before approving.`,
       } } : {}),
-      restart: restart ? 'Takes effect after restarting Pi: the launcher or packages change.' : 'Takes effect after /reload; no restart needed.',
+      restart: restart ? 'Takes effect after restarting Pi: packages change.' : 'Takes effect after /reload; no restart needed.',
     },
   };
 }

@@ -32,7 +32,6 @@ export function atomicWrite(root, rel, content) {
   const temp = `${path}.${randomUUID()}.tmp`;
   try { writeFileSync(temp, content, { flag: 'wx', mode: 0o600 }); renameSync(temp, path); }
   finally { if (existsSync(temp)) unlinkSync(temp); }
-  if (rel === 'run') chmodSync(path, 0o755);
 }
 export function fingerprints(root, paths) {
   return Object.fromEntries([...new Set(paths)].sort().map(p => {

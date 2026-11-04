@@ -9,7 +9,6 @@ contain no workflow logic.
 ```sh
 cd <project>
 pi --approve -p "/skill:<workflow> <request>"     # plain pi
-./run --approve -p "/skill:<workflow> <request>"  # a project that has run
 ```
 
 - **The skill.** A workflow declared with `skill:` runs that skill. A
@@ -25,11 +24,9 @@ pi --approve -p "/skill:<workflow> <request>"     # plain pi
   `--approve`, or save the decision once with `/trust` in an interactive run.
 - **Stdin.** When stdin is not a terminal, Pi waits for it to close. Callers
   close it (or pass `</dev/null`).
-- **`run`.** Projects whose design has MCP servers get a `run` launcher that
-  sets `PI_CODING_AGENT_DIR` to the project's own Pi home and executes Pi, so
-  a user-level package that replaces built-in MCP cannot change the run. It
-  isolates Pi configuration only; the caller's environment, credentials,
-  `~/.agents/skills` and parent-folder `AGENTS.md` files still apply.
+- **Configuration.** Plain Pi inherits global Pi configuration; `/faur check`
+  reports known conflicts. The caller owns any isolation; plain Pi is not an OS
+  sandbox and inherits the caller's environment and credentials.
 
 ## Result
 
@@ -62,7 +59,7 @@ them implements them around the `pi` process (the caller adapter, #46):
 Pi takes declared `integrations.env` names from the environment it starts
 in: the caller exports them, or loads `.env` with direnv. MCP configuration
 references them as `${NAME}` (or `!command`). Model providers use `/login`
-(inside `./run` for a project that has one) or their API key variable.
+or their API key variable.
 `/faur check` reports declared names that are unset in the current
 environment. A trusted run shares its credentials with every tool in it; they
 are not protected integrations (#70).

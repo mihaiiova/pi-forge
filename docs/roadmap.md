@@ -27,7 +27,7 @@ architecture review is recorded in
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
-     → #61 (done 2026-11-03) → #62 (plain Pi migration implemented; removal of generated `run` remains open per 2026-11-04 decision) → #63 (done 2026-11-03) → #64 (conservative drift reconciliation; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (rename; #64 and #67 released in v0.32.0). Complete #59 acceptance and issue bookkeeping.
+     → #61 (done 2026-11-03) → #62 (plain Pi launch; generated `run` removed, pending review) → #63 (done 2026-11-03) → #64 (conservative drift reconciliation; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (rename; #64 and #67 released in v0.32.0). Complete #59 acceptance and issue bookkeeping.
   2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   3. #68, the public-alpha gate (harness early, criteria pass as issues land).
   4. Composition and evidence: #29, #30, #31, #35, #40.
@@ -35,12 +35,12 @@ architecture review is recorded in
   6. Deferred: #48 (compose an existing sandbox), #70 (protected
      integrations).
 - **Known limitations (current release):**
-  - Plain `pi mcp list` in a project's isolated home ignores the project until
-    trust is saved; `/mcp` inside `./run` works, and `check-agent --connect`
-    saves the trust itself.
+  - `check-agent --connect` uses a separate project-local Pi home and saves
+    trust there; this does not verify the user's plain-Pi configuration.
   - Plain `pi` with a user-level `/mcp` extension (such as `pi-mcp-adapter`)
-    does not enforce a project's MCP tool hiding; such projects
-    get `./run`, and `/faur check` reports the conflict.
+    does not enforce a project's MCP tool hiding; `/faur check` reports the
+    conflict. The caller must disable the conflicting extension or arrange
+    isolation independently.
   - Headless callers own timeouts, cancellation and cleanup of background
     specialists (#46).
   - Trusted runs share credentials with every agent and tool; there is no
@@ -89,7 +89,7 @@ is inferred instead, it is marked as an assumption.
 | Conversational design (explore → synthesize → build) | Implemented, satisfactory | `SKILL.md`; scenarios in `docs/agent-factory-conversation.md`; skill-contract test |
 | Declarative model and validator (`system.yaml` schema 1) | Implemented, satisfactory | `validate.mjs`, `schema.md`; strict unknown-key and reference checks |
 | Deterministic generation, ownership, dry-run, idempotence | Implemented, satisfactory | `generate.mjs`; golden fixtures; fingerprint conflicts |
-| Isolated launcher (`./run`) | Implemented, satisfactory | `runtime.mjs`; launcher and isolation suites |
+| Plain Pi launch | Implemented; pending review | `generate.mjs`; real-Pi SDK and headless workflow tests |
 | Per-agent models and thinking | Implemented, satisfactory | `models.mjs` |
 | Skills from skills.sh (search, preview, pin, project-local install) | Implemented, satisfactory | `registry-skills.mjs`, `skill-sources.mjs` |
 | Specialists, enforced tool allowlists, background launch for extension/MCP tools | Implemented, satisfactory | `policy.mjs`, `generate.mjs` (`needsBackground`), `asking.mjs` |

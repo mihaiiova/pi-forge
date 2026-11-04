@@ -73,7 +73,7 @@ test("files a design does not use are not generated", () => {
   assert.ok(paths(withServer).includes(".pi/mcp.json"));
   assert.ok(paths({ ...model, integrations: { env: [{ name: "TOKEN" }] } }).includes(".env.example"));
   assert.ok(!paths(model).includes("run"), "plain pi starts a design that does not depend on built-in MCP");
-  assert.ok(paths(withServer).includes("run"), "a design with MCP servers gets the isolating launcher");
+  assert.ok(!paths(withServer).includes("run"), "MCP projects use plain Pi without a generated launcher");
 });
 
 test("re-running generate is a no-op (idempotent)", () => {
@@ -305,13 +305,10 @@ test("a hand-written APPEND_SYSTEM.md without Faur markers is left alone, with a
   assert.ok(warnings.some((w) => w.includes("without Faur's generated section")));
 });
 
-test("generateProject emits the executable run launcher for a design with MCP servers", () => {
-  const { files } = generateProject(withServer, {});
-  const run = byPath(files, "run");
-  assert.ok(run, "run launcher is emitted");
-  assert.equal(run.executable, true, "run launcher is marked executable");
-  assert.match(run.content, /PI_CODING_AGENT_DIR/);
-  assert.match(run.content, /exec pi/);
+test("generation never manages an existing run script", () => {
+  const custom = "#!/bin/sh\necho developer\n";
+  const { files } = generateProject(withServer, { run: custom });
+  assert.ok(!files.some(f => f.path === "run"));
 });
 
 test("MCP and extension specialists run in the background; builtin-only ones do not", () => {
@@ -400,7 +397,7 @@ test('README lists each workflow as the headless skill command, for the launcher
   assert.match(plain, /a call that asks the user is refused in a headless run/);
   assert.doesNotMatch(plain, /--workflow|--timeout|systemd/);
   const isolated = byPath(generateProject({ ...withServer, workflows }, {}).files, 'README.md').content;
-  assert.match(isolated, /^\.\/run --approve -p "\/skill:daily-report <request>"$/m);
+  assert.match(isolated, /^pi --approve -p "\/skill:daily-report <request>"$/m);
 });
 
 test('a workflow without a skill gets one named after it', () => {

@@ -1,4 +1,4 @@
-<!-- faur:generated v1 sha256=3497b08f8a452157de31f1eac8f81a153e0299fa6dc3428bb175eede6ea75f7a -->
+<!-- faur:generated v1 sha256=e7e74b880bd951552efe898515118781be69a2c28873178260d8816411b8da70 -->
 # notes-helper
 
 Answers questions about the notes in this folder
@@ -6,7 +6,8 @@ Answers questions about the notes in this folder
 ## Run
 
 Start it with `pi` in this folder. Your global Pi configuration (settings,
-packages, MCP servers, instructions) is added to the project's.
+packages, MCP servers, instructions) is added to the project's. `/faur check`
+reports known conflicts, including extensions that replace built-in MCP.
 Your environment, including any credentials in it, is inherited; this is not
 an OS sandbox. Skills in `~/.agents/skills/` and `AGENTS.md` files in parent
 folders also load, for the orchestrator. Pi asks once whether to trust the

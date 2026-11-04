@@ -737,7 +737,7 @@ test('generated files preserve existing modes and use regular creation modes wit
   for (const path of ['README.md', '.pi/settings.json', '.pi/APPEND_SYSTEM.md']) {
     assert.equal(statSync(join(root, path)).mode & 0o777, 0o666 & ~process.umask(), path);
   }
-  assert.equal(statSync(join(root, 'run')).mode & 0o777, 0o755);
+  assert.equal(readText(root, 'run'), null);
   chmodSync(join(root, '.pi/settings.json'), 0o640);
   applyChange(root, planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), true);
   assert.equal(statSync(join(root, '.pi/settings.json')).mode & 0o777, 0o640);
@@ -1022,18 +1022,15 @@ test('unmarked instructions and unrelated derived drift never get silently recon
   assert.deepEqual(snapshot(root), before);
   const tools = generateProject({ ...model, orchestrator: { ...model.orchestrator, tools: [] } }, {}, { piPackages: pkg.pi.packages }).files.find(f => f.path === '.pi/settings.json');
   assert.deepEqual(JSON.parse(tools.content).defaultTools, []);
-  writeFileSync(join(root, 'run'), readText(root, 'run') + '# custom launcher\n');
-  // A change rebuilds what this version generates differently, and says so.
+  const custom = '#!/bin/sh\necho developer\n';
+  writeFileSync(join(root, 'run'), custom);
   const change = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
-  assert.deepEqual(change.preview.reconciliation, ['run']);
-  assert.match(change.preview.rebuilt, /generates run differently .*hand edit, which would be lost/);
-  assert.ok(change.preview.files.some(f => f.path === 'run'));
+  assert.ok(!change.preview.files.some(f => f.path === 'run'));
+  applyChange(root, change, true);
+  assert.equal(readText(root, 'run'), custom, 'revision preserves an authored run');
   const plan = rebuildPlan(root);
-  assert.deepEqual(plan.preview.reconciliation, ['run']);
-  assert.deepEqual(plan.rebuild.reach, ['run'], 'a launcher change asks first');
   applyChange(root, plan, true);
-  assert.ok(!readText(root, 'run').includes('custom launcher'));
-  assert.equal(rebuildPlan(root).rebuild.unchanged, true);
+  assert.equal(readText(root, 'run'), custom, 'regeneration preserves an authored run');
 });
 
 test('a text-only rebuild is previewed without capability changes', t => {
@@ -1208,17 +1205,6 @@ test('oversized approval previews are refused instead of truncated', t => {
   const plan = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
   plan.preview.warnings.push('x'.repeat(100001));
   assert.throws(() => approvalPreview(root, plan), /exceeds 100000 characters.*Nothing applied/);
-});
-
-test('approval dialog warns when reconciliation overwrites a hand-edited launcher', async t => {
-  const root = project(t, pinnedModel);
-  writeFileSync(join(root, 'run'), readText(root, 'run') + '# developer edit\n');
-  const mock = adapter();
-  mock.faur = registerMaintenance(mock.pi, mock.Type, root);
-  await mock.faur('change model', mock.ctx);
-  await mock.tools.faur_plan.execute('id', { action: 'propose', operations: json([{ op: 'assign', name: 'lead', model: 'fixture/small' }]) }, undefined, undefined, mock.ctx);
-  await mock.endTurn();
-  assert.match(mock.prompts[0].title, /generates run differently.*hand edit, which would be lost/);
 });
 
 test('registry skill approval names the installation and unsandboxed installer', async t => {
@@ -1440,12 +1426,12 @@ test('/faur sync requires confirmation for text and reach changes', async t => {
   assert.ok(!JSON.parse(readText(root, '.pi/settings.json')).packages.includes('npm:example@1.0.0'));
 });
 
-test('applied changes and rebuilds reload Pi unless the launcher or packages change', async t => {
+test('applied changes and rebuilds reload Pi unless packages change', async t => {
   const root = project(t);
   const quiet = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
   assert.equal(quiet.restart, false);
   assert.match(quiet.preview.restart, /after \/reload; no restart needed/);
-  assert.equal(planChange(root, [{ op: 'add', target: 'mcp', name: 'docs', value: { config: { url: 'http://localhost:3002/mcp' } } }]).restart, true, 'a new launcher');
+  assert.equal(planChange(root, [{ op: 'add', target: 'mcp', name: 'docs', value: { config: { url: 'http://localhost:3002/mcp' } } }]).restart, false, 'MCP changes need no generated launcher');
   assert.equal(planChange(root, [{ op: 'set', target: 'packages', value: ['npm:example-package@1.0.0'] }]).restart, true, 'packages to install');
   const mock = adapter();
   const reloads = [];

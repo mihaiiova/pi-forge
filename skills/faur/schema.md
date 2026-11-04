@@ -66,7 +66,7 @@ Allowed keys: `name` (required string), `description`, `prompt`, `model`
 (required `provider/id`), `thinking` and `tools` (array of strings).
 
 Pi loads the project's `AGENTS.md` (and `AGENTS.md` files in parent folders)
-into the orchestrator's prompt by itself, with or without `./run`. Generation
+into the orchestrator's prompt by itself. Generation
 warns about files from outside the project. They are instructions sent to the
 model; treat them as untrusted input. Specialists do not receive them.
 
@@ -96,8 +96,8 @@ tools include anything beyond Pi's builtins (`read`, `bash`, `edit`, `write`,
 `grep`, `find`, `ls`) — `mcp:` selections or extension tools such as
 `web_search` — or that omits `tools`, gets `async: true`, an overridable
 default. Faur also generates `.faur/pi-home/extensions/subagent/config.json`
-with `forceTopLevelAsync: true`; this setting applies only through `./run` and
-is gitignored, so it is not a reliable guarantee for plain `pi` or a fresh
+with `forceTopLevelAsync: true`; plain `pi` does not read this gitignored
+setting, so it is not a reliable guarantee for plain `pi` or a fresh
 checkout (#72). Foreground MCP tools work, while extension tools may require an
 extension path in the agent's tools list.
 Nobody can answer an approval prompt in the background, so a subagent that
@@ -156,9 +156,8 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   specialists get their `mcp:` selections. That is advisory: nothing stops
   the orchestrator calling an MCP tool. Faur does not provide per-call MCP
   approval; the removed `approveTools` key is rejected. OAuth servers need no credentials in the
-  config: sign in with `/mcp` (inside `./run`, which a design with MCP servers
-  gets so that a user-level `/mcp` extension cannot replace Pi's built-in
-  MCP). Duplicate `name`s are rejected.
+  config: sign in with `/mcp`. A global `/mcp` extension can replace Pi's
+  built-in MCP; `/faur check` reports known conflicts. Duplicate `name`s are rejected.
 - `env[]` entries: `name` (required shell variable name) and `secret`
   (optional boolean). These become `.env.example` entries. Pi reads no
   `.env`: the values come from the environment Pi starts in (exported, or
@@ -308,7 +307,7 @@ rejected and must be redefined with per-agent models.
 Full text of `docs/agent-factory.md` §C.6:
 
 1. **Derived files** (`settings.json` model fragment + `packages` + `defaultTools`,
-   `mcp.json`, and the `run` launcher) are faur-owned and regenerated on
+   and `mcp.json`) are faur-owned and regenerated on
    every `generate`; **unknown keys the faur does not own are preserved**
    The `packages` list is a faur-owned derived key holding only what the
    design uses (`deps.mjs` `runtimeNeeds`, `runtimePackages`): the Faur

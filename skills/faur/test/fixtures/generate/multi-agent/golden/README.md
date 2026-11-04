@@ -1,4 +1,4 @@
-<!-- faur:generated v1 sha256=26f377b25c5d922c7d00335c21c87a37eb496f8e9a7e78b8dbb8b025f65a1947 -->
+<!-- faur:generated v1 sha256=d32ed088309587f11e93284300f1d1484416dae47298cbf07d8f5dc384180fcb -->
 # seo-agent-system
 
 SEO analysis + article drafting with specialist subagents
@@ -6,7 +6,8 @@ SEO analysis + article drafting with specialist subagents
 ## Run
 
 Start it with `pi` in this folder. Your global Pi configuration (settings,
-packages, MCP servers, instructions) is added to the project's.
+packages, MCP servers, instructions) is added to the project's. `/faur check`
+reports known conflicts, including extensions that replace built-in MCP.
 Your environment, including any credentials in it, is inherited; this is not
 an OS sandbox. Skills in `~/.agents/skills/` and `AGENTS.md` files in parent
 folders also load, for the orchestrator. Pi asks once whether to trust the

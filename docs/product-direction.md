@@ -28,14 +28,14 @@ decision:
 3. **Plain Pi launch.** Projects use `pi` and `pi -p`, without a generated
    `run` script. Plain Pi inherits the user's global configuration and is not
    hermetic; Faur reports relevant conflicts. Isolation, if needed, is the
-   caller's responsibility. This target remains to be implemented in #62.
+   caller's responsibility. Removal of the generated launcher is pending
+   review in #62.
 4. **Trusted execution is not protected integration.** Credentials in a run
    are available to Pi, every agent and every tool in it. Faur offers no
    same-user confidentiality today; that stronger boundary is deferred (see
    §7) and will not be claimed without adversarial evidence.
 
-The current implementation can still generate an isolation-only `run` script;
-#62 tracks its removal. Earlier migration history is in
+Earlier migration history is in
 [architecture-audit.md §5](architecture-audit.md#5-runtime-dependencies-and-the-migration).
 
 ## 1. Product definition
@@ -148,15 +148,14 @@ something a project gets from a package, Faur moves to the built-in.
   and workflow boundaries. Leave delegation, sequencing and tool choice to the
   agents at run time. No graph workflow engine.
 - **Enforced vs advisory.** Tool allowlists and hidden MCP tools are enforced
-  by Pi and pi-subagents at the tool layer; per-call approvals by the
-  permission extension that implements them. An agent with `bash`, a shell-like
+  by Pi and pi-subagents at the tool layer where verified; Faur does not add
+  MCP per-call approvals. An agent with `bash`, a shell-like
   declared command or an unrestricted MCP server can reach anything those
   reach. Prose rules are guidance, and are never presented as enforcement.
 - **Isolation.** Plain `pi` uses the user's global Pi configuration as well
   as the project's; it is not an OS sandbox. The caller owns any isolation.
   Faur reports relevant configuration conflicts and must not claim isolation
-  it cannot verify. The existing generated `run` script is to be removed in
-  #62.
+  it cannot verify. Existing developer-owned `run` files are preserved.
 - **Trusted execution vs protected integrations.** A trusted run gives its
   credentials (the caller's environment and declared variables) to Pi, every
   agent, every tool and their subprocesses. `secret: true`, tool approval,

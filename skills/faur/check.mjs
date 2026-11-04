@@ -16,7 +16,7 @@ import { skillSourceKind } from './skill-sources.mjs';
 import { enforcedAgentTools } from './policy.mjs';
 import { mcpToolName } from './mcp-gen.mjs';
 import { leadTools } from './asking.mjs';
-import { envNames, needsIsolation } from './runtime.mjs';
+import { envNames } from './runtime.mjs';
 import { REPLACES_BUILTIN } from './deps.mjs';
 import { homedir } from 'node:os';
 
@@ -34,21 +34,19 @@ function packageName(entry) {
 /**
  * User-level Pi configuration that would replace what a design relies on when
  * it is started with plain `pi` (stage 0, #60). `agentDir` is the Pi
- * configuration in effect; inside the project's own `run` home nothing applies.
+ * configuration in effect, including a caller-selected Pi directory.
  * `mcpCommand` is the source of the session's `/mcp` command when known.
  */
 export function hostConflicts(root, model, { agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi/agent'), mcpCommand } = {}) {
-  if (!needsIsolation(model)) return [];
-  const own = join(root, '.faur/pi-home');
-  try { if (realpathSync(agentDir) === realpathSync(own)) return []; } catch { /* the isolated home does not exist yet */ }
+  if (!Array.isArray(model?.integrations?.mcp) || !model.integrations.mcp.length) return [];
   const out = [];
   let packages = [];
   try { packages = JSON.parse(readFileSync(join(agentDir, 'settings.json'), 'utf8')).packages ?? []; } catch { /* no user settings */ }
   for (const entry of packages) {
     const name = packageName(entry);
-    if (REPLACES_BUILTIN[name]) out.push(`plain pi: ${name} in ${join(agentDir, 'settings.json')} replaces ${REPLACES_BUILTIN[name]}, so this project's MCP tool hiding and tool names do not apply; start it with ./run`);
+    if (REPLACES_BUILTIN[name]) out.push(`plain pi: ${name} in ${join(agentDir, 'settings.json')} replaces ${REPLACES_BUILTIN[name]}, so this project's MCP tool hiding and tool names do not apply; disable the conflicting extension in the Pi configuration used to launch this project`);
   }
-  if (!out.length && mcpCommand && mcpCommand !== 'builtin') out.push(`plain pi: /mcp comes from ${mcpCommand}, which replaces Pi's built-in MCP, so this project's MCP tool hiding and tool names do not apply; start it with ./run`);
+  if (!out.length && mcpCommand && mcpCommand !== 'builtin') out.push(`plain pi: /mcp comes from ${mcpCommand}, which replaces Pi's built-in MCP, so this project's MCP tool hiding and tool names do not apply; disable the conflicting extension in the Pi configuration used to launch this project`);
   return out;
 }
 
@@ -75,9 +73,8 @@ export function checkProject(root, { registeredTools, mcpTools, env = process.en
 
 /**
  * Pi's shell commands read project MCP servers only for a saved trust
- * decision, and ./run trusts the project per run without saving one. Save it
- * in the project's own isolated Pi home, which ./run already trusts on every
- * start; the user's personal Pi home is never touched.
+ * decision. The explicit check uses a separate project-local Pi home and
+ * records trust there; the user's personal Pi home is never touched.
  */
 function saveProjectTrust(root) {
   const home = join(root, '.faur/pi-home');
@@ -149,7 +146,7 @@ export function checkAgent(root, options = {}) {
         const provider = checked?.providers[name] ?? options.toolProviders?.[name];
         const present = provider || options.registeredTools?.includes(name);
         const known = registeredTools !== undefined;
-        capabilities.push({ agent: agent.name, name, provider: provider || 'extension', status: present ? 'verified now' : known ? 'missing' : 'not verifiable', fix: present ? 'None.' : checked?.missing?.length ? 'Run ./run once to install the project\'s packages, then check again.' : known ? 'Install or enable the providing extension and restart ./run if packages are not installed.' : 'Install or enable the providing extension; use /faur check to verify the live session.' });
+        capabilities.push({ agent: agent.name, name, provider: provider || 'extension', status: present ? 'verified now' : known ? 'missing' : 'not verifiable', fix: present ? 'None.' : checked?.missing?.length ? 'Run pi in the project once to install its packages, then check again.' : known ? 'Install or enable the providing extension and restart Pi if packages are not installed.' : 'Install or enable the providing extension; use /faur check to verify the live session.' });
       }
     }
     for (const name of agent === model.orchestrator ? [...skills.keys()] : (agent.skills ?? [])) {

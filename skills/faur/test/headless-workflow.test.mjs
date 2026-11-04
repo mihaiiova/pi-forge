@@ -7,8 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 // Headless workflows are skills Pi runs in print mode: `pi --approve -p
-// "/skill:<workflow> <request>"`, through the project's own `run` when the
-// design has MCP servers. Real Pi, a scripted faux model, no network.
+// "/skill:<workflow> <request>"`. Real Pi, a scripted faux model, no network.
 const repo = resolve(import.meta.dirname, '../../..');
 const faur = join(repo, 'skills/faur/faur.mjs');
 const server = join(import.meta.dirname, 'fixtures/mcp/server.mjs');
@@ -41,7 +40,7 @@ export default pi => {
   assert.ok(!(settings.packages ?? []).some(p => p.includes('faur')), 'projects never pin Faur');
   settings.extensions = [provider];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings));
-  const home = existsSync(join(root, 'run')) ? join(root, '.faur/pi-home') : join(root, '.home');
+  const home = join(root, '.home');
   // Pi installs missing project packages at start-up, so a run with packages
   // needs the network once; without packages it runs offline.
   if (settings.packages?.length) {
@@ -53,13 +52,11 @@ export default pi => {
   return { root, env };
 }
 
-/** Run `/skill:test` headless, through ./run when the project has one. */
+/** Run `/skill:test` headless using plain Pi. */
 function headless({ root, env }, request = 'check the login page') {
-  const hasRun = existsSync(join(root, 'run'));
-  const command = hasRun ? join(root, 'run') : 'pi';
-  if (!hasRun) env = { ...env, PI_CODING_AGENT_DIR: join(root, '.home') };
+  env = { ...env, PI_CODING_AGENT_DIR: join(root, '.home') };
   const args = ['--approve', '--no-session', '--mode', 'json', '-p', `/skill:test ${request}`];
-  const result = spawnSync(command, args, { cwd: root, env, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync('pi', args, { cwd: root, env, encoding: 'utf8', timeout: 30000 });
   const events = result.stdout.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
   const final = events.filter(e => e.type === 'agent_end').at(-1)?.messages?.filter(m => m.role === 'assistant').at(-1);
   const text = final?.content?.filter(c => c.type === 'text').map(c => c.text).join('') ?? '';

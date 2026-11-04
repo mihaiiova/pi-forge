@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
-# Runtime isolation harness.
-#
-# Three distinct categories, named to state exactly what each proves:
-#   A. Deterministic generation  — file-level checks; no Pi, network, or model.
-#   B. Launcher integration       — mocked `pi`; covered by launcher.test.sh.
-#   C. Real Pi integration        — pi-gated; SKIP-with-reason, never passed.
-#
-# Generation inspection proves generated-configuration correctness only.
-# A mocked pi proves launcher behavior. A real pi process establishes actual
-# resource loading. These are deliberately not conflated.
+# Deterministic generated-project checks; no Pi, network or model.
+# Real Pi launch behavior is covered by the SDK and headless tests.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,7 +49,7 @@ node "$faur" generate "$work" >/dev/null 2>&1
 # ── A. Deterministic generation (no Pi / network / model) ────────
 
 # A1: generation produces the declared project tree.
-[[ -f "$work/run" ]] || fail "A: run launcher not generated"
+[[ ! -e "$work/run" ]] || fail "A: generated an unwanted run launcher"
 [[ -f "$work/.pi/settings.json" ]] || fail "A: settings.json not generated"
 [[ -f "$work/.pi/agents/analyst.md" ]] || fail "A: analyst agent not generated"
 [[ -f "$work/.pi/skills/draft/SKILL.md" ]] || fail "A: draft skill not generated"
@@ -103,28 +95,5 @@ if (!caps.packages.includes("npm:pi-subagents@0.83.1")) process.exit(1);
   || fail "A: capabilities manifest missing or does not reflect the model"
 pass "A: effective-capability manifest is written and reflects the model"
 
-# ── B. Launcher integration (mocked pi — no model/credentials) ──
-# The launcher itself is asserted by test/launcher.test.sh; run it here so the
-# B category fails loudly if that harness regresses.
-if bash "$here/launcher.test.sh"; then
-  pass "B: launcher startup behavior (cwd/env/args/exit) verified with a mocked pi"
-else
-  fail "B: launcher.test.sh failed"
-fi
-
-# ── C. Real Pi integration (pi-gated; SKIP-with-reason, never pass) ──
-if command -v pi >/dev/null 2>&1; then
-  if out="$(cd "$work" && PI_OFFLINE=1 PI_CODING_AGENT_DIR="$work/.faur/pi-home" timeout 60 pi mcp list 2>&1)"; then
-    if grep -qi 'owlie\|cloudflare' <<<"$out"; then
-      fail "C: real pi under isolation still reports host MCP servers"
-    fi
-    pass "C: real pi under isolation omits host MCP servers"
-  else
-    fail "C: real pi mcp list failed under isolation ($out)"
-  fi
-else
-  skip "C: real pi under isolation omits host MCP servers" "pi not on PATH"
-fi
-
 echo
-echo "All isolation tests passed."
+echo "All generation tests passed."

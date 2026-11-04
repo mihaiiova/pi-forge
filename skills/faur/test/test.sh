@@ -73,12 +73,6 @@ else
   fail "isolation.test.sh"
 fi
 
-# ── launcher integration (mocked pi — no model/credentials) ────
-if bash "$here/launcher.test.sh"; then
-  pass "launcher.test.sh"
-else
-  fail "launcher.test.sh"
-fi
 
 echo
 echo "All faur tests passed."

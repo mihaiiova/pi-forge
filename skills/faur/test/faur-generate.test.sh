@@ -129,9 +129,8 @@ grep -q '"publish_\*": "hidden"' "$vs/.pi/mcp.json" || fail "valid-seo hidden to
 grep -q 'publish_\*' "$vs/.pi/mcp.json" || fail "valid-seo hide publish_* missing"
 grep -q "### Enforced by Pi's tool layer" "$vs/README.md" || fail "README missing enforced marker"
 grep -q 'An agent with `bash` or a shell-like command can still reach' "$vs/README.md" || fail "README omits what tool-layer enforcement does not cover"
-[[ -x "$vs/run" ]] || fail "run launcher not executable"
-grep -q 'PI_CODING_AGENT_DIR' "$vs/run" || fail "run launcher missing the isolated agent dir"
-grep -qi 'cannot be bypassed\|credentials are not inherited' "$vs/README.md" "$vs/run" && fail "generated text overstates enforcement"
+[[ ! -e "$vs/run" ]] || fail "unexpected generated run launcher"
+grep -qi 'cannot be bypassed\|credentials are not inherited' "$vs/README.md" && fail "generated text overstates enforcement"
 grep -q '### Advisory (guidance — not enforced)' "$vs/README.md" || fail "README missing advisory marker"
 rm -rf "$vs"
 pass "faur generate materializes MCP config and enforced/advisory policy"
@@ -143,7 +142,7 @@ if [[ "${RUN_FAUR_LIVE_TESTS:-0}" == 1 ]] && command -v pi >/dev/null 2>&1; then
   mkdir -p "$smoke/.pi"
   cp "$fixtures/generate/minimal/.pi/system.yaml" "$smoke/.pi/system.yaml"
   node "$faur" generate "$smoke" >/dev/null
-  if out="$(cd "$smoke" && timeout 60 ./run --approve -p "describe yourself" 2>&1)"; then
+  if out="$(cd "$smoke" && timeout 60 pi --approve -p "describe yourself" 2>&1)"; then
     if grep -qi "seo\|orchestrator\|coordinator" <<<"$out"; then
       pass "e2e smoke: pi -p reports the orchestrator identity"
     else
@@ -167,7 +166,7 @@ if [[ "${RUN_FAUR_LIVE_TESTS:-0}" == 1 ]] && command -v pi >/dev/null 2>&1; then
   mw="$(mktemp -d)"
   cp -r "$fixtures/generate/multi-agent/.pi" "$mw/.pi"
   node "$faur" generate "$mw" >/dev/null
-  if out="$(cd "$mw" && timeout 90 ./run --approve -p "run the analyze-and-draft workflow" 2>&1)"; then
+  if out="$(cd "$mw" && timeout 90 pi --approve -p "run the analyze-and-draft workflow" 2>&1)"; then
     if find "$mw/data" -type f -not -name '.gitkeep' | grep -q .; then
       pass "multi-agent headless smoke: workflow produced an artifact under data/"
     else

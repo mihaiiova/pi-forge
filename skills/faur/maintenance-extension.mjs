@@ -227,7 +227,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     try { model = parsedModel(readText(root, '.pi/system.yaml')); } catch { return ''; }
     const providers = [...new Set([model.orchestrator, ...(model.agents ?? [])].map(agent => agent?.model?.split('/')[0]).filter(Boolean))];
     return providers.filter(provider => !ctx.modelRegistry.getProviderAuthStatus(provider).configured)
-      .map(provider => `- credentials: provider ${provider} has none in this Pi. Use /login ${provider}${PROVIDER_ENV[provider] ? ` or set ${PROVIDER_ENV[provider]}` : ''} before running the agent (inside ./run for its own login).`).join('\n');
+      .map(provider => `- credentials: provider ${provider} has none in this Pi. Use /login ${provider}${PROVIDER_ENV[provider] ? ` or set ${PROVIDER_ENV[provider]}` : ''} before running the agent.`).join('\n');
   };
   const status = async (ctx) => {
     const s = projectStatus(root);

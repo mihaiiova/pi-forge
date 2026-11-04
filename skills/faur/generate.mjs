@@ -27,7 +27,7 @@ import { authoredSkills, vendoredSkills, skillSourceKind } from "./skill-sources
 import { workflowSkill } from "./workflow-skill.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
-import { buildRuntimePlan, needsIsolation } from "./runtime.mjs";
+import { buildRuntimePlan } from "./runtime.mjs";
 import { runtimeNeeds, COMMANDS_PACKAGE } from "./deps.mjs";
 import { integrationSecrets, gitignoreSafety, REQUIRED_IGNORES } from './integration-secrets.mjs';
 import { cliRef, cliToolName, cliEntries, cliAgents } from "./cli-tools.mjs";
@@ -401,31 +401,18 @@ function readmeBody(model, packages) {
     "",
     "## Run",
     "",
-    ...(needsIsolation(model) ? [
-      "Start it with `./run`. It runs Pi with this project's own Pi configuration",
-      "and logins instead of yours, so a package you installed (such as an MCP",
-      "extension that replaces Pi's built-in MCP) cannot change what this project",
-      "relies on. Plain `pi` here also works, with your configuration added;",
-      "`/faur check` reports what in it conflicts.",
-    ] : [
-      "Start it with `pi` in this folder. Your global Pi configuration (settings,",
-      "packages, MCP servers, instructions) is added to the project's.",
-    ]),
+    "Start it with `pi` in this folder. Your global Pi configuration (settings,",
+    "packages, MCP servers, instructions) is added to the project's. `/faur check`",
+    "reports known conflicts, including extensions that replace built-in MCP.",
     "Your environment, including any credentials in it, is inherited; this is not",
     "an OS sandbox. Skills in `~/.agents/skills/` and `AGENTS.md` files in parent",
     "folders also load, for the orchestrator. Pi asks once whether to trust the",
     "project; headless runs pass `--approve` instead.",
     "",
     "```sh",
-    ...(needsIsolation(model) ? [
-      "./run                       # interactive",
-      "./run --approve -p \"...\"    # headless one-shot",
-      ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `./run --approve -p "/skill:${w.skill ?? w.name} <request>"`)),
-    ] : [
-      "pi                          # interactive",
-      "pi --approve -p \"...\"       # headless one-shot",
-      ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `pi --approve -p "/skill:${w.skill ?? w.name} <request>"`)),
-    ]),
+    "pi                          # interactive",
+    "pi --approve -p \"...\"       # headless one-shot",
+    ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `pi --approve -p "/skill:${w.skill ?? w.name} <request>"`)),
     "```",
     "",
     ...((model.workflows?.length ?? 0) ? [
@@ -443,7 +430,7 @@ function readmeBody(model, packages) {
       "should allow extra time before assuming the output stream has closed.",
       "",
     ] : []),
-    `Authenticate with \`/login\`${needsIsolation(model) ? " inside `./run`" : ""}, or export the provider-specific key (for`,
+    "Authenticate with `/login`, or export the provider-specific key (for",
     "example `DEEPSEEK_API_KEY`). See the policy section below for which",
     "capabilities are enforced vs advisory.",
     ...(model.integrations?.env?.length ? ["Integration variables (listed in `.env.example`) come from the environment you start Pi in: export them, or load `.env` with direnv (`dotenv` in `.envrc`). `/faur check` reports any that are unset."] : []),
@@ -592,7 +579,6 @@ export function managedPaths(model) {
   const paths = [...GENERATED_PATHS];
   if (hasMcp(model)) paths.push(".pi/mcp.json");
   if (hasEnv(model)) paths.push(".env.example");
-  if (needsIsolation(model)) paths.push("run");
   if (cliEntries(model).length) paths.push(COMMANDS_CONFIG);
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
   for (const skill of skillEntries(model)) paths.push(skillPath(skill));
@@ -615,7 +601,7 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
   const existing = isPlainObject(existingFiles) ? existingFiles : {};
   const piPackages = isPlainObject(opts) ? opts.piPackages : undefined;
   const contextFiles = isPlainObject(opts) && Array.isArray(opts.contextFiles) ? opts.contextFiles : [];
-  const plan = buildRuntimePlan(model, { piPackages, contextFiles, firstBuild: existing["run"] === undefined && existing[".pi/settings.json"] === undefined });
+  const plan = buildRuntimePlan(model, { piPackages, contextFiles });
   const subagentConfig = backgroundAgents(model).length > 0
     ? [derivedFile(SUBAGENT_CONFIG, buildSubagentConfig(existing[SUBAGENT_CONFIG]), existing[SUBAGENT_CONFIG])]
     : [];
@@ -628,7 +614,6 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
     gitignoreFile(existing[".gitignore"], model),
     ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
     ...(cliEntries(model).length ? [derivedFile(COMMANDS_CONFIG, commandsConfig(model), existing[COMMANDS_CONFIG])] : []),
-    ...(plan.launcherScript ? [{ ...derivedFile("run", plan.launcherScript, existing["run"]), executable: true }] : []),
     ...subagentConfig,
     ...agentFiles(model, existing),
     ...skillFiles(model, existing),
