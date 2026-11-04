@@ -96,7 +96,7 @@ A specialized agent is:
 | What it can use | a generated capability section, loaded with the prompt |
 | Specialists (optional) | `.pi/agents/*.md`, run by `pi-subagents` |
 | Tools and integrations | built-in tools, Pi packages and extensions, MCP servers (`.pi/mcp.json`), declared commands |
-| Permissions | enforced tool allowlists and hidden MCP tools (Pi); per-call approval through a permission extension the project declares |
+| Permissions | tool allowlists and hidden MCP tools (Pi); Faur does not provide per-call MCP approvals. Declared commands may require approval |
 | Domain knowledge | ordinary project files and skills |
 | Learned lessons (optional) | a notes file the orchestrator keeps |
 | Triggers | `pi` (interactive), `pi -p` (headless), scheduled (planned) |

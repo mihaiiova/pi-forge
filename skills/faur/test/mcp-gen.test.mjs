@@ -14,7 +14,7 @@ test("servers keep their connection settings; without includeTools their tools a
 });
 
 test("includeTools declares only those tools directly; the rest of the server is hidden", () => {
-  const servers = mcpFromIntegrations([{ name: "seo", config: { url: "http://x", includeTools: ["get_report", "run_*"], approveTools: ["run_*"] } }], undefined);
+  const servers = mcpFromIntegrations([{ name: "seo", config: { url: "http://x", includeTools: ["get_report", "run_*"] } }], undefined);
   assert.deepEqual(servers.seo, { url: "http://x", exposure: "hidden", toolExposure: { get_report: "direct", "run_*": "direct" } });
 });
 

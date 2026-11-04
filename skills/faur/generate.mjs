@@ -28,10 +28,9 @@ import { workflowSkill } from "./workflow-skill.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
 import { buildRuntimePlan, needsIsolation } from "./runtime.mjs";
-import { runtimeNeeds, COMMANDS_PACKAGE, PERMISSIONS_PACKAGE } from "./deps.mjs";
+import { runtimeNeeds, COMMANDS_PACKAGE } from "./deps.mjs";
 import { integrationSecrets, gitignoreSafety, REQUIRED_IGNORES } from './integration-secrets.mjs';
 import { cliRef, cliToolName, cliEntries, cliAgents } from "./cli-tools.mjs";
-import { mcpApprovals } from "./mcp-gen.mjs";
 import { capabilitySection } from "./agent-context.mjs";
 import { documentInstructions } from "./documents.mjs";
 
@@ -81,9 +80,6 @@ const hasMcp = (model) => Array.isArray(model?.integrations?.mcp) && model.integ
 const hasEnv = (model) => Array.isArray(model?.integrations?.env) && model.integrations.env.length > 0;
 /** pi-commands' configuration: the declared commands. */
 export const COMMANDS_CONFIG = ".pi/commands.json";
-/** pi-permission-system's project configuration: MCP tools that ask. */
-export const PERMISSIONS_CONFIG = ".pi/extensions/pi-permission-system/config.json";
-
 /** `.pi/commands.json`: each declared command, and whether the lead may run it. */
 function commandsConfig(model) {
   const lead = isPlainObject(model.orchestrator) ? model.orchestrator.name : undefined;
@@ -96,13 +92,6 @@ function commandsConfig(model) {
     approve: c.approve !== false,
     lead: cliAgents(model, c.name, effective).includes(lead),
   })) }, null, 2)}\n`;
-}
-
-/** The permission system's rules: every MCP tool in `approveTools` asks;
- * everything else is allowed, as without the package. */
-function permissionsConfig(model) {
-  const rules = Object.fromEntries(mcpApprovals(model).map(({ server, pattern }) => [`${server}:${pattern}`, "ask"]));
-  return `${JSON.stringify({ permission: { "*": "allow", mcp: { "*": "allow", ...rules } } }, null, 2)}\n`;
 }
 
 /** Markers around the derived section of `.pi/APPEND_SYSTEM.md`. The end
@@ -391,7 +380,6 @@ function policySection(model) {
   // Each enforced rule names what enforces it.
   const commands = cliEntries(model);
   if (commands.length) enforcedLines.push(`- Declared commands run without a shell, with only their {placeholders} filled in; ${commands.some((c) => c.approve !== false) ? "those that ask need your approval for each run and are refused without a UI" : "none asks before running"} (pi-commands, \`${COMMANDS_PACKAGE}\`).`);
-  for (const { server, pattern } of mcpApprovals(model)) enforcedLines.push(`- MCP \`${server}\` tools matching \`${pattern}\` ask before each call and are refused without a UI (pi-permission-system, \`${PERMISSIONS_PACKAGE}\`).`);
   lines.push(...(enforcedLines.length ? enforcedLines : ["None declared."]));
   // A tool allowlist limits which tools an agent calls, not what a shell reaches.
   if (enforcedLines.length) lines.push("", "An agent with `bash` or a shell-like command can still reach anything your user account can.");
@@ -606,7 +594,6 @@ export function managedPaths(model) {
   if (hasEnv(model)) paths.push(".env.example");
   if (needsIsolation(model)) paths.push("run");
   if (cliEntries(model).length) paths.push(COMMANDS_CONFIG);
-  if (mcpApprovals(model).length) paths.push(PERMISSIONS_CONFIG);
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
   for (const skill of skillEntries(model)) paths.push(skillPath(skill));
   if (backgroundAgents(model).length > 0) paths.push(SUBAGENT_CONFIG);
@@ -641,7 +628,6 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
     gitignoreFile(existing[".gitignore"], model),
     ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
     ...(cliEntries(model).length ? [derivedFile(COMMANDS_CONFIG, commandsConfig(model), existing[COMMANDS_CONFIG])] : []),
-    ...(mcpApprovals(model).length ? [derivedFile(PERMISSIONS_CONFIG, permissionsConfig(model), existing[PERMISSIONS_CONFIG])] : []),
     ...(plan.launcherScript ? [{ ...derivedFile("run", plan.launcherScript, existing["run"]), executable: true }] : []),
     ...subagentConfig,
     ...agentFiles(model, existing),

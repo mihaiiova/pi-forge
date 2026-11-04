@@ -21,8 +21,8 @@ architecture review is recorded in
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
   projects become ordinary Pi projects that run with `pi` without Faur
   (#59). Since v0.30.0 projects start with `pi` and run workflows with
-  `pi -p`; since #63 they never pin Faur (pi-commands and
-  pi-permission-system cover commands and approvals). The rest of the
+  `pi -p`; since #63 they never pin Faur (pi-commands covers declared
+  commands). Faur no longer generates MCP per-call approvals. The rest of the
   migration is staged below.
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
@@ -39,7 +39,7 @@ architecture review is recorded in
     trust is saved; `/mcp` inside `./run` works, and `check-agent --connect`
     saves the trust itself.
   - Plain `pi` with a user-level `/mcp` extension (such as `pi-mcp-adapter`)
-    does not enforce a project's MCP tool hiding or approvals; such projects
+    does not enforce a project's MCP tool hiding; such projects
     get `./run`, and `/faur check` reports the conflict.
   - Headless callers own timeouts, cancellation and cleanup of background
     specialists (#46).
@@ -95,7 +95,7 @@ is inferred instead, it is marked as an assumption.
 | Specialists, enforced tool allowlists, background launch for extension/MCP tools | Implemented, satisfactory | `policy.mjs`, `generate.mjs` (`needsBackground`), `asking.mjs` |
 | Calls that ask the user, kept with the orchestrator | Implemented, satisfactory | `asking.mjs`; generated "What you can use" sections |
 | Declared CLI commands with per-run approval, `request_permission` | Implemented, satisfactory | `cli-tools.mjs`, `permissions-extension.mjs` |
-| MCP configuration, env-var credentials, hidden tools, `approveTools` | Implemented; **to be replaced** | `mcp-gen.mjs`. Depends on `pi-mcp-adapter` and disables Pi 1.4's built-in MCP (`-builtin:mcp` in `generate.mjs`). Moving to the built-in (#28) |
+| MCP configuration, env-var credentials, hidden tools | Implemented | `mcp-gen.mjs` uses Pi built-in MCP. Per-call MCP approval has been removed. |
 | Documents (agreed formats, MCP delivery) | Implemented, satisfactory | `documents.mjs` |
 | Memory (`.pi/MEMORY.md`) | Implemented, satisfactory | `memory.mjs`, `agent-extension.mjs` |
 | Revision via `/factory-update <request>` → preview → `apply` | Implemented, satisfactory | `maintenance-extension.mjs` (`factory_plan`), `maintenance.mjs` (`planChange`) |

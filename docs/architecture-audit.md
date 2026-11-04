@@ -407,6 +407,10 @@ file.
   moves to `pi -p` (next step). The isolated `run` loading no user package,
   MCP server or instruction rests on stage 0 (D) and `isolation.test.sh` (C).
 
+**Current decision:** Faur no longer generates MCP per-call approval gates or
+pins pi-permission-system. The Stage 3 trial and results below are historical;
+`approveTools` is rejected. CLI command approvals remain supported.
+
 ### Stage 3 trial: `@gotgenes/pi-permission-system` 42.0.0 (2026-11-03, #63)
 
 Real Pi 1.5.0 with the package as a project package

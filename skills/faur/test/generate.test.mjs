@@ -5,7 +5,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSystem } from "../parse.mjs";
 import { generateProject } from "../generate.mjs";
-import { COMMANDS_PACKAGE, PERMISSIONS_PACKAGE } from "../deps.mjs";
+import { COMMANDS_PACKAGE } from "../deps.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = resolve(here, "fixtures/generate/minimal");
@@ -50,25 +50,20 @@ test("projects never pin Faur; they pin the runtime packages their design uses",
   const pins = (m) => JSON.parse(byPath(generateProject(m, {}).files, ".pi/settings.json").content).packages ?? [];
   assert.deepEqual(pins(model), []);
   assert.deepEqual(pins(withCommand), [COMMANDS_PACKAGE], "declared commands come from pi-commands");
-  const approving = { ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "mcp"] }, integrations: { mcp: [{ name: "seo", config: { url: "http://localhost:3002/mcp", approveTools: ["run_*"] } }] } };
-  assert.deepEqual(pins(approving), [PERMISSIONS_PACKAGE], "approveTools comes from pi-permission-system");
   assert.deepEqual(pins(withServer), [], "a lead without mcp is advisory: no package");
+  assert.ok(!generateProject(withServer, {}).files.some((f) => f.path.includes("pi-permission-system")), "MCP generates no approval config");
   assert.deepEqual(pins({ ...model, workflows: [{ name: "w", entry: "helper" }] }), [], "workflows are skills Pi runs itself");
   assert.deepEqual(pins({ ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "subagent"] } }), ["npm:pi-subagents@0.83.1"], "subagent alone pins pi-subagents at this release's version");
-  for (const m of [model, withCommand, approving, withServer]) assert.ok(!pins(m).some((p) => p.includes("faur")));
+  for (const m of [model, withCommand, withServer]) assert.ok(!pins(m).some((p) => p.includes("faur")));
 });
 
 test("the runtime packages get their native configuration, generated from the design", () => {
   const commands = JSON.parse(byPath(generateProject(withCommand, {}).files, ".pi/commands.json").content);
   assert.deepEqual(commands, { commands: [{ name: "hello", command: "echo", args: ["hi"], approve: true, lead: true }] });
-  const approving = { ...model, integrations: { mcp: [{ name: "seo", config: { url: "u", approveTools: ["run_*", "publish"] } }, { name: "all", config: { url: "v", approveTools: true } }] } };
-  const permissions = JSON.parse(byPath(generateProject(approving, {}).files, ".pi/extensions/pi-permission-system/config.json").content);
-  assert.deepEqual(permissions, { permission: { "*": "allow", mcp: { "*": "allow", "seo:run_*": "ask", "seo:publish": "ask", "all:*": "ask" } } });
   const paths = generateProject(model, {}).files.map((f) => f.path);
   assert.ok(!paths.includes(".pi/commands.json") && !paths.some((p) => p.includes("pi-permission-system")), "nothing without the declarations");
-  const readme = byPath(generateProject({ ...withCommand, integrations: { ...withCommand.integrations, mcp: approving.integrations.mcp } }, {}).files, "README.md").content;
+  const readme = byPath(generateProject(withCommand, {}).files, "README.md").content;
   assert.match(readme, /Declared commands run without a shell.*\(pi-commands, `git:github\.com\/mihaiiova\/pi-commands@v0\.1\.0`\)/);
-  assert.match(readme, /MCP `seo` tools matching `run_\*` ask before each call and are refused without a UI \(pi-permission-system, `npm:@gotgenes\/pi-permission-system@42\.0\.0`\)/);
   assert.match(byPath(generateProject(withServer, {}).files, "README.md").content, /### Advisory[\s\S]*`helper` is told it has no MCP tools; it is not prevented from calling them/);
 });
 

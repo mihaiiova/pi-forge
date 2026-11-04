@@ -321,6 +321,7 @@ export function validateSystem(doc) {
                   "(url, or command + args)",
               );
             } else {
+              if ("approveTools" in mcp.config) errors.push(`document.integrations.mcp[${i}].config.approveTools is no longer supported; Faur does not provide MCP per-call approval`);
               for (const key of ["exposure", "toolExposure"]) {
                 if (key in mcp.config) errors.push(`document.integrations.mcp[${i}].config.${key} is set by Faur: list the tools agents use in includeTools and hide others with excludeTools`);
               }

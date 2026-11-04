@@ -94,18 +94,15 @@ declared `skills[].name`), `prompt`, `inheritProjectContext`, `inheritSkills`.
 `tools:` is the subagent allowlist (an *enforced* policy). A subagent whose
 tools include anything beyond Pi's builtins (`read`, `bash`, `edit`, `write`,
 `grep`, `find`, `ls`) — `mcp:` selections or extension tools such as
-`web_search` — or that omits `tools`, gets `async: true`: foreground children
-never load extensions, so those tools would be missing. Such systems also get
-`.faur/pi-home/extensions/subagent/config.json` with
-`forceTopLevelAsync: true` so a caller cannot launch them in the foreground.
+`web_search` — or that omits `tools`, gets `async: true`, an overridable
+default. Faur also generates `.faur/pi-home/extensions/subagent/config.json`
+with `forceTopLevelAsync: true`; this setting applies only through `./run` and
+is gitignored, so it is not a reliable guarantee for plain `pi` or a fresh
+checkout (#72). Foreground MCP tools work, while extension tools may require an
+extension path in the agent's tools list.
 Nobody can answer an approval prompt in the background, so a subagent that
-can reach a call that asks the user — an MCP tool matching its server's
-`approveTools` (through `mcp:<server>`, `mcp:<server>/<tool>` or `mcp`), or a
-`cli:` command without `approve: false` — is rejected: give it only tools that
-don't ask and let the orchestrator, which runs in the user's chat, make the
-approved calls. A project that already has such a subagent stays revisable:
-changes may keep the issue but not add one, and the change preview
-(`askingInBackground`) and launch check list it with a ready fix.
+can reach a `cli:` command without `approve: false` is rejected. The
+orchestrator can make those calls instead. Faur does not add per-call approval to MCP calls.
 `skills:` selects the
 skills the subagent receives. Duplicate `name`s are rejected.
 
@@ -144,25 +141,21 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
 - `mcp[]` entries: `name` (required string) and `config` (required non-empty
   object); optional `setup` and `secretsFile` are described under Setup checks. Generated systems use Pi's built-in MCP, and the connection
   settings pass through to `.pi/mcp.json`: `{url, headers?, oauth?}` or
-  `{command, args?, env?, cwd?}`, plus `description` and `timeout`. Three
+  `{command, args?, env?, cwd?}`, plus `description` and `timeout`. Two
   keys are Faur's and become Pi's exposure:
   - `includeTools`: the tools agents may use. They are declared directly and
     the rest of the server is hidden. Without it, the server's tools are
     `deferred`: the orchestrator finds them with `tool_search`.
   - `excludeTools`: tools nobody may use (`hidden`: registered but
     unreachable, also for specialists). An enforced `hide` policy adds to it.
-  - `approveTools`: tools that ask the user before every call (`true` for
-    all), direct or from a codemode script. Without a UI the call is blocked.
   `exposure` and `toolExposure` are rejected: Faur derives them. Codemode is
   not enabled automatically (`autoEnableCodemode: false`), since it would reach
   every server's tools. Pi names each tool `mcp__<server>__<tool>`. An
   orchestrator with `mcp` in its tools (or without `tools`) is told about every
   server's usable tools; without it, it is told it has none, while its
   specialists get their `mcp:` selections. That is advisory: nothing stops
-  the orchestrator calling an MCP tool. `approveTools` is enforced by
-  `@gotgenes/pi-permission-system`, pinned and configured
-  (`.pi/extensions/pi-permission-system/config.json`) when declared: each
-  listed tool asks before every call, and is refused without a UI. OAuth servers need no credentials in the
+  the orchestrator calling an MCP tool. Faur does not provide per-call MCP
+  approval; the removed `approveTools` key is rejected. OAuth servers need no credentials in the
   config: sign in with `/mcp` (inside `./run`, which a design with MCP servers
   gets so that a user-level `/mcp` extension cannot replace Pi's built-in
   MCP). Duplicate `name`s are rejected.
@@ -319,9 +312,7 @@ Full text of `docs/agent-factory.md` §C.6:
    every `generate`; **unknown keys the faur does not own are preserved**
    The `packages` list is a faur-owned derived key holding only what the
    design uses (`deps.mjs` `runtimeNeeds`, `runtimePackages`): the Faur
-   package while the design needs its runtime (declared commands, MCP
-   `approveTools`, MCP servers next to an orchestrator without `mcp`, or
-   workflows), `pi-subagents` with `agents[]` or the `subagent` tool, and any
+   `pi-commands` for declared commands, `pi-subagents` with `agents[]` or the `subagent` tool, and any
    `system.yaml` `packages` and packaged skill sources. A minimal agent pins
    nothing. `mcp.json` exists only with MCP servers and `.env.example` only
    with `integrations.env`; removing the last one removes the file.

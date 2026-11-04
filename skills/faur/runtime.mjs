@@ -23,7 +23,7 @@ export function envNames(model) {
 
 /**
  * Whether the design depends on Pi's built-in MCP: exposure and tool hiding in
- * `.pi/mcp.json`, approvals and the generated MCP tool names all assume it,
+ * `.pi/mcp.json` and the generated MCP tool names all assume it,
  * and a user-level extension that registers `/mcp` replaces it for plain `pi`.
  * Such a design gets `run`, which keeps the user's packages out.
  */

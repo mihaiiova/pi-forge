@@ -11,8 +11,8 @@ working as your needs change.
 
 **The specialized agent is the product. Pi is its runtime.** Faur composes
 Pi's own resources and adds no workflow engine or scheduler of its own. A
-project never pins Faur: declared commands and MCP approval gates use their
-own packages when needed. It starts with `pi` in its folder, or with `./run`
+project never pins Faur: declared commands use a separate
+package when needed; Faur does not provide MCP per-call approvals. It starts with `pi` in its folder, or with `./run`
 when it uses MCP servers.
 
 > **Direction (2026-11-02).** Faur is the maker; generated projects are
@@ -169,8 +169,8 @@ Generated systems use Pi's built-in MCP; there is no MCP package to install.
 Declare each server in `integrations.mcp` and choose per agent which tools it
 gets: `mcp:<server>` or `mcp:<server>/<tool>` for a specialist, `mcp` for the
 orchestrator. In the server's config, `includeTools` lists the tools agents may
-use, `excludeTools` hides tools from everyone, and `approveTools` makes a tool
-ask you before every call; without a UI, such a call is blocked. These rules
+use and `excludeTools` hides tools from everyone. Faur does not provide
+per-call MCP approvals. These rules
 rely on Pi's built-in MCP, so such a project starts with `./run`. Use `/mcp`
 to see the servers, their tools and errors, and to sign in to
 servers that use OAuth.
@@ -189,9 +189,8 @@ the generated project (each agent file, and after the orchestrator's prompt in
 `.pi/APPEND_SYSTEM.md`, between markers), so it changes when the system is
 regenerated, never because the Faur tooling was updated. What agents use at
 run time comes from Pi and the packages the project pins, never from Faur:
-[pi-commands](https://github.com/mihaiiova/pi-commands) for declared commands
-and `@gotgenes/pi-permission-system` for MCP tools that ask, each only when
-declared. The Faur version that last built the project is recorded in
+[pi-commands](https://github.com/mihaiiova/pi-commands) for declared commands,
+only when declared. The Faur version that last built the project is recorded in
 `.faur/build.json`. A change that removes
 a capability lists any prompt, workflow or policy that still mentions it, and
 `/faur review` flags prompts that describe specific tools.

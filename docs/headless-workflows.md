@@ -44,12 +44,8 @@ first line `Verdict: FAIL` that a document format requires).
 
 ## Approval
 
-Approval is never granted unattended. Without a UI, a declared command or an
-MCP tool in `approveTools` is refused: the tool returns an error naming the
-call, nothing runs, and the agent continues (`headless-workflow.test.mjs`).
-Commands are refused by pi-commands, MCP tools by
-`@gotgenes/pi-permission-system`; both are project packages, so this holds
-with Faur uninstalled. There is no separate exit code for a blocked call.
+Approval is never granted unattended. Without a UI, a declared command that
+requires approval is refused by pi-commands; nothing runs. Faur does not add per-call approval to MCP calls. There is no separate exit code for a blocked command.
 
 ## Left to the caller
 

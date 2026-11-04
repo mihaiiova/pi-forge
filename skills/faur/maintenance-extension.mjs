@@ -180,7 +180,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
   });
   pi.on('session_shutdown', () => { armed = false; pending = null; });
   // Nothing here runs at agent run time: declared commands come from
-  // pi-commands, MCP approvals from pi-permission-system, both pinned by need.
+  // pi-commands is pinned when declared commands are used.
   const permissions = permissionsCommand(root);
   /** Regenerate from system.yaml only after showing and approving the preview. */
   const rebuild = async (ctx) => {

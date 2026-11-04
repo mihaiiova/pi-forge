@@ -46,9 +46,9 @@ export function hostConflicts(root, model, { agentDir = process.env.PI_CODING_AG
   try { packages = JSON.parse(readFileSync(join(agentDir, 'settings.json'), 'utf8')).packages ?? []; } catch { /* no user settings */ }
   for (const entry of packages) {
     const name = packageName(entry);
-    if (REPLACES_BUILTIN[name]) out.push(`plain pi: ${name} in ${join(agentDir, 'settings.json')} replaces ${REPLACES_BUILTIN[name]}, so this project's MCP tool hiding, approvals and tool names do not apply; start it with ./run`);
+    if (REPLACES_BUILTIN[name]) out.push(`plain pi: ${name} in ${join(agentDir, 'settings.json')} replaces ${REPLACES_BUILTIN[name]}, so this project's MCP tool hiding and tool names do not apply; start it with ./run`);
   }
-  if (!out.length && mcpCommand && mcpCommand !== 'builtin') out.push(`plain pi: /mcp comes from ${mcpCommand}, which replaces Pi's built-in MCP, so this project's MCP tool hiding, approvals and tool names do not apply; start it with ./run`);
+  if (!out.length && mcpCommand && mcpCommand !== 'builtin') out.push(`plain pi: /mcp comes from ${mcpCommand}, which replaces Pi's built-in MCP, so this project's MCP tool hiding and tool names do not apply; start it with ./run`);
   return out;
 }
 

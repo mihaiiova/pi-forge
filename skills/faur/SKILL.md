@@ -151,7 +151,7 @@ first; the user decides.
   commands or skills, or explain how to call them: the Faur renders a
   "What you can use" section from the declarations, so prompts stay right
   when capabilities change. Keep a rule about an action as an outcome ("never
-  modify an existing issue"); approval belongs in `approve`/`approveTools`.
+  modify an existing issue"); command approval belongs in `approve`; Faur does not add per-call approval to MCP calls.
   Give MCP servers a `config.description` and agents a `description`; those
   appear in the section.
 - **Documents:** any agent may write or return any number of documents. For
@@ -182,15 +182,10 @@ first; the user decides.
   human confirms each action. Don't infer this or bury it in a default. Explain
   what each credential and tool can reach (an MCP server with a scoped token,
   or `bash` with the user's own CLI logins) and let the user choose per agent.
-- **Calls that ask the user** (MCP tools in `approveTools`, commands without
-  `approve: false`) only work for the orchestrator: specialists run in the
-  background, where nobody can answer. When a specialist's work needs such a
-  call, propose the split in the design: the specialist gets the tools that
-  don't ask (`mcp:<server>/<tool>`) and asks for the call; the orchestrator
-  gets approval, makes it and passes the result on. The generated "What you
-  can use" sections tell both sides, so prompts don't need to. Validation
-  rejects a subagent that can reach a call that asks; in an existing project
-  the change preview lists each one with a ready fix.
+- **Commands that ask the user** (without `approve: false`) only work for
+  the orchestrator: background specialists cannot answer a prompt. Validation
+  rejects specialists that can reach them. Faur does not add MCP per-call approval;
+  choose tool scopes and credentials accordingly.
 - **Notes across sessions** are not built in. When an agent should keep
   them, give it `edit` and a notes file named in its prompt; propose this
   only when the user wants the agent to remember something.
@@ -245,10 +240,8 @@ Acceptance scenarios for this conversational behavior:
 ## Policy and ownership contract
 
 - **Enforced at the tool layer:** agent `tools:` allowlists (pi-subagents),
-  MCP `excludeTools` (Pi's MCP exposure) and `approveTools` (the agent
-  runtime's `tool_call` gate) — a child agent literally lacks unlisted tools,
-  a hidden MCP tool is registered but unreachable, and each call to an
-  `approveTools` tool asks the user first (and fails without a UI). These
+  MCP `excludeTools` (Pi's MCP exposure) — a child agent lacks unlisted tools
+  and a hidden MCP tool is registered but unreachable. These
   limit which tools an agent calls, not what those tools reach: an agent
   with `bash` or a shell-like command reaches anything the user can.
 - **Advisory (guidance only):** README and workflow/skill prose stating approval
@@ -323,9 +316,8 @@ prior approvals cannot grant that authority.
    - MCP scope is the user's choice; ask rather than assume. Generated
      systems use Pi's built-in MCP. In the config, "includeTools" lists the
      tools agents may use (omit it for all; the orchestrator then finds them
-     with tool_search), "excludeTools" hides tools from everyone, and
-     "approveTools" lists tools that need a confirmation on each call (omit
-     it for none). Faur sets Pi's exposure from these; never write exposure
+     with tool_search), and "excludeTools" hides tools from everyone. Faur does not add MCP
+     per-call approval. Faur sets Pi's exposure; never write exposure
      or toolExposure. Say which tools create, change or delete things and
      what the credential can reach, then ask. OAuth servers need no
      credentials in the config: the user signs in with /mcp (inside ./run when
@@ -412,7 +404,7 @@ them: the Faur renders a "What you can use" section from the declarations
 (in each subagent's file, and after the orchestrator's prompt in .pi/APPEND_SYSTEM.md),
 so it always matches what the agent actually has. Keep a rule about an action
 as an outcome ("never modify an existing issue; check for duplicates first"),
-and put approval in approve/approveTools, not prose. When a preview has
+and put command approval in approve, not prose. Faur does not add per-call approval to MCP calls. When a preview has
 staleMentions, a removed capability is still mentioned in a prompt, workflow,
 document or advisory policy: update that text in the same proposal so agents
 stop reaching for it.

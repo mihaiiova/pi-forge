@@ -3,7 +3,7 @@
  *
  * Pure module. Connection settings (stdio `command`/`args`/`env`/`cwd`, or
  * HTTP `url`/`headers`/`oauth`, plus `description`, `timeout`) are emitted
- * verbatim. `includeTools`, `excludeTools` and `approveTools` are Faur's keys,
+ * verbatim. `includeTools` and `excludeTools` are Faur's keys,
  * not Pi's, and become exposure:
  *   - tools nobody may use (`excludeTools`, enforced `hide` policies) are
  *     `hidden`: registered but unreachable, and not selectable by specialists;
@@ -12,15 +12,13 @@
  *   - without it the server's tools are `deferred`: the orchestrator loads them
  *     with tool_search, so a large server does not fill its context.
  * Specialists receive exactly their `mcp:` selections from pi-subagents,
- * whatever the exposure. `approveTools` is enforced by pi-permission-system's
- * `tool_call` gate, configured by the generated
- * `.pi/extensions/pi-permission-system/config.json`. Secrets are always `${ENV}` references declared in the
+ * whatever the exposure. Secrets are always `${ENV}` references declared in the
  * model; `system.yaml` is authoritative, so an undeclared server never
  * survives regeneration.
  */
 import { hiddenMcpTools } from "./policy.mjs";
 
-const FAUR_KEYS = ["includeTools", "excludeTools", "approveTools"];
+const FAUR_KEYS = ["includeTools", "excludeTools"];
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -37,22 +35,6 @@ const glob = (pattern) => new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\
 export function mcpToolName(server, tool) {
   const part = (s) => s.replace(/[^A-Za-z0-9_*?]/g, "_");
   return `mcp__${part(server)}__${part(tool)}`;
-}
-
-/**
- * The tools each server's `approveTools` names, as Pi tool-name patterns.
- * @returns {Array<{ server: string, pattern: string, test: (toolName: string) => boolean }>}
- */
-export function mcpApprovals(model) {
-  const out = [];
-  for (const entry of Array.isArray(model?.integrations?.mcp) ? model.integrations.mcp : []) {
-    const approve = entry?.config?.approveTools;
-    for (const pattern of approve === true ? ["*"] : strings(approve)) {
-      const re = glob(mcpToolName(entry.name, pattern));
-      out.push({ server: entry.name, pattern, test: (toolName) => re.test(toolName) });
-    }
-  }
-  return out;
 }
 
 /**

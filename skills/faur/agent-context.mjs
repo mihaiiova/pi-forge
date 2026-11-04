@@ -22,17 +22,7 @@ function isNonEmptyString(value) {
 }
 
 const list = (value) => (Array.isArray(value) ? value : []);
-const glob = (pattern) => new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
-/** `only` is the selected tools, or null for the whole server. */
-const describeServer = (entry, only) => {
-  const config = isPlainObject(entry?.config) ? entry.config : {};
-  const approve = config.approveTools === true ? ["*"] : list(config.approveTools).filter((t) => typeof t === "string");
-  const relevant = only ? only.filter((tool) => approve.some((t) => glob(t).test(tool))) : approve;
-  const asks = !relevant.length ? ""
-    : only ? (relevant.length === only.length ? "asks the user before each call" : `asks the user before: ${relevant.join(", ")}`)
-    : relevant.includes("*") ? "asks the user before every tool" : `asks the user before: ${relevant.join(", ")}`;
-  return [isNonEmptyString(config.description) ? config.description : "", asks].filter(Boolean).join("; ");
-};
+const describeServer = (entry) => isNonEmptyString(entry?.config?.description) ? entry.config.description : "";
 
 /**
  * The section for one agent (the orchestrator or a subagent).
@@ -107,18 +97,12 @@ export function capabilitySection(model, name) {
       lines.push("", "Specialist completion notices may be truncated. When the subagent tool supports durable output binding, bind reports to project paths only when the specialist can write there and you have an authorized way to read them; otherwise request a concise return and report missing access rather than assuming a path is readable.");
     }
     const asking = askingReach(model, leadTools(model));
-    if (specialists.length && (all || tools.includes("subagent")) && (asking.mcp.size || asking.cli.length)) {
+    if (specialists.length && (all || tools.includes("subagent")) && (asking.cli.length)) {
       const write = all || tools.includes("write");
       lines.push("", `Only you can make the calls above that ask the user: specialists run in the background, where nobody can answer the prompt. When a specialist needs one, get the user's approval, make the call and pass the result on${write ? " (save it to a project file and give the specialist its path)" : ""}.`);
     }
     lines.push("", "If a task needs something not listed, say what is missing. Don't work around a missing capability.");
   } else {
-    // Asking tools on servers this agent uses are the orchestrator's to call.
-    const used = new Set(tools.filter((t) => t === "mcp" || t.startsWith("mcp:")).flatMap((t) => (t === "mcp" ? servers.map((s) => s.name) : [t.slice(4).split("/")[0]])));
-    const theirs = [...askingReach(model, leadTools(model)).mcp].filter(([name]) => all || used.has(name));
-    if (theirs.length) {
-      lines.push("", `The orchestrator makes the calls that ask the user, which you can't: ${theirs.map(([name, found]) => `${name} ${found.join(", ")}`).join("; ")}. When you need one, report the exact call (tool, arguments, why, and cost if known) instead of trying it.`);
-    }
     lines.push("", "If a task needs something not listed, report what is missing to the orchestrator instead of working around it.");
   }
   return `${lines.join("\n")}\n`;
@@ -148,7 +132,7 @@ function capabilityNames(model) {
   for (const s of list(model?.integrations?.mcp)) {
     if (!isNonEmptyString(s?.name)) continue;
     const config = isPlainObject(s.config) ? s.config : {};
-    const tools = [...list(config.includeTools), ...(Array.isArray(config.approveTools) ? config.approveTools : [])].filter((t) => typeof t === "string" && !t.includes("*"));
+    const tools = list(config.includeTools).filter((t) => typeof t === "string" && !t.includes("*"));
     names.set(`MCP server ${s.name}`, [s.name, ...new Set(tools)]);
   }
   for (const c of cliEntries(model)) names.set(`command ${c.name}`, [c.name, cliToolName(c.name)]);

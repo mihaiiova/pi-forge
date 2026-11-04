@@ -16,7 +16,7 @@ const pi = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim();
 const ai = pathToFileURL(resolve(dirname(realpathSync(pi)), '../../node_modules/@earendil-works/pi-ai/dist/index.js')).href;
 
 /** Generate a project from `yaml`, script the model, and install its pinned
- * runtime packages (pi-commands from GitHub, pi-permission-system from npm).
+ * runtime packages (pi-commands from GitHub).
  * Returns null when they cannot be installed (no network). */
 function project(t, yaml, responses, waitFor) {
   const root = mkdtempSync(join(tmpdir(), 'faur-headless-'));
@@ -85,7 +85,6 @@ integrations:
         command: ${JSON.stringify(process.execPath)}
         args: ["-e", ${JSON.stringify(`process.env.MCP_LOG=${JSON.stringify(called)}; import(${JSON.stringify(pathToFileURL(server).href)})`)}]
         includeTools: [run_audit]
-        approveTools: [run_audit]
 workflows:
   - name: test
     entry: lead
@@ -109,10 +108,15 @@ test('a headless declared command that needs approval is refused by pi-commands,
   assert.ok(result.toolResults.some(r => /make-file needs the user's approval for each run, which this session can't ask for; nothing ran/.test(r)), result.toolResults.join('\n'));
 });
 
-test('a headless MCP call that needs approval is refused by pi-permission-system, and nothing runs', t => {
-  const result = blocked(t, 'mcp__seo__run_audit', {});
-  if (!result) return;
-  assert.ok(result.toolResults.some(r => /pi-permission-system.*mcp__seo__run_audit.*requires approval, but no interactive UI is available/.test(r)), result.toolResults.join('\n'));
+test('a headless MCP call runs without per-call approval', t => {
+  const called = join(tmpdir(), `faur-mcp-called-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  t.after(() => rmSync(called, { force: true }));
+  const info = project(t, approvals(called), `fauxAssistantMessage([fauxToolCall("mcp__seo__run_audit",{})]), fauxAssistantMessage('done')`, 'mcp__seo__run_audit');
+  if (!info) { t.skip('the pinned runtime packages could not be installed (network)'); return; }
+  const run = headless(info);
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.text, 'done');
+  assert.equal(existsSync(called), true, 'the MCP server recorded the call');
 });
 
 test('no Faur tool reaches the agent: request_permission does not exist', t => {

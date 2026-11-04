@@ -265,23 +265,9 @@ test("validateSystem rejects tools that ask the user in a background subagent", 
     integrations: { ...base.integrations, mcp: [{ name: "openseo", config: { url: "http://localhost:3002/mcp", ...config } }] },
     policies: { ...base.policies, enforced },
   })).errors;
-  const listed = { includeTools: ["get_report", "research_keywords", "get_serp_results"], approveTools: ["research_keywords", "get_serp_*"] };
-
-  const whole = withMcp(listed, ["read", "mcp:openseo"]);
-  assert.equal(whole.length, 1);
-  assert.match(whole[0], /^document\.agents\[2\] "researcher" runs in the background, where nobody can answer an approval prompt/);
-  assert.match(whole[0], /openseo tools research_keywords, get_serp_results\. Give the subagent only tools that don't ask/);
-  assert.ok(withMcp(listed, ["read", "mcp:openseo/research_keywords"]).some((e) => e.includes("openseo tools research_keywords.")), "an explicitly selected tool that asks");
-  assert.ok(withMcp(listed, ["mcp"]).some((e) => e.includes('"researcher" runs in the background')), "the generic proxy reaches every server");
-  assert.ok(withMcp({ approveTools: true }, ["mcp:openseo"]).some((e) => e.includes("openseo tools *")), "approveTools: true without a tool list");
-
-  assert.deepEqual(withMcp(listed, ["read", "mcp:openseo/get_report"]), [], "only tools that don't ask");
-  assert.deepEqual(withMcp({ ...listed, excludeTools: ["research_keywords"], approveTools: ["research_keywords"] }, ["mcp:openseo"]), [], "a hidden tool is unreachable");
-  assert.deepEqual(withMcp(listed, ["read"], [...base.policies.enforced, { agent: "researcher", tools: ["read", "mcp:openseo/get_report"] }]), [], "an enforced allowlist decides");
-  assert.deepEqual(validateSystem(validDoc({
-    orchestrator: { ...base.orchestrator, tools: ["read", "subagent", "mcp"] },
-    integrations: { ...base.integrations, mcp: [{ name: "openseo", config: { url: "x", approveTools: true } }] },
-  })).errors, [], "the orchestrator runs in the user's chat");
+  assert.ok(withMcp({ approveTools: true }, ["mcp:openseo"]).some((e) => e.includes("config.approveTools is no longer supported")));
+  assert.ok(withMcp({ approveTools: ["run_*"] }, ["read"]).some((e) => e.includes("config.approveTools is no longer supported")));
+  assert.deepEqual(withMcp({ includeTools: ["get_report"] }, ["mcp:openseo/get_report"]), []);
 
   const cli = validateSystem(validDoc({
     agents: [...base.agents, { name: "filer", model: "provider-a/m", tools: ["cli:file-issue", "cli:list-issues"] }],
@@ -293,7 +279,6 @@ test("validateSystem rejects tools that ask the user in a background subagent", 
   assert.equal(cli.length, 1);
   assert.match(cli[0], /"filer" runs in the background, .*: command file-issue\./, "a command that asks, not one that doesn't");
 
-  assert.equal(withMcp(listed, ["read", "mcp:openseo"]).length, 1, "existing invalid approval configurations are rejected too");
 });
 
 test("validateSystem rejects MCP exposure keys: Faur derives them", () => {

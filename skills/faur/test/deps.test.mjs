@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runtimePackages, runtimeNeeds, COMMANDS_PACKAGE, PERMISSIONS_PACKAGE } from "../deps.mjs";
+import { runtimePackages, runtimeNeeds, COMMANDS_PACKAGE } from "../deps.mjs";
 
 const PI_PACKAGES = [
   "npm:pi-subagents@0.83.1",
@@ -9,11 +9,11 @@ const PI_PACKAGES = [
   "npm:@juicesharp/rpiv-ask-user-question@2.9.0",
   "npm:@lanlance/pi-btw@0.2.0",
 ];
-const ALL = { commands: true, approvals: true, subagents: true };
+const ALL = { commands: true, subagents: true };
 
 test("runtimePackages never pins Faur; it pins the packages the design uses, in order", () => {
   const { packages, errors } = runtimePackages(PI_PACKAGES, [], ALL);
-  assert.deepEqual(packages, [COMMANDS_PACKAGE, PERMISSIONS_PACKAGE, "npm:pi-subagents@0.83.1"]);
+  assert.deepEqual(packages, [COMMANDS_PACKAGE, "npm:pi-subagents@0.83.1"]);
   assert.deepEqual(errors, []);
   assert.ok(!packages.some((p) => p.includes("faur")));
 });
@@ -54,16 +54,14 @@ test("runtimePackages pins only what the design needs", () => {
   assert.deepEqual(runtimePackages(PI_PACKAGES, ["npm:pi-subagents@0.83.1"], { subagents: false }).packages, ["npm:pi-subagents@0.83.1"], "a declared pi-subagents is kept");
 });
 
-test("runtimeNeeds: pi-commands for commands, the permission system for MCP approvals, pi-subagents for specialists", () => {
+test("runtimeNeeds: pi-commands for commands and pi-subagents for specialists", () => {
   const lead = (tools, extra = {}) => runtimeNeeds({ orchestrator: { name: "l", tools }, ...extra });
-  assert.deepEqual(lead(["read"]), { commands: false, approvals: false, subagents: false });
-  assert.deepEqual(lead(["read", "subagent"]), { commands: false, approvals: false, subagents: true });
+  assert.deepEqual(lead(["read"]), { commands: false, subagents: false });
+  assert.deepEqual(lead(["read", "subagent"]), { commands: false, subagents: true });
   assert.equal(lead(["read"], { agents: [{ name: "a" }] }).subagents, true);
   assert.equal(lead(["read", "cli:x"], { integrations: { cli: [{ name: "x", command: "echo" }] } }).commands, true);
-  assert.equal(lead(["read", "mcp"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }).approvals, false);
-  assert.equal(lead(["read", "mcp"], { integrations: { mcp: [{ name: "s", config: { url: "u", approveTools: ["x"] } }] } }).approvals, true);
-  assert.deepEqual(lead(["read"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }), { commands: false, approvals: false, subagents: false }, "a lead without mcp needs no package: that rule is advisory");
-  assert.deepEqual(lead(["read"], { workflows: [{ name: "w" }] }), { commands: false, approvals: false, subagents: false }, "workflows are skills Pi runs itself");
+  assert.deepEqual(lead(["read"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }), { commands: false, subagents: false }, "a lead without mcp needs no package: that rule is advisory");
+  assert.deepEqual(lead(["read"], { workflows: [{ name: "w" }] }), { commands: false, subagents: false }, "workflows are skills Pi runs itself");
 });
 
 test("pi-mcp-adapter is rejected: it would replace Pi's built-in MCP", () => {

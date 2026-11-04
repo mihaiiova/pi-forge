@@ -44,7 +44,6 @@ integrations:
         command: ${JSON.stringify(process.execPath)}
         args: ["-e", ${JSON.stringify(`process.env.MCP_LOG=${JSON.stringify(log)}; import(${JSON.stringify(pathToFileURL(server).href)})`)}]
         includeTools: [get_report, run_audit]
-        approveTools: [run_audit]
 `);
   execFileSync(process.execPath, [join(repo, 'skills/faur/faur.mjs'), 'generate', root], { stdio: 'ignore' });
   const agentDir = join(root, '.faur/pi-home');
@@ -103,7 +102,7 @@ test('session-registered MCP preserves naming and exposure without a project MCP
   const { root, session, run, calls, results } = await open(t, { sessionRegistration: true });
   assert.equal(existsSync(join(root, '.pi/mcp.json')), false);
   assert.deepEqual(session.getActiveToolNames().filter(n => n.startsWith('mcp__')).sort(), ['mcp__seo__get_report', 'mcp__seo__run_audit']);
-  // Approval comes from pi-permission-system (headless-workflow.test.mjs); built-in MCP alone does not ask.
+  // Built-in MCP calls do not ask for per-call approval.
   await run(['mcp__seo__get_report', {}], ['mcp__seo__run_audit', {}], ['mcp__seo__delete_all', {}]);
   assert.deepEqual(calls(), ['get_report', 'run_audit']);
   assert.ok(results.find(r => r.tool === 'mcp__seo__delete_all').error);

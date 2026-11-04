@@ -75,7 +75,7 @@ tool or MCP scope gets write access, whether every post needs a human
 confirmation or drafts only, and which agent holds that capability. The
 decision is listed as **Unresolved** in the synthesis until the user answers.
 Prose approvals are described as advisory, and tool allowlists, MCP
-`excludeTools` and `approveTools` as enforced.
+`excludeTools` as enforced. Faur does not add per-call MCP approval.
 
 **Fail.** Silently giving an agent write access to the site, or picking an
 approval policy on the user's behalf.

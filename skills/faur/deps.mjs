@@ -5,8 +5,7 @@
  *
  * A generated system is self-contained by declaration, not by wholesale
  * package inheritance. It pins only what its declarations use (`runtimeNeeds`):
- * `pi-commands` for declared commands, `@gotgenes/pi-permission-system` for
- * MCP tools that ask before each call, `pi-subagents` for specialists (MCP is
+ * `pi-commands` for declared commands, `pi-subagents` for specialists (MCP is
  * Pi's built-in), and whatever the model explicitly declares. It never pins
  * Faur. A minimal agent pins nothing. The faur's own dev-only
  * packages (web access, the YAML parser, question helpers) and any git pin are
@@ -15,7 +14,6 @@
 
 import { readFileSync } from 'node:fs';
 import { cliEntries } from './cli-tools.mjs';
-import { mcpApprovals } from './mcp-gen.mjs';
 import { leadTools } from './asking.mjs';
 
 const PACKAGE = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
@@ -23,8 +21,6 @@ const PACKAGE = JSON.parse(readFileSync(new URL('../../package.json', import.met
 const OWN_PACKAGES = Array.isArray(PACKAGE.pi?.packages) ? PACKAGE.pi.packages : [];
 /** Declared commands: named tools without a shell, per-run approval (`.pi/commands.json`). */
 export const COMMANDS_PACKAGE = 'git:github.com/mihaiiova/pi-commands@v0.1.0';
-/** MCP tools that ask before each call, refused without a UI (`.pi/extensions/pi-permission-system/config.json`). */
-export const PERMISSIONS_PACKAGE = 'npm:@gotgenes/pi-permission-system@42.0.0';
 const LOCAL_PATH_RE = /^(file:|link:|\/|\.\.?\/)/;
 const RUNTIME_PRIMITIVES = ["pi-subagents"];
 /** Packages that replace a Pi built-in the generated system relies on. */
@@ -72,7 +68,7 @@ function declaredSpecError(spec) {
 
 /**
  * Which runtime packages a design uses: pi-commands for declared commands,
- * the permission system for MCP `approveTools`, pi-subagents for declared
+ * pi-subagents for declared
  * specialists or a lead that lists the `subagent` tool. Everything else,
  * workflows included, runs on Pi alone.
  */
@@ -81,7 +77,6 @@ export function runtimeNeeds(model) {
   const agents = Array.isArray(model?.agents) ? model.agents.length : 0;
   return {
     commands: cliEntries(model).length > 0,
-    approvals: mcpApprovals(model).length > 0,
     subagents: agents > 0 || lead.includes('subagent'),
   };
 }
@@ -89,15 +84,15 @@ export function runtimeNeeds(model) {
 /**
  * @param {string[]} [piPackages] the faur's own `pi.packages` (`npm:<name>@<version>`).
  * @param {string[]} [declared] the model's declared `packages` (npm:/git: specs).
- * @param {{ commands?: boolean, approvals?: boolean, subagents?: boolean }} [needs]
+ * @param {{ commands?: boolean, subagents?: boolean }} [needs]
  *   from `runtimeNeeds`; `subagents` defaults to true, the others to false.
  * @returns {{ packages: string[], errors: string[] }} primitives first, then declared;
  *   `errors` is non-empty when a required primitive is missing/unpinned or a
  *   declared spec is invalid/conflicting (never silently incomplete).
  */
-export function runtimePackages(piPackages, declared = [], { commands = false, approvals = false, subagents = true } = {}) {
+export function runtimePackages(piPackages, declared = [], { commands = false, subagents = true } = {}) {
   const errors = [];
-  const pins = [...(commands ? [COMMANDS_PACKAGE] : []), ...(approvals ? [PERMISSIONS_PACKAGE] : [])];
+  const pins = [...(commands ? [COMMANDS_PACKAGE] : [])];
 
   // The caller's pins (a project's current ones) win; a primitive the project
   // does not pin yet, such as pi-subagents for a first specialist, takes this

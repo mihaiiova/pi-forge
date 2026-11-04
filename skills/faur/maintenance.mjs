@@ -392,7 +392,7 @@ export function planIntegrationAdoption(root, path) {
       const entry = old.find(item => item.name === name) ?? { name };
       const { exposure, toolExposure, ...connection } = server;
       const config = { ...connection };
-      for (const key of ['includeTools', 'excludeTools', 'approveTools']) if (entry.config?.[key] !== undefined) config[key] = entry.config[key];
+      for (const key of ['includeTools', 'excludeTools']) if (entry.config?.[key] !== undefined) config[key] = entry.config[key];
       return { ...entry, config };
     });
   } else {
