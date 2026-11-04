@@ -27,7 +27,7 @@ architecture review is recorded in
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))
-     → #61 (done 2026-11-03) → #62 (done 2026-11-03) → #63 (done 2026-11-03) → #64 (conservative drift reconciliation; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (rename; #64 and #67 released in v0.32.0). Complete #59 acceptance and issue bookkeeping.
+     → #61 (done 2026-11-03) → #62 (plain Pi migration implemented; removal of generated `run` remains open per 2026-11-04 decision) → #63 (done 2026-11-03) → #64 (conservative drift reconciliation; see [stage 4](architecture-audit.md#stage-4-decisions-2026-11-03-64)) → #67 (rename; #64 and #67 released in v0.32.0). Complete #59 acceptance and issue bookkeeping.
   2. Reliability goals, re-specified for plain Pi: #43 → #44 → #46; #45; #54.
   3. #68, the public-alpha gate (harness early, criteria pass as issues land).
   4. Composition and evidence: #29, #30, #31, #35, #40.
@@ -63,9 +63,9 @@ reference agents.
    same change to a smaller design.
 6. **Enforcement is real:** every "enforced" statement in generated text has a
    passing real-Pi test; nothing claims credential protection or OS isolation.
-7. **Isolation is what it says:** plain `pi` reports host conflicts (shown with
-   a global `pi-mcp-adapter`); the optional isolation script excludes the host
-   Pi agent directory, not `~/.agents/skills` or parent context files.
+7. **Launch is what it says:** plain `pi` reports host conflicts (shown with
+   a global `pi-mcp-adapter`) and does not claim isolation. Generated `run`
+   scripts are to be removed under #62; callers own any isolation.
 8. **Truthful capabilities and outcomes:** capability text matches exposure;
    headless runs report task outcome separately from run status.
 
@@ -196,7 +196,7 @@ Goes next. Decided in the 2026-11-02 review; staged in
 - [#59](https://github.com/mihaiiova/pi-forge/issues/59) epic, in order:
   [#60](https://github.com/mihaiiova/pi-forge/issues/60) verify Pi behavior →
   [#61](https://github.com/mihaiiova/pi-forge/issues/61) native prompt and pay-per-use output →
-  [#62](https://github.com/mihaiiova/pi-forge/issues/62) plain `pi` launch, optional isolation script, `pi -p` →
+  [#62](https://github.com/mihaiiova/pi-forge/issues/62) plain `pi` / `pi -p` launch; remove generated isolation scripts →
   [#63](https://github.com/mihaiiova/pi-forge/issues/63) approvals and commands without the Faur runtime →
   [#64](https://github.com/mihaiiova/pi-forge/issues/64) Faur as maker, design record and drift reconcile.
 - [#67](https://github.com/mihaiiova/pi-forge/issues/67): rename to Faur, with or after #64. The command became `/faur` in v0.27.0; the repository, package, CLI and folders follow.
@@ -352,7 +352,7 @@ workflow-invocation ─▶ run-index ─▶ acceptance-scenarios ─▶ scenario
 | [#59](https://github.com/mihaiiova/pi-forge/issues/59) | A | Epic: Generated projects run as ordinary Pi projects (Faur is only the maker) |
 | [#60](https://github.com/mihaiiova/pi-forge/issues/60) | A | Verify the Pi behavior the maker migration depends on |
 | [#61](https://github.com/mihaiiova/pi-forge/issues/61) | A | Native prompt loading and pay-per-use generated output |
-| [#62](https://github.com/mihaiiova/pi-forge/issues/62) | A | Launch with plain pi, an optional isolation script, and native headless runs |
+| [#62](https://github.com/mihaiiova/pi-forge/issues/62) | A | Plain Pi launch and removal of generated isolation scripts |
 | [#63](https://github.com/mihaiiova/pi-forge/issues/63) | A | Approvals and declared commands without the Faur runtime |
 | [#64](https://github.com/mihaiiova/pi-forge/issues/64) | A | Faur as maker: no project pin, design record and drift reconcile |
 | [#65](https://github.com/mihaiiova/pi-forge/issues/65) | A | Generated security and capability text matches what is enforced |

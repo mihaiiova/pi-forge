@@ -72,7 +72,7 @@ schema field, runtime hook or dependency needs all of it.
     reuse it, and delete what a change makes redundant. Before 1.0 there is no
     backward-compatibility machinery: older projects are regenerated.
 14. **Test architectural boundaries.** Prove behavior on real generated
-    projects (golden fixtures, the `./run` contract, SDK tests with real Pi),
+    projects (golden fixtures, the plain `pi` launch contract, SDK tests with real Pi),
     not only on helpers.
 15. **Fail explicitly.** Never silently weaken permissions, isolation or
     execution guarantees. Refuse and say why.
@@ -99,20 +99,19 @@ Do not add run-time code to Faur.
   one apply path. It runs in the developer's Pi, never inside a generated
   agent's run.
 - **Generated project**: native Pi configuration plus the developer's prompts,
-  skills and scripts. Launched with `pi`. An optional `run` script may set
-  `PI_CODING_AGENT_DIR` for Pi-configuration isolation and nothing else.
-  Project-specific tools live in the project until a second project needs
-  them.
+  skills and scripts. Launched with `pi`; the target is to stop generating
+  `run` scripts (#62). Project-specific tools live in the project until a
+  second project needs them.
 - **Pi and its packages**: everything at run time. If Pi lacks something small
   and general, prefer an existing package, then an upstream change, then one
   small generic package with native configuration. Such a package never reads
   `system.yaml`.
 - **Isolation wording**: plain `pi` inherits the user's global Pi
-  configuration and is not hermetic. `run` isolates the Pi agent directory
-  (settings, packages, MCP servers, instructions, logins), not the OS: skills
-  in `~/.agents/skills` and `AGENTS.md` files in parent directories still
-  load (architecture audit §5, stage 0). Trusted runs share credentials with
-  every tool in the run; they are not protected integrations.
+  configuration and is not hermetic. Until #62 removes generated `run` scripts,
+  those scripts isolate the Pi agent directory, not the OS: skills in
+  `~/.agents/skills` and `AGENTS.md` files in parent directories still load
+  (architecture audit §5, stage 0). Trusted runs share credentials with every
+  tool in the run; they are not protected integrations.
 - **MCP**: generated projects use Pi's built-in MCP and never pin an MCP
   extension. A global extension that registers `/mcp` (such as
   `pi-mcp-adapter`) replaces it for plain `pi`; Faur's check reports that,
