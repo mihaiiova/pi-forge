@@ -24,6 +24,10 @@ architecture review is recorded in
   `pi -p`; since #63 they never pin Faur (pi-commands covers declared
   commands). Faur no longer generates MCP per-call approvals. The rest of the
   migration is staged below.
+- **Delegation (#72):** native pi-subagents chooses launch mode; the
+  gitignored forced-background setting is no longer generated. Foreground
+  extension tools need a native extension path, which Faur cannot generally
+  infer. Real-Pi MCP delegation verification is network-dependent and opt-in.
 - **Next, in order:**
   1. Migration #59: #60 (done 2026-11-03; results in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60))

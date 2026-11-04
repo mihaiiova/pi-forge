@@ -140,10 +140,11 @@ document can be delivered anywhere an MCP tool reaches — Google Drive, Notion,
 Slack — with `deliver: [{ mcp, tool, with }]`. Change formats later with
 `/faur`.
 
-Subagents that use MCP or extension tools (web search, for example) always
-run in the background, where those tools load; the faur sets this up. On
-every start with Faur loaded (pinned, or in your own Pi), it checks that each agent will get the tools and skills it is
-declared to have, and names any that are missing. MCP servers connect after
+Faur does not choose foreground or background launches. Built-in MCP tools
+work in either mode; foreground specialists need extension paths in their native
+agent files, which Faur cannot generally infer. On every start with Faur loaded,
+it checks declared tools and skills, reporting missing capabilities and cases
+it cannot verify. MCP servers connect after
 start, so `/faur check` also checks their tools. The last result is saved in
 `.faur/check.json` and shown by `/faur status`.
 
@@ -158,7 +159,7 @@ checks test command presence only, not authentication or functionality. The
 CLI inspects installed Pi extensions using Pi's SDK without installing missing
 packages. If the project has auto-discovered extension code that Pi's SDK
 could load even when disabled, CLI extension results are `not verifiable`
-(configuration such as Faur's `subagent/config.json` doesn't count); use `/faur check` in
+(configuration files alone don't count); use `/faur check` in
 a running session. Extension loading runs the installed extensions' registration
 code. Results reflect observations, not a functional or credential test.
 

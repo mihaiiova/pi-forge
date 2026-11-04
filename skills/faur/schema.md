@@ -184,8 +184,8 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   enforced policy rule's `tools`); every `cli:` reference must name a declared
   entry. In Pi the tool is `cli_<name>` (hyphens become underscores). The
   orchestrator gets the commands its `tools` list, or all of them when its
-  `tools` is omitted; a subagent gets exactly the ones in its allowlist, and
-  runs in the background. `/faur permissions` (list, add, remove) edits these
+  `tools` is omitted; a subagent gets exactly the ones in its allowlist.
+  `/faur permissions` (list, add, remove) edits these
   declarations through the normal preview. An agent that needs a command it
   has no tool for says so; adding one is a design change made through Faur.
 

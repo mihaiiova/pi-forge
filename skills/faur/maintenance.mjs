@@ -354,7 +354,7 @@ export function planAgentAdoption(root, path) {
   const keys = ['name', 'description', 'tools', 'model', 'thinking', 'skills', 'inheritProjectContext', 'inheritSkills', 'async', 'systemPrompt'];
   if (!native || Object.keys(native).some(key => !keys.includes(key)) || native.name !== agent.name) throw new Error('Agent has unsupported frontmatter; preserve and reconcile it explicitly');
   for (const key of ['tools', 'skills', 'inheritProjectContext', 'inheritSkills', 'async']) {
-    if (!isDeepStrictEqual(native[key], original[key])) throw new Error(`Agent ${key} changes require explicit reconciliation of capabilities`);
+    if (!isDeepStrictEqual(native[key], original[key])) throw new Error(key === 'async' ? 'Agent async differs; Faur no longer sets a launch mode. Preserve it or remove async from the native agent file before retrying.' : `Agent ${key} changes require explicit reconciliation of capabilities`);
   }
   const oldPrompt = (agent.prompt ?? '').replace(/\n+$/, '');
   const generated = original.systemPrompt ?? '';
@@ -508,7 +508,7 @@ export function planAgentReconciliation(root, path, adopt) {
   const opts = { piPackages: pinsAt(root), contextFiles: skippedContextFiles(root) };
   const original = parse(generateProject(oldModel, {}, opts).files.find(file => file.path === path)?.content);
   for (const key of ['tools', 'skills', 'inheritProjectContext', 'inheritSkills', 'async']) {
-    if (!isDeepStrictEqual(native[key], original[key])) throw new Error(`Specialist ${key} differs from the design; preserve it and reconcile capabilities explicitly`);
+    if (!isDeepStrictEqual(native[key], original[key])) throw new Error(key === 'async' ? 'Specialist async differs; Faur no longer sets a launch mode. Preserve it or remove async from the native agent file before retrying.' : `Specialist ${key} differs from the design; preserve it and reconcile capabilities explicitly`);
   }
   const oldPrompt = (agent.prompt ?? '').replace(/\n+$/, '');
   const generated = original.systemPrompt ?? '';

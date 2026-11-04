@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
-import { createServer } from 'node:net';
+import { createServer, connect } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { generateProject } from '../generate.mjs';
 
@@ -22,13 +22,30 @@ async function freePort() {
   await new Promise(resolve => server.close(resolve));
   return port;
 }
+async function waitForServer(port, server) {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) throw new Error(`Fake model exited with code ${server.exitCode}`);
+    const ready = await new Promise(resolve => {
+      const socket = connect(port, '127.0.0.1');
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => resolve(false));
+    });
+    if (ready) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error('Fake model did not start listening within 10 seconds');
+}
 const env = () => {
   const result = { ...process.env };
   delete result.PI_SUBAGENT_CHILD;
   delete result.PI_SUBAGENT_PARENT_SESSION;
   return result;
 };
-test('tracked generated project delegates MCP calls and enforces specialist selection in both launch modes', { timeout: 240000 }, async t => {
+test('tracked generated project delegates MCP calls and enforces specialist selection in both launch modes', {
+  timeout: 450000,
+  skip: process.env.RUN_FAUR_DELEGATION_TEST !== '1' && 'set RUN_FAUR_DELEGATION_TEST=1 to verify real-Pi foreground and background MCP delegation (requires network)',
+}, async t => {
   const base = mkdtempSync(join(tmpdir(), 'faur-delegation-'));
   t.after(() => rmSync(base, { recursive: true, force: true }));
   const source = join(base, 'source'), root = join(base, 'clone'), home = join(base, 'home');
@@ -44,20 +61,32 @@ test('tracked generated project delegates MCP calls and enforces specialist sele
   const port = await freePort();
   writeFileSync(join(home, 'models.json'), JSON.stringify({ providers: { fake: { baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: 'fake', api: 'openai-completions', models: [{ id: 'm', name: 'fake', reasoning: false, input: ['text'], contextWindow: 100000, maxTokens: 1000 }] } } }));
   const install = spawnSync('pi', ['update', '--extensions', '--approve'], { cwd: root, env: { ...env(), PI_CODING_AGENT_DIR: home }, input: '', encoding: 'utf8', timeout: 120000 });
-  if (install.status !== 0) { t.skip(`cannot install pinned pi-subagents: ${install.stderr}`); return; }
+  assert.equal(install.status, 0, `Cannot install pinned pi-subagents: ${install.error?.message ?? ''}\n${install.stderr}\n${install.stdout}`);
   for (const async of [false, true]) for (const tool of ['projsrv_ping', 'projsrv_secret']) {
     const log = join(base, `${async}-${tool}.jsonl`);
     const vars = { ...env(), PI_CODING_AGENT_DIR: home, FAKE_PORT: String(port), FAUR_DELEGATION_LOG: log, FAUR_DELEGATION_ASYNC: String(async), FAUR_DELEGATION_TOOL: `mcp__projsrv__${tool}` };
     const server = spawn(process.execPath, [asset('delegation-model.mjs')], { env: vars, stdio: 'ignore' });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await waitForServer(port, server);
       const run = spawnSync('pi', ['--no-session', '-e', asset('fake-provider.ts'), '--model', 'fake/m', '-p', '--approve', '/skill:test delegate'], { cwd: root, env: vars, input: '', encoding: 'utf8', timeout: 60000 });
       assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
-      const events = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse).filter(e => e.child);
-      assert.ok(events.length >= 2, `no child model calls for async=${async}: ${run.stdout} ${readFileSync(log, "utf8")}`);
+      const text = existsSync(log) ? readFileSync(log, 'utf8') : '';
+      const allEvents = text.split('\n').filter(Boolean).map(JSON.parse);
+      const events = allEvents.filter(e => e.child);
+      const leadResult = allEvents.find(e => !e.child && e.result)?.result;
+      assert.ok(leadResult, `no lead delegation result for async=${async}: ${run.stdout}\n${text}`);
+      assert.match(String(leadResult), async ? /Async: worker/ : /child done/, `unexpected launch mode: ${text}`);
+      if (!async) assert.ok(allEvents.indexOf(allEvents.find(e => !e.child && e.result)) > allEvents.lastIndexOf(events.at(-1)), 'foreground result must follow child completion');
+      assert.ok(events.length >= 2, `no child model calls for async=${async}: ${run.stdout}\n${text}`);
       assert.ok(events[0].tools.includes('mcp__projsrv__projsrv_ping'));
       assert.ok(!events[0].tools.includes('mcp__projsrv__projsrv_secret'));
       assert.match(JSON.stringify(events.at(-1).result), tool.endsWith('ping') ? /CALLED projsrv_ping/ : /Tool mcp__projsrv__projsrv_secret not found/);
-    } finally { server.kill(); await new Promise(resolve => server.once('exit', resolve)); }
+    } finally {
+      if (server.exitCode === null && server.signalCode === null) {
+        const exited = new Promise(resolve => server.once('exit', resolve));
+        server.kill();
+        await exited;
+      }
+    }
   }
 });

@@ -690,6 +690,17 @@ test('specialist reconciliation refuses unselected capability changes', t => {
   }
 });
 
+test('legacy async refuses adoption and reconciliation with actionable guidance without modifying the file', t => {
+  const root = project(t, { ...model, agents: [{ name: 'scout', description: 'Original', prompt: 'Original prompt.', tools: ['read'], model: 'fixture/large' }] });
+  const path = '.pi/agents/scout.md';
+  writeFileSync(join(root, path), readText(root, path).replace('name: scout\n', 'name: scout\nasync: true\n'));
+  const before = snapshot(root);
+  for (const plan of [() => planAgentAdoption(root, path), () => planAgentReconciliation(root, path, ['description'])]) {
+    assert.throws(plan, /Faur no longer sets a launch mode.*remove async/);
+    assert.deepEqual(snapshot(root), before);
+  }
+});
+
 test('standalone native-only settings are reported on invocation and preserved without exposing their values', async t => {
   const root = project(t);
   const path = '.pi/settings.json';
@@ -1513,7 +1524,7 @@ test('check-agent loads an explicitly configured extension without a model call'
   settings.extensions = ['./fixture.mjs'];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings));
   writeFileSync(join(root, '.pi/fixture.mjs'), `export default pi => pi.registerTool({name:'fixture_tool',label:'Fixture',description:'Fixture',parameters:{type:'object',properties:{}},execute:async()=>({content:[]})});`);
-  // Faur writes this for background specialists; it is configuration, not code.
+  // Older generated projects may retain this configuration; it is not code.
   mkdirSync(join(root, '.faur/pi-home/extensions/subagent'), { recursive: true });
   writeFileSync(join(root, '.faur/pi-home/extensions/subagent/config.json'), '{"forceTopLevelAsync":true}');
   const result = requireResult(process.execPath, [faur, 'check-agent', root], { encoding: 'utf8' });
