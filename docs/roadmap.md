@@ -92,7 +92,7 @@ is inferred instead, it is marked as an assumption.
 | Plain Pi launch | Implemented; pending review | `generate.mjs`; real-Pi SDK and headless workflow tests |
 | Per-agent models and thinking | Implemented, satisfactory | `models.mjs` |
 | Skills from skills.sh (search, preview, pin, project-local install) | Implemented, satisfactory | `registry-skills.mjs`, `skill-sources.mjs` |
-| Specialists, enforced tool allowlists, background launch for extension/MCP tools | Implemented, satisfactory | `policy.mjs`, `generate.mjs` (`needsBackground`), `asking.mjs` |
+| Specialists and tool allowlists | Implemented; foreground extension paths require explicit verification | `policy.mjs`, `generate.mjs`, `asking.mjs` |
 | Calls that ask the user, kept with the orchestrator | Implemented, satisfactory | `asking.mjs`; generated "What you can use" sections |
 | Declared CLI commands with per-run approval, `request_permission` | Implemented, satisfactory | `cli-tools.mjs`, `permissions-extension.mjs` |
 | MCP configuration, env-var credentials, hidden tools | Implemented | `mcp-gen.mjs` uses Pi built-in MCP. Per-call MCP approval has been removed. |

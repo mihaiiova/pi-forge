@@ -99,7 +99,7 @@ export function capabilitySection(model, name) {
     const asking = askingReach(model, leadTools(model));
     if (specialists.length && (all || tools.includes("subagent")) && (asking.cli.length)) {
       const write = all || tools.includes("write");
-      lines.push("", `Only you can make the calls above that ask the user: specialists run in the background, where nobody can answer the prompt. When a specialist needs one, get the user's approval, make the call and pass the result on${write ? " (save it to a project file and give the specialist its path)" : ""}.`);
+      lines.push("", `Only you can make the calls above that ask the user: specialists may run in the background, where nobody can answer the prompt. When a specialist needs one, get the user's approval, make the call and pass the result on${write ? " (save it to a project file and give the specialist its path)" : ""}.`);
     }
     lines.push("", "If a task needs something not listed, say what is missing. Don't work around a missing capability.");
   } else {

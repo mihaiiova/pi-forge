@@ -311,25 +311,28 @@ test("generation never manages an existing run script", () => {
   assert.ok(!files.some(f => f.path === "run"));
 });
 
-test("MCP and extension specialists run in the background; builtin-only ones do not", () => {
-  const withAgents = {
-    ...model,
-    agents: [
-      { name: "researcher", model: "provider-a/m", tools: ["read", "mcp:seo", "web_search"] },
-      { name: "writer", model: "provider-a/m", tools: ["read", "write"] },
-    ],
-  };
-  const { files } = generateProject(withAgents, { ".faur/pi-home/extensions/subagent/config.json": '{"timeoutMs": 5}\n' });
-  assert.match(byPath(files, ".pi/agents/researcher.md").content, /\nasync: true\n/);
-  assert.doesNotMatch(byPath(files, ".pi/agents/writer.md").content, /async:/);
-  const config = byPath(files, ".faur/pi-home/extensions/subagent/config.json");
-  assert.deepEqual(JSON.parse(config.content), { timeoutMs: 5, forceTopLevelAsync: true });
-  assert.match(byPath(files, ".pi/APPEND_SYSTEM.md").content, /`researcher` use MCP or extension tools/);
+test("specialists leave launch mode to pi-subagents and do not generate isolated-home config", () => {
+  const withAgents = { ...model, agents: [
+    { name: "researcher", model: "provider-a/m", tools: ["read", "mcp:seo", "web_search"] },
+    { name: "writer", model: "provider-a/m", tools: ["read", "write"] },
+  ] };
+  const config = ".faur/pi-home/extensions/subagent/config.json";
+  const { files } = generateProject(withAgents, { [config]: '{"timeoutMs": 5}\n' });
+  assert.equal(byPath(files, config), undefined);
+  assert.doesNotMatch(byPath(files, ".pi/agents/researcher.md").content, /\nasync:/);
+  assert.doesNotMatch(byPath(files, ".pi/agents/writer.md").content, /\nasync:/);
+  assert.doesNotMatch(byPath(files, ".pi/APPEND_SYSTEM.md").content, /Running specialists/);
+});
 
-  // Builtin-only systems keep their files exactly as before.
-  const plain = generateProject({ ...model, agents: [withAgents.agents[1]] }, {}).files;
-  assert.equal(byPath(plain, ".faur/pi-home/extensions/subagent/config.json"), undefined);
-  assert.doesNotMatch(byPath(plain, ".pi/APPEND_SYSTEM.md").content, /Running specialists/);
+test("developer extension paths in agent files are not overwritten", () => {
+  const doc = { ...model, agents: [{ name: "researcher", model: "provider-a/m", tools: ["read", "web_search"] }] };
+  const path = ".pi/agents/researcher.md";
+  const generated = byPath(generateProject(doc, {}).files, path).content;
+  const edited = generated.replace("  - web_search", "  - ./.pi/extensions/web.ts\n  - web_search");
+  assert.notEqual(edited, generated);
+  const planned = byPath(generateProject(doc, { [path]: edited }).files, path);
+  assert.equal(planned.content, edited);
+  assert.notEqual(planned.action, "write");
 });
 
 test("agreed document formats land in their writer's instructions", () => {

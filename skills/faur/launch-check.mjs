@@ -4,7 +4,7 @@
  * Deterministic and model-free: compares each agent's tools and skills with
  * what this project provides (the MCP tools Pi registered for connected
  * servers, tools registered by loaded extensions, installed skill
- * directories, background launch setup). Run at session start and by
+ * directories). Run at session start and by
  * /faur check so a broken specialist is reported before a workflow depends
  * on it. MCP servers connect after session start, so their tools are checked
  * only when `mcpTools` is given.
@@ -13,7 +13,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { enforcedAgentTools } from './policy.mjs';
-import { needsBackground, SUBAGENT_CONFIG } from './generate.mjs';
 import { skillSourceKind } from './skill-sources.mjs';
 import { cliEntries, cliRef } from './cli-tools.mjs';
 import { probeClis } from './discover.mjs';
@@ -49,7 +48,6 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
   }
   const mcpServers = readJson(root, '.pi/mcp.json')?.mcpServers ?? {};
   const registered = Array.isArray(registeredTools) ? new Set(registeredTools) : null;
-  const forced = readJson(root, SUBAGENT_CONFIG)?.forceTopLevelAsync === true;
   const skills = new Map((Array.isArray(model?.skills) ? model.skills : []).map((s) => [s.name, s]));
   const commands = new Map(cliEntries(model).map((c) => [c.name, c]));
   const probed = new Map();
@@ -76,8 +74,13 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
     const report = (problem) => problems.push({ agent: agent.name, problem });
     const tools = enforcedAgentTools(agent.name, model.policies, agent.tools);
     checkCommands(agent.name, tools);
+    if (!Array.isArray(tools)) report('foreground extension loading is not verified for inherited tools; provide extension paths in the native agent tools list where needed');
     for (const tool of Array.isArray(tools) ? tools : []) {
-      if (BUILTIN.has(tool) || cliRef(tool)) continue;
+      if (BUILTIN.has(tool)) continue;
+      if (cliRef(tool)) {
+        report(`${tool}: foreground extension loading is not verified; the native agent tools list must include the providing extension path`);
+        continue;
+      }
       if (tool.startsWith('mcp:')) {
         const [server, name] = tool.slice(4).split('/');
         if (!mcpServers[server]) { report(`${tool}: MCP server "${server}" is not configured in .pi/mcp.json`); continue; }
@@ -93,14 +96,12 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
         continue;
       }
       if (registered && !registered.has(tool)) report(`${tool}: no loaded extension registers this tool`);
+      report(`${tool}: foreground extension loading is not verified; the native agent tools list must include the providing extension path`);
     }
     const file = existsSync(join(root, `.pi/agents/${agent.name}.md`)) ? readFileSync(join(root, `.pi/agents/${agent.name}.md`), 'utf8') : '';
     // Files generated before v0.11 used "[a, b]" lists, which pi-subagents reads
     // as the names "[a" and "b]", so none of those tools or skills resolve.
     if (/^(tools|skills): \[/m.test(file.split('\n---')[0])) report('its agent file lists tools or skills as "[a, b]", which pi-subagents misreads (so they are missing); run /faur sync');
-    if (needsBackground(tools)) {
-      if (!/\nasync: true\n/.test(file) || !forced) report('uses MCP or extension tools but is not set to run in the background, so they would be missing; run /faur sync');
-    }
     for (const name of Array.isArray(agent.skills) ? agent.skills : []) {
       const kind = skillSourceKind(skills.get(name)?.source);
       const dir = kind === 'registry' ? `.agents/skills/${name}` : kind === 'package' ? null : `.pi/skills/${name}`;

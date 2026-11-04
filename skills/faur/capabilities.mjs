@@ -15,7 +15,6 @@ import { enforcedAgentTools } from "./policy.mjs";
 import { runtimePackages, runtimeNeeds } from "./deps.mjs";
 import { declaredPackages, skillSourceKind } from "./skill-sources.mjs";
 import { splitModelRef } from "./models.mjs";
-import { needsBackground } from "./generate.mjs";
 import { cliAgents, cliEntries, cliRef } from "./cli-tools.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 
@@ -57,7 +56,6 @@ export function effectiveCapabilities(model, opts = {}) {
       model: agent.model,
       ...(typeof agent.thinking === "string" ? { thinking: agent.thinking } : {}),
       skills: sortUnique(agent.skills),
-      ...(needsBackground(enforcedAgentTools(agent.name, model.policies, agent.tools)) ? { launch: "background" } : {}),
     })),
     documents: (Array.isArray(model.documents) ? model.documents : []).map((d) => ({
       name: d.name, writer: d.writer, ...(d.path ? { path: d.path } : {}),

@@ -31,7 +31,7 @@ function project(t) {
 }
 const problems = (root, opts) => launchCheck(root, model, opts).problems.map((p) => `${p.agent}: ${p.problem}`);
 
-test('launch check reports missing MCP tools, extension tools, skills and background setup', (t) => {
+test('launch check reports missing MCP tools, extension tools, skills and unverified foreground extension loading', (t) => {
   const root = project(t);
   const mcpTools = [{ name: 'mcp__seo__delete_all', exposure: 'hidden' }, { name: 'mcp__seo__list', exposure: 'deferred' }];
   const found = problems(root, { registeredTools: ['read'], mcpTools });
@@ -41,7 +41,7 @@ test('launch check reports missing MCP tools, extension tools, skills and backgr
   assert.ok(found.includes('gh: mcp:github: "github" has not connected or offers no tools; /mcp shows why'));
   assert.ok(!found.some((p) => p.startsWith('all:')), 'list is exposed');
   assert.ok(!found.some((p) => p.startsWith('plain:')));
-  assert.ok(!found.some((p) => p.includes('background')), 'generated agents are set up for background launch');
+  assert.ok(found.some((p) => p.includes('foreground extension loading is not verified')));
   assert.ok(!problems(root, { registeredTools: ['read'] }).some((p) => p.includes('"github"')), 'servers connect after session start; without mcpTools they are not checked');
 
   // A hidden tool can't be selected.
@@ -51,11 +51,9 @@ test('launch check reports missing MCP tools, extension tools, skills and backgr
   // Everything present: no problems.
   mkdirSync(join(root, '.agents/skills/audit'), { recursive: true });
   writeFileSync(join(root, '.agents/skills/audit/SKILL.md'), '---\nname: audit\n---\n');
-  assert.deepEqual(problems(root, { registeredTools: ['web_search'], mcpTools: [{ name: 'mcp__seo__audit', exposure: 'deferred' }, { name: 'mcp__github__issue_read', exposure: 'deferred' }] }), []);
+  assert.deepEqual(problems(root, { registeredTools: ['web_search'], mcpTools: [{ name: 'mcp__seo__audit', exposure: 'deferred' }, { name: 'mcp__github__issue_read', exposure: 'deferred' }] }), ['seo: web_search: foreground extension loading is not verified; the native agent tools list must include the providing extension path']);
 
-  // A project generated before background launch is told to reconcile.
-  rmSync(join(root, '.faur/pi-home/extensions'), { recursive: true });
-  assert.ok(problems(root, {}).some((p) => p.startsWith('seo: uses MCP or extension tools but is not set to run in the background')));
+
 });
 
 test('launch check warns about unignored secrets in a git work tree', t => {

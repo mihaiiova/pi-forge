@@ -91,15 +91,12 @@ prompts, workflows, documents and advisory policies that still name it.
 Allowed keys: `name` (required string), `description`, `tools` (array of
 strings), `model` (required `provider/id`), `thinking`, `skills` (array of
 declared `skills[].name`), `prompt`, `inheritProjectContext`, `inheritSkills`.
-`tools:` is the subagent allowlist (an *enforced* policy). A subagent whose
-tools include anything beyond Pi's builtins (`read`, `bash`, `edit`, `write`,
-`grep`, `find`, `ls`) — `mcp:` selections or extension tools such as
-`web_search` — or that omits `tools`, gets `async: true`, an overridable
-default. Faur also generates `.faur/pi-home/extensions/subagent/config.json`
-with `forceTopLevelAsync: true`; plain `pi` does not read this gitignored
-setting, so it is not a reliable guarantee for plain `pi` or a fresh
-checkout (#72). Foreground MCP tools work, while extension tools may require an
-extension path in the agent's tools list.
+`tools:` is the subagent allowlist (enforced by pi-subagents). Faur does not
+select foreground or background execution. Built-in MCP tools work in either
+mode. A foreground specialist using an extension tool must also list the
+providing extension path in its native agent file; Faur cannot infer that path
+from the tool name and reports the limitation. Developer edits to agent files
+are detected and preserved for explicit reconciliation.
 Nobody can answer an approval prompt in the background, so a subagent that
 can reach a `cli:` command without `approve: false` is rejected. The
 orchestrator can make those calls instead. Faur does not add per-call approval to MCP calls.

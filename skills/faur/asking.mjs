@@ -29,7 +29,7 @@ export function backgroundAskingIssues(model) {
       : null;
     out.push({
       agent: agent.name, index, cli,
-      message: `"${agent.name}" runs in the background, where nobody can answer an approval prompt, so these calls that ask the user would always fail: ${cli.map((name) => `command ${name}`).join("; ")}. ` +
+      message: `"${agent.name}" may run in the background, where nobody can answer an approval prompt, so these calls that ask the user would fail: ${cli.map((name) => `command ${name}`).join("; ")}. ` +
         "Give the subagent only tools that don't ask; the orchestrator makes the approved calls for it" +
         (fix ? "" : ruled ? " (edit its enforced tools rule)" : "") + ".",
       fix,

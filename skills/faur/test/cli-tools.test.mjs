@@ -81,14 +81,14 @@ test('command lines split like a shell without expanding anything', () => {
   assert.throws(() => splitCommandLine('gh "open'), /Unclosed quote/);
 });
 
-test('generated agents get cli_ tools and run in the background; defaultTools keeps Pi tools only', () => {
+test('generated agents get cli_ tools without a launch default; defaultTools keeps Pi tools only', () => {
   const generated = generateProject(model, {}, { piPackages: pkg.pi.packages });
   const agent = generated.files.find((f) => f.path === '.pi/agents/writer.md').content;
   assert.match(agent, /\ntools:\n  - read\n  - cli_show_body\n/);
   assert.match(agent, /\ndescription: "?writer"?\n/, 'pi-subagents skips agents without a description');
   const empty = generateProject({ ...model, agents: [{ name: 'quiet', model: 'fixture/small', tools: [] }] }, {}, { piPackages: pkg.pi.packages });
   assert.match(empty.files.find((f) => f.path === '.pi/agents/quiet.md').content, /\ntools:\nmodel: /, 'an empty allowlist is a bare key, never "[]"');
-  assert.match(agent, /\nasync: true\n/);
+  assert.doesNotMatch(agent, /\nasync:/);
   const settings = JSON.parse(generated.files.find((f) => f.path === '.pi/settings.json').content);
   assert.deepEqual(settings.defaultTools, ['read']);
   const caps = effectiveCapabilities(model, { piPackages: pkg.pi.packages });
@@ -100,7 +100,7 @@ test('a grant to a subagent with no tools list starts one', () => {
   const doc = { ...model, agents: [{ name: 'bare', model: 'fixture/small' }] };
   const granted = changeModel(yaml.stringify(doc), grantOps(doc, { name: 'echo-two', command: 'node', args: ['--version'], approve: false }, ['bare'])).model;
   assert.deepEqual(granted.agents[0].tools, ['cli:echo-two']);
-  assert.throws(() => changeModel(yaml.stringify(doc), grantOps(doc, { name: 'echo-two', command: 'node', args: ['--version'] }, ['bare'])), /"bare" runs in the background, .*command echo-two/, 'a command that asks cannot go to a subagent');
+  assert.throws(() => changeModel(yaml.stringify(doc), grantOps(doc, { name: 'echo-two', command: 'node', args: ['--version'] }, ['bare'])), /"bare" may run in the background, .*command echo-two/, 'a command that asks cannot go to a subagent');
 });
 
 test('grant and revoke edit the declaration, agent tools and enforced policies', () => {
@@ -125,7 +125,7 @@ test('launch check reports a missing command once per agent, and approval a suba
   assert.deepEqual(check.problems.filter((p) => /not installed/.test(p.problem)).map((p) => p.agent).sort(), ['lead', 'writer']);
   assert.equal(probes, 1, 'each command is probed once');
   const asking = { ...model, agents: [{ name: 'writer', model: 'fixture/small', tools: ['cli:echo-title'] }] };
-  assert.ok(launchCheck(root, asking, { probe: () => true }).problems.some((p) => p.agent === 'writer' && /"writer" runs in the background, .*command echo-title.*suggested fix: tools \[\]/.test(p.problem)));
+  assert.ok(launchCheck(root, asking, { probe: () => true }).problems.some((p) => p.agent === 'writer' && /"writer" may run in the background, .*command echo-title.*suggested fix: tools \[\]/.test(p.problem)));
   writeFileSync(join(root, '.pi/agents/writer.md'), '---\nname: writer\ntools: [read, cli_show_body]\nasync: true\n---\n');
   assert.ok(launchCheck(root, model, { probe: () => true }).problems.some((p) => p.agent === 'writer' && /misreads/.test(p.problem)));
 });
@@ -138,7 +138,7 @@ test('/faur permissions adds, lists and removes commands as previewed design cha
   const command = (args) => permissions(args, mock.ctx);
   mock.inputs.push('create-issue', 'gh issue create --repo o/r --title {title} --body-file {body:file}', 'writer');
   await command('add');
-  assert.match(mock.asked[1].title, /writer run in the background, where nobody can answer/);
+  assert.match(mock.asked[1].title, /writer may run in the background, where nobody can answer/);
   let doc = yaml.parse(readFileSync(join(root, '.pi/system.yaml'), 'utf8'));
   assert.deepEqual(doc.integrations.cli.find((c) => c.name === 'create-issue').args, ['issue', 'create', '--repo', 'o/r', '--title', '{title}', '--body-file', '{body:file}']);
   assert.ok(doc.orchestrator.tools.includes('cli:create-issue'));

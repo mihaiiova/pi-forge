@@ -277,7 +277,7 @@ test("validateSystem rejects tools that ask the user in a background subagent", 
     ] },
   })).errors;
   assert.equal(cli.length, 1);
-  assert.match(cli[0], /"filer" runs in the background, .*: command file-issue\./, "a command that asks, not one that doesn't");
+  assert.match(cli[0], /"filer" may run in the background, .*: command file-issue\./, "a command that asks, not one that doesn't");
 
 });
 

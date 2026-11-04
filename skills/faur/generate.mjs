@@ -48,26 +48,6 @@ const GITIGNORE_BODY = [
   "",
 ].join("\n");
 
-/** Pi's built-in tools. Any other tool (`mcp:` selections, extension tools
- * such as web search) is registered by an extension. */
-const BUILTIN_TOOLS = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
-/** pi-subagents config inside the isolated Pi home (its getAgentDir()). */
-export const SUBAGENT_CONFIG = ".faur/pi-home/extensions/subagent/config.json";
-
-/**
- * Foreground subagents run inside the parent process and never load ambient
- * extensions, so a child that needs MCP or extension tools must run in the
- * background. Omitted tools inherit the ambient extensions too.
- */
-export function needsBackground(tools) {
-  return !Array.isArray(tools) || tools.some((tool) => !BUILTIN_TOOLS.has(tool));
-}
-
-function backgroundAgents(model) {
-  return agentEntries(model).filter((agent) =>
-    needsBackground(enforcedAgentTools(agent.name, model.policies, agent.tools)));
-}
-
 /** Project-relative paths every generated project has. */
 export const GENERATED_PATHS = [
   ".pi/settings.json",
@@ -321,19 +301,6 @@ function buildMcpJson(model, existingText) {
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
-/** Force background launches so a caller cannot start an MCP specialist in
- * the foreground, where its tools would be missing. Other keys are kept. */
-function buildSubagentConfig(existingText) {
-  let existing = {};
-  try {
-    existing = JSON.parse(existingText ?? "{}");
-  } catch {
-    existing = {};
-  }
-  if (!isPlainObject(existing)) existing = {};
-  return `${JSON.stringify({ ...existing, forceTopLevelAsync: true }, null, 2)}\n`;
-}
-
 /** The lead's authored prompt, as written in system.yaml. */
 function orchestratorPrompt(model) {
   const orchestrator = isPlainObject(model.orchestrator) ? model.orchestrator : {};
@@ -346,17 +313,7 @@ function orchestratorPrompt(model) {
  * formats: all derived from declarations. */
 function orchestratorDerived(model) {
   const name = isPlainObject(model.orchestrator) ? model.orchestrator.name : undefined;
-  const background = backgroundAgents(model).map((agent) => `\`${agent.name}\``);
   const parts = [capabilitySection(model, name)];
-  if (background.length > 0) {
-    parts.push([
-      "## Running specialists",
-      "",
-      `${background.join(", ")} use MCP or extension tools, so they always run in the`,
-      "background. Launch them, then wait for their completion notice before using",
-      "their results. A foreground launch cannot give them their tools.",
-    ].join("\n"));
-  }
   if (isNonEmptyString(name)) parts.push(documentInstructions(model, name));
   return parts.filter(Boolean).map((part) => part.replace(/\n+$/, "")).join("\n\n");
 }
@@ -489,7 +446,6 @@ function agentBody(agent, tools, model) {
   }
   if (agent.inheritProjectContext === true) lines.push("inheritProjectContext: true");
   if (agent.inheritSkills === true) lines.push("inheritSkills: true");
-  if (needsBackground(tools)) lines.push("async: true");
   const prompt = [isNonEmptyString(agent.prompt) ? agent.prompt.replace(/\n$/, "") : "", capabilitySection(model, agent.name), documentInstructions(model, agent.name)]
     .filter(Boolean).map((part) => part.replace(/\n+$/, "")).join("\n\n");
   if (prompt) {
@@ -582,7 +538,6 @@ export function managedPaths(model) {
   if (cliEntries(model).length) paths.push(COMMANDS_CONFIG);
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
   for (const skill of skillEntries(model)) paths.push(skillPath(skill));
-  if (backgroundAgents(model).length > 0) paths.push(SUBAGENT_CONFIG);
   return paths;
 }
 
@@ -602,9 +557,6 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
   const piPackages = isPlainObject(opts) ? opts.piPackages : undefined;
   const contextFiles = isPlainObject(opts) && Array.isArray(opts.contextFiles) ? opts.contextFiles : [];
   const plan = buildRuntimePlan(model, { piPackages, contextFiles });
-  const subagentConfig = backgroundAgents(model).length > 0
-    ? [derivedFile(SUBAGENT_CONFIG, buildSubagentConfig(existing[SUBAGENT_CONFIG]), existing[SUBAGENT_CONFIG])]
-    : [];
 
   const files = [
     derivedFile(".pi/settings.json", buildSettings(model, existing[".pi/settings.json"], plan.packages), existing[".pi/settings.json"]),
@@ -614,7 +566,6 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
     gitignoreFile(existing[".gitignore"], model),
     ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
     ...(cliEntries(model).length ? [derivedFile(COMMANDS_CONFIG, commandsConfig(model), existing[COMMANDS_CONFIG])] : []),
-    ...subagentConfig,
     ...agentFiles(model, existing),
     ...skillFiles(model, existing),
   ];

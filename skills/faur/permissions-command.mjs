@@ -55,7 +55,7 @@ export function permissionsCommand(root) {
         if (approve && subagents.length) {
           // A command that asks can't run in a background subagent; the orchestrator runs it for them.
           const lead = `Only ${current.orchestrator.name}, which runs it when a subagent asks`;
-          const route = await ctx.ui.select(`${subagents.join(', ')} run in the background, where nobody can answer the approval prompt, so every run would be refused.`, [lead, 'Run without asking', 'Cancel']);
+          const route = await ctx.ui.select(`${subagents.join(', ')} may run in the background, where nobody can answer the approval prompt, so background calls would be refused.`, [lead, 'Run without asking', 'Cancel']);
           if (!route || route === 'Cancel') return tell('Cancelled.');
           if (route === lead) agents.splice(0, agents.length, current.orchestrator.name);
           else approve = false;
