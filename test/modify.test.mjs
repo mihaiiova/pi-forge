@@ -115,3 +115,30 @@ test('modify previews missing gitignore entries without changing existing rules'
   assert.match(diff, /\+ \.faur\//);
   assert.equal(existing['.gitignore'], 'node_modules\n.env\n');
 });
+
+test("faur generate refuses a hand-edited specialist and shows the difference", async t => {
+  const { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } = await import("node:fs");
+  const { spawnSync } = await import("node:child_process");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const root = mkdtempSync(join(tmpdir(), "faur-conflict-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  cpSync(new URL("./fixtures/generate/multi-agent/.pi", import.meta.url), join(root, ".pi"), { recursive: true });
+  const cli = new URL("../src/faur.mjs", import.meta.url).pathname;
+  const run = (...args) => spawnSync(process.execPath, [cli, "generate", root, ...args], { encoding: "utf8" });
+  assert.equal(run().status, 0);
+  const agent = join(root, ".pi/agents/seo-analyst.md");
+  const edited = readFileSync(agent, "utf8").replace(/^name: seo-analyst$/m, "name: seo-analyst\nasync: true");
+  writeFileSync(agent, edited);
+  // A model change makes Faur want to rewrite the specialist it no longer owns.
+  const system = join(root, ".pi/system.yaml");
+  writeFileSync(system, readFileSync(system, "utf8").replace("model: provider-b/model-small", "model: provider-a/model-medium"));
+  const result = run("--dry-run");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Authored file conflicts \(nothing applied\): .*\.pi\/agents\/seo-analyst\.md/);
+  assert.match(result.stderr, /\(- the file now, \+ what Faur would write\)/);
+  assert.match(result.stderr, /^ {2}- async: true$/m, "the hand edit is shown");
+  assert.doesNotMatch(result.stderr, /faur:generated v1 sha256/, "fingerprints are not shown as changes");
+  assert.match(result.stderr, /\/faur drift adopt <path>/);
+  assert.equal(readFileSync(agent, "utf8"), edited, "the edit is never overwritten");
+});

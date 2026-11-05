@@ -7,7 +7,7 @@ import { importSystem } from './import.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { managedPaths, generateProject, declarationInventory, intactScaffold } from './generate.mjs';
 import { effectiveCapabilities, checkCapabilities } from './capabilities.mjs';
-import { diffLines } from './diff.mjs';
+import { diffLines, changedLines, indent } from './diff.mjs';
 import { setupSteps } from './setup.mjs';
 import { configurationAdvisories } from './advisories.mjs';
 import { cliEntries } from './cli-tools.mjs';
@@ -651,7 +651,12 @@ export function planChange(root, operations, options = {}) {
     plan.unrepresentedAgent = extra;
   }
   const conflicts = plan.files.filter(f => f.action === 'conflict');
-  if (conflicts.length) throw new Error(`Authored file conflicts (nothing applied): ${conflicts.map(f => f.reason ? `${f.path}: ${f.reason}` : f.path).join(', ')}`);
+  if (conflicts.length) {
+    // Show what differs so the developer can decide; never overwrite.
+    const bare = text => (text ?? '').replace(/\n?<!-- faur:generated v1 sha256=[0-9a-f]{64} -->\n?/g, '\n').replace(/\n+$/, '');
+    const shown = conflicts.map(f => `${f.reason ? `${f.path}: ${f.reason}` : f.path}${typeof f.desired === 'string' && bare(f.desired) !== bare(f.content) ? `\n  (- the file now, + what Faur would write)\n${indent(changedLines(bare(f.content), bare(f.desired)), '  ')}` : ''}`);
+    throw new Error(`Authored file conflicts (nothing applied): ${conflicts.map(f => f.path).join(', ')}\n${shown.join('\n')}\nTo keep the edit, adopt it (/faur drift adopt <path>, for a marked prompt or specialist) or change system.yaml to match; to discard it, delete the file and generate again.`);
+  }
   const oldScaffolds = generateProject(oldModel, {}, opts).files;
   const newScaffolds = generateProject(model, {}, opts).files;
   // The scaffold-once generator quite correctly leaves unmarked authored files

@@ -20,13 +20,27 @@ export function indent(text, prefix) {
  * @returns {string}
  */
 export function diffLines(oldText, newText) {
+  return lineDiff(oldText, newText).join("\n");
+}
+
+/** Only the changed lines of `diffLines`, with `context` unchanged lines
+ * around each change and "  …" where unchanged lines were left out. */
+export function changedLines(oldText, newText, context = 2) {
+  const lines = lineDiff(oldText, newText);
+  const keep = lines.map((line, i) => lines.slice(Math.max(0, i - context), i + context + 1).some(l => !l.startsWith("  ")));
+  const out = [];
+  lines.forEach((line, i) => { if (keep[i]) out.push(line); else if (out.at(-1) !== "  …") out.push("  …"); });
+  return out.join("\n");
+}
+
+function lineDiff(oldText, newText) {
   const a = oldText.split("\n");
   const b = newText.split("\n");
   const n = a.length;
   const m = b.length;
   // Large generated configs must not allocate an unbounded LCS matrix.
   // A whole-file replacement remains an exact, deterministic preview.
-  if (n * m > 1000000) return [...a.map(line => `- ${line}`), ...b.map(line => `+ ${line}`)].join('\n');
+  if (n * m > 1000000) return [...a.map(line => `- ${line}`), ...b.map(line => `+ ${line}`)];
   const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
@@ -57,5 +71,5 @@ export function diffLines(oldText, newText) {
     lines.push(`+ ${b[j]}`);
     j++;
   }
-  return lines.join("\n");
+  return lines;
 }
