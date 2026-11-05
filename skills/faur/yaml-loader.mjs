@@ -3,9 +3,9 @@
  *
  * Faur is a Pi *package*, not an application: its npm dependencies live in
  * the Pi package install dir (`~/.pi/agent/npm/node_modules`), not in the
- * Faur clone. `loadYaml` resolves `yaml` from there via `createRequire`
- * (the same `~/.pi/agent/` convention `extensions/pi-sync` already uses for
- * `~/.pi/agent/settings.json`), with an actionable error when it is absent.
+ * Faur clone. `loadYaml` tries a local `yaml` first (a development clone
+ * with node_modules), then Pi's install dir via `createRequire`, with an
+ * actionable error when it is absent.
  */
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -29,8 +29,8 @@ export function loadYaml() {
   } catch {
     throw new Error(
       "The `yaml` package (pinned as npm:yaml@2.8.3) is not installed in Pi's " +
-        `package directory (${PI_NPM_DIR}). Run /pi-sync (or pi install) to ` +
-        "install the pinned packages, then retry.",
+        `package directory (${PI_NPM_DIR}). Reinstall Faur with pi install so Pi ` +
+        "installs its pinned packages, then retry.",
     );
   }
 }

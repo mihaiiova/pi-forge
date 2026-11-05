@@ -80,23 +80,22 @@ if (JSON.stringify(s.packages) !== JSON.stringify(expect)) {
 rm -rf "$gen"
 pass "clean-env: generated settings.json declares only the runtime primitives"
 
-# ── clean-environment (gated): isolated install + run ──────────
-# The full isolation test (copy to a clean env → install declared deps → `pi`
-# resolves orchestrator/agents/skills/workflows) requires a clean `pi` install
-# and network; skip when unavailable, without weakening the deterministic
-# packages assertion above.
+# ── clean-environment (gated, live model): plain-Pi run ─────────
+# A live plain-Pi run of a fresh generated project. It uses the caller's Pi
+# configuration (not isolated) and a real provider, so it costs tokens; the
+# offline independence proof is headless-workflow.test.mjs.
 if command -v pi >/dev/null 2>&1 && [[ -n "${RUN_CLEAN_ENV_TEST:-}" ]]; then
   iso="$(mktemp -d)"
   cp -r "$fixtures/coding-agent/.pi" "$iso/.pi"
   node "$faur" generate "$iso" >/dev/null
   if out="$(cd "$iso" && timeout 90 pi -p "describe yourself" 2>&1)"; then
-    pass "clean-env: generated coding-agent runs headlessly in an isolated dir"
+    pass "clean-env: generated coding-agent runs headlessly with plain pi (not isolated)"
   else
     fail "clean-env: pi -p failed on the generated project (RUN_CLEAN_ENV_TEST=1)"
   fi
   rm -rf "$iso"
 else
-  echo "ok - clean-env isolated run SKIPPED (set RUN_CLEAN_ENV_TEST=1 and ensure 'pi' + network)"
+  echo "ok - clean-env plain-pi run SKIPPED (set RUN_CLEAN_ENV_TEST=1; needs pi, network and a paid provider)"
 fi
 
 echo

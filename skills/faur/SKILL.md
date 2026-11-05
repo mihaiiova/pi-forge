@@ -8,7 +8,10 @@ description: Build or modify a Pi agent system from a plain-language outcome. Us
 Faur turns a plain-language outcome into a standalone, project-local Pi
 agent system, and later modifies that system conversationally. It is a
 **conversational builder over the deterministic `faur` CLI** — the CLI is the
-single source of truth for generation; this skill drives it.
+single source of truth for generation; this skill drives it. There is no
+`faur` executable on PATH: `faur <command>` below means
+`node <Faur skill location>/faur.mjs <command>`, where the skill location is
+the directory containing this file (`/faur` states it).
 
 Invoke with `/faur` outside a Faur project, `/skill:faur`, or describe an agent-system outcome ("I want an
 SEO system", "set up a coding agent with a reviewer", …) and this skill routes here.

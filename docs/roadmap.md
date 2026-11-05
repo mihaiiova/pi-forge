@@ -93,7 +93,7 @@ is inferred instead, it is marked as an assumption.
 
 | Capability | Status | Evidence |
 |---|---|---|
-| Conversational design (explore → synthesize → build) | Implemented, satisfactory | `SKILL.md`; scenarios in `docs/agent-factory-conversation.md`; skill-contract test |
+| Conversational design (explore → synthesize → build) | Implemented, satisfactory | `SKILL.md`; scenarios in `docs/faur-conversation.md`; skill-contract test |
 | Declarative model and validator (`system.yaml` schema 1) | Implemented, satisfactory | `validate.mjs`, `schema.md`; strict unknown-key and reference checks |
 | Deterministic generation, ownership, dry-run, idempotence | Implemented, satisfactory | `generate.mjs`; golden fixtures; fingerprint conflicts |
 | Plain Pi launch | Implemented | `generate.mjs`; real-Pi SDK and headless workflow tests |

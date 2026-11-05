@@ -45,6 +45,13 @@ test("SKILL.md researches the subject before design questions without widening a
   assert.ok(/don't restart discovery or\s+interview again/i.test(skill), "preserves ready-to-build flow");
 });
 
+test("SKILL.md says how to run the faur CLI, and design mode names its location", () => {
+  assert.match(skill.replace(/\s+/g, " "), /`faur <command>` below means `node <Faur skill location>\/faur\.mjs <command>`/);
+  const extension = readFileSync(resolve(here, "../../../extensions/faur/index.ts"), "utf-8");
+  assert.match(extension, /Faur skill location: /);
+  assert.ok(!/\.\/run\b/.test(extension), "the extension does not mention the removed ./run launcher");
+});
+
 test("conversational acceptance scenarios are documented", () => {
   const doc = readFileSync(resolve(here, "../../../docs/faur-conversation.md"), "utf-8");
   const scenarios = doc.match(/^## \d+\. /gm) ?? [];
