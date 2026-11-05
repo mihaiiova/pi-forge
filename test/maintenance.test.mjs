@@ -54,24 +54,25 @@ function snapshot(root) {
   }));
 }
 function adapter(initialTools = ['read']) {
-  const events = {}, tools = {}, commands = {}, messages = [], notices = [];
+  const events = {}, tools = {}, commands = {}, messages = [], notices = [], sent = [];
   let active = [...initialTools];
   let confirm = false;
   const pi = {
     registerTool: t => { tools[t.name] = t; }, registerCommand: (n, c) => { commands[n] = c; },
     on: (n, cb) => { const prev = events[n]; events[n] = prev ? (...a) => { const r = prev(...a); return cb(...a) ?? r; } : cb; }, getActiveTools: () => [...active], setActiveTools: t => { active = t; },
-    sendUserMessage: m => messages.push(m),
+    sendUserMessage: (m, options) => { messages.push(m); sent.push(options); },
   };
   const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map(k => [k, v => v]));
-  const dialogs = [], prompts = [], choices = [], status = {};
+  const dialogs = [], prompts = [], choices = [], status = {}, widgets = {};
   const ctx = { hasUI: true, waitForIdle: async () => {}, ui: {
     notify: (...v) => notices.push(v),
     confirm: async (title, body) => { dialogs.push({ title, body }); return confirm; },
     // A proposal prompt; with no scripted choice, the person dismisses it (Esc).
     select: async (title, options) => { prompts.push({ title, options }); return choices.shift(); },
     setStatus: (key, text) => { status[key] = text; },
+    setWidget: (key, lines) => { widgets[key] = lines; },
   }, sessionManager: { getBranch: () => [] }, modelRegistry: { getAvailable: () => [] } };
-  return { pi, Type, ctx, events, tools, commands, messages, notices, dialogs, prompts, status, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
+  return { pi, Type, ctx, events, tools, commands, messages, notices, sent, dialogs, prompts, status, widgets, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
 }
 test('reconcile plans and builds a new project without existing settings', t => {
   const root = mkdtempSync(join(tmpdir(), 'faur-new-plan-'));
@@ -1142,7 +1143,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   mock.choose('Discard');
   await mock.endTurn();
   assert.equal(readText(root, '.pi/system.yaml'), applied);
-  assert.match(mock.notices.at(-1)[0], /Discarded/);
+  assert.match(mock.notices.at(-1)[0], /pending proposal was discarded; no files changed/);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
 
   // A session without a UI never applies, and leaves /faur.
@@ -1712,4 +1713,66 @@ test('unsafe existing integration secret aborts approved change before writes', 
   const plan = planChange(root, [{ op: 'add', target: 'mcp', name: 'demo', value: { config: { command: 'demo' }, secretsFile: 'private/keys.env' } }]);
   assert.throws(() => applyChange(root, plan, true), /permissions must exclude/);
   assert.deepEqual(snapshot(root), before);
+});
+
+test('maintenance is visible, says what leaving did, and offers to hand agent work back', async t => {
+  const root = project(t);
+  const mock = adapter();
+  mock.faur = registerMaintenance(mock.pi, mock.Type, root);
+  const command = arg => mock.faur(arg, mock.ctx);
+  const tool = params => mock.tools.faur_plan.execute('id', params, undefined, undefined, mock.ctx);
+
+  // A widget above the editor says the agent's own tools are off.
+  await command('use a cheaper model');
+  assert.match(mock.widgets.faur.join('\n'), /maintaining this agent\. Its own tools are off[\s\S]*\/faur exit/);
+  await command('exit');
+  assert.equal(mock.widgets.faur, undefined, 'leaving clears the widget');
+  assert.equal(mock.status.faur, undefined);
+  assert.match(mock.notices.at(-1)[0], /^Left \/faur\. No changes in this session; your agent's tools are back\.$/);
+
+  // Leaving with a discussed proposal says it was discarded.
+  await command('use a cheaper model');
+  await tool({ action: 'propose', operations: JSON.stringify([{ op: 'assign', name: 'lead', model: 'fixture/small' }]) });
+  mock.choose("Let's discuss");
+  await mock.endTurn();
+  assert.match(mock.notices.at(-1)[0], /not applied yet/);
+  await command('exit');
+  assert.match(mock.notices.at(-1)[0], /pending proposal was discarded; no files changed/);
+
+  // Agent work: the model can only offer; the person chooses, and the
+  // request goes to the agent with its own tools back.
+  const before = readText(root, '.pi/system.yaml');
+  await command('review the site');
+  mock.events.input({ text: 'do a marketing review of example.com', source: 'interactive' });
+  const offered = await tool({ action: 'leave' });
+  assert.match(JSON.stringify(offered), /person chooses/);
+  assert.deepEqual(mock.pi.getActiveTools(), ['faur_plan'], 'offering leaves nothing by itself');
+  mock.choose('Stay in /faur');
+  await mock.endTurn();
+  assert.equal(mock.prompts.at(-1).title, 'This is work for your agent, not a change to it.');
+  assert.deepEqual(mock.pi.getActiveTools(), ['faur_plan'], 'staying keeps /faur');
+  await tool({ action: 'leave' });
+  mock.choose('Leave /faur and ask my agent');
+  const sentBefore = mock.messages.length;
+  await mock.endTurn();
+  assert.deepEqual(mock.pi.getActiveTools(), ['read'], "the agent's tools are back");
+  assert.equal(mock.widgets.faur, undefined);
+  assert.equal(mock.messages.length, sentBefore + 1);
+  assert.equal(mock.messages.at(-1), 'do a marketing review of example.com', 'the latest request goes to the agent');
+  assert.deepEqual(mock.sent.at(-1), { deliverAs: 'followUp' });
+  assert.equal(readText(root, '.pi/system.yaml'), before, 'nothing written');
+
+  // Without a UI an offer is never acted on.
+  await command('run the weekly report');
+  await tool({ action: 'leave' });
+  const count = mock.messages.length;
+  await mock.endTurn({ ...mock.ctx, hasUI: false });
+  assert.equal(mock.messages.length, count, 'headless sessions never hand work over');
+  assert.deepEqual(mock.pi.getActiveTools(), ['read']);
+});
+
+test('SKILL.md tells maintenance to offer leaving for agent work, not to send people to /faur exit', () => {
+  const text = readFileSync(new URL('../skills/faur/SKILL.md', import.meta.url), 'utf8').split('## Project maintenance workflow')[1].replace(/\s+/g, ' ');
+  assert.match(text, /agent's own work rather than a change to the agent .* call faur_plan with action=leave/);
+  assert.match(text, /don't tell them to type `\/faur exit`/);
 });

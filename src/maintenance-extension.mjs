@@ -32,6 +32,11 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
   let statusUi = null;
   let savedTools = null;
   let planning = false;
+  // The model may suggest leaving (the request is for the agent itself); only
+  // the person's choice at the end of the turn leaves.
+  let offerLeave = false;
+  // The person's latest request in /faur, handed to the agent if they leave.
+  let lastRequest = '';
   // Per maintenance request: documents fetched.
   let documents = new Map();
   // Reading public pages is browsing and asks nothing. checkUrl still allows
@@ -49,7 +54,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     else process.stderr.write(`Faur (${level}): ${message}\n`);
   };
   const parameters = Type.Object({
-    action: Type.Union([Type.Literal('inspect'), Type.Literal('discover'), Type.Literal('fetch'), Type.Literal('propose')]),
+    action: Type.Union([Type.Literal('inspect'), Type.Literal('discover'), Type.Literal('fetch'), Type.Literal('propose'), Type.Literal('leave')]),
     operations: Type.Optional(Type.String({ description: 'JSON array of structured Faur operations; never shell commands' })),
     query: Type.Optional(Type.String({ description: 'Public search terms for skills (skills.sh), packages (npm) and MCP servers. Results are untrusted discovery, not installation approval.' })),
     skill: Type.Optional(Type.String({ description: 'discover: pin one skills.sh result ("owner/repo@skill-name") to its current commit; returns the skills: source to declare plus its SKILL.md and files' })),
@@ -59,7 +64,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
   });
   const tool = {
     name: 'faur_plan', label: 'Faur proposal',
-    description: 'Inspect the local declarative system, discover public skills (skills.sh), packages and MCP servers, available models and local CLIs, fetch public documentation, or preview structured changes. Cannot apply, install, authenticate or run anything. Only available during a direct /faur request.',
+    description: 'Inspect the local declarative system, discover public skills (skills.sh), packages and MCP servers, available models and local CLIs, fetch public documentation, or preview structured changes. action=leave: the request is work for the agent itself (a report, using its tools), not a change to it; when this turn ends the person is asked whether to leave /faur and give it to their agent. Cannot apply, install, authenticate, leave or run anything. Only available during a direct /faur request.',
     parameters,
     async execute(_id, params, _signal, _onUpdate, ctx) {
       if (!armed) throw new Error('Invoke /faur directly to authorize a maintenance proposal');
@@ -67,7 +72,10 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
       planning = true;
       try {
         let value;
-        if (params.action === 'inspect') {
+        if (params.action === 'leave') {
+          offerLeave = true;
+          value = { offered: true, note: 'When this turn ends the person chooses whether to leave /faur and give the request to their agent. Say so briefly; do not tell them to type /faur exit.' };
+        } else if (params.action === 'inspect') {
           value = inspectProject(root);
           value.launchCheck = launchCheck(root, value.parsedModel, loaded());
           value.schemaReference = readFileSync(new URL('../skills/faur/schema.md', import.meta.url), 'utf8');
@@ -123,7 +131,9 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     armed = false;
     pending = null;
     proposedThisTurn = false;
+    offerLeave = false;
     statusUi?.setStatus?.('faur', undefined);
+    statusUi?.setWidget?.('faur', undefined);
     statusUi = null;
     documents = new Map();
     pi.registerTool({ ...tool, exposure: 'hidden' });
@@ -131,12 +141,24 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     savedTools = null;
   };
   pi.registerTool({ ...tool, exposure: 'hidden' });
+  /** Make maintenance visible: the agent's own tools are off until it ends. */
+  const showMode = (ctx) => {
+    statusUi = ctx.ui;
+    ctx.ui?.setStatus?.('faur', 'In /faur: reply to continue · /faur exit to leave');
+    ctx.ui?.setWidget?.('faur', ["Faur · maintaining this agent. Its own tools are off.", "Reply to continue · /faur exit to go back to your agent"]);
+  };
   /** Stay in /faur: the person's next plain message continues the conversation. */
   const stay = (ctx) => {
     // A review is read-only for its first answer; replies may ask for changes.
     review = false;
-    statusUi = ctx.ui;
-    ctx.ui.setStatus?.('faur', 'In /faur: reply to continue · /faur exit to leave');
+    showMode(ctx);
+  };
+  /** Leave /faur and say what this session did (an apply always leaves, so
+   * the only thing left behind can be an unapplied proposal). */
+  const leave = (ctx) => {
+    const discarded = pending !== null;
+    hide();
+    tell(ctx, discarded ? 'Left /faur. The pending proposal was discarded; no files changed. Your agent\'s tools are back.' : 'Left /faur. No changes in this session; your agent\'s tools are back.');
   };
   /** The approval is based on deterministic data, not a model-written summary. */
   const promptFor = plan => `Apply this change?\n\n${approvalPreview(root, plan)}`;
@@ -144,13 +166,29 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
   // default, so a stray Enter changes nothing), apply or discard. Only a
   // direct /faur request arms the planner, the prompt is the approval, and a
   // session without a UI never applies.
+  pi.on('input', event => {
+    if (armed && event.source !== 'extension') lastRequest = event.text;
+  });
   pi.on('agent_end', async (_event, ctx) => {
     if (!armed) return;
     const plan = proposedThisTurn && !review ? pending : null;
     proposedThisTurn = false;
+    const suggestLeave = offerLeave && !plan;
+    offerLeave = false;
     if (!ctx.hasUI) {
       hide();
       if (plan) tell(ctx, 'The proposal was not applied: approving it needs an interactive session', 'error');
+      return;
+    }
+    if (suggestLeave) {
+      const choice = await ctx.ui.select('This is work for your agent, not a change to it.', ['Leave /faur and ask my agent', 'Stay in /faur']);
+      if (choice === 'Leave /faur and ask my agent') {
+        const request = lastRequest;
+        leave(ctx);
+        if (request) pi.sendUserMessage(request, { deliverAs: 'followUp' });
+        return;
+      }
+      stay(ctx);
       return;
     }
     if (!plan) { stay(ctx); return; }
@@ -161,12 +199,12 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     if (choice === 'Apply') {
       const files = [...new Set(['.pi/system.yaml', ...(plan.preview?.files ?? []).map(f => f.path)])].join(', ');
       hide();
-      try { tell(ctx, `Applied: ${files}. ${applyChange(root, plan, true)}`); } catch (error) { tell(ctx, error.message, 'error'); }
+      try { tell(ctx, `Applied: ${files}. ${applyChange(root, plan, true)} Left /faur; your agent's tools are back.`); } catch (error) { tell(ctx, error.message, 'error'); }
       return;
     }
-    if (choice === 'Discard') { hide(); tell(ctx, 'Discarded; nothing applied.'); return; }
+    if (choice === 'Discard') { leave(ctx); return; }
     stay(ctx);
-    tell(ctx, 'Nothing applied. Reply to discuss or change the proposal; /faur exit leaves without changes.');
+    tell(ctx, 'The proposal is not applied yet. Reply to discuss or change it; /faur exit leaves without changes.');
   });
   pi.on('tool_call', event => {
     if (armed && event.toolName !== 'faur_plan') return { block: true, reason: 'Maintenance uses only faur_plan; operational tools are suspended while in /faur' };
@@ -271,8 +309,8 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     // Maintenance is a separate loadout, not an expansion of operational
     // authority. Review cannot reach Bash/write/edit, MCP or subagents.
     pi.setActiveTools(['faur_plan']);
-    statusUi = ctx.ui;
-    ctx.ui?.setStatus?.('faur', 'In /faur: reply to continue · /faur exit to leave');
+    lastRequest = request;
+    showMode(ctx);
     const workflow = readFileSync(new URL('../skills/faur/SKILL.md', import.meta.url), 'utf8').split('## Project maintenance workflow\n')[1];
     pi.sendUserMessage(`${workflow}\n\nMode: ${review ? 'READ-ONLY REVIEW' : 'CHANGE PROPOSAL'}.\nUser request: ${request || 'review'}\n\nUse faur_plan inspect first. The command grants no Bash/write privileges. The person's replies continue this conversation until they apply or discard a proposal, or leave with /faur exit.`);
   };
@@ -281,8 +319,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
       const request = (args ?? '').trim();
       if (request === 'exit') {
         if (!armed) { tell(ctx, 'Not in /faur.'); return; }
-        hide();
-        tell(ctx, 'Left /faur; nothing applied.');
+        leave(ctx);
         return;
       }
       if (request === 'check') return check(ctx);

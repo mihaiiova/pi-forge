@@ -7,7 +7,7 @@ pass() { echo "ok - $1"; }
 fail() { echo "not ok - $1" >&2; exit 1; }
 
 # ── Pure-module node:test suites ────────────────────────────────
-for module in setup parse asking validate models skill-sources generate workflow-skill multi-agent discover mcp-gen policy modify skill-contract deps runtime integration-secrets import capabilities maintenance maintenance-fetch registry-skills launch-check cli-tools agent-context package-dependencies package-generation package-sdk package-skill package-clean-machine mcp-runtime delegation-native headless-workflow workflow-print-mode; do
+for module in setup parse asking validate models skill-sources generate workflow-skill multi-agent discover mcp-gen policy modify skill-contract deps runtime integration-secrets import capabilities maintenance maintenance-fetch registry-skills launch-check cli-tools agent-context package-dependencies package-generation package-sdk package-skill package-clean-machine mcp-runtime delegation-native headless-workflow workflow-print-mode maintenance-rpc; do
   if out="$(node --test "$here/$module.test.mjs" 2>&1)"; then
     if [[ "$module" == delegation-native && "${RUN_FAUR_DELEGATION_TEST:-}" != 1 ]]; then
       echo "ok - delegation-native.test.mjs SKIPPED (set RUN_FAUR_DELEGATION_TEST=1 to verify real-Pi MCP delegation; requires network)"
