@@ -15,7 +15,8 @@ the issues.
   documentation (v0.25.0); #33 (v0.25.0); #49 and #50 (v0.26.0); #65
   (v0.28.0); #66 (v0.29.0); regenerating projects that installed packages
   (v0.29.1); #60, #61 and #62 (v0.30.0); #63 (v0.31.0); #64 and #67 (v0.32.0); design-time research with `faur fetch`, the
-  `src/`/`test/` layout and headless `/faur` (v0.33.0).
+  `src/`/`test/` layout and headless `/faur` (v0.33.0); a visible `/faur` mode, hand-back of
+  agent work and approval dialogs that fit the screen (v0.34.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
