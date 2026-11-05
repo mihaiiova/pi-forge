@@ -15,7 +15,7 @@ import { approvalSummary, planChange, planSettingsAdoption, planSettingsReconcil
 import { parsedModel } from '../src/changes.mjs';
 import { readJson, readText, json, atomicWrite, fingerprints, applyWrites } from '../src/maintenance-store.mjs';
 import { redactedDiffPair } from '../src/maintenance-secrets.mjs';
-import { registerMaintenance } from '../src/maintenance-extension.mjs';
+import { registerMaintenance, MODE_STATUS } from '../src/maintenance-extension.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..');
 const faur = join(repo, 'src/faur.mjs');
@@ -1740,12 +1740,13 @@ test('maintenance is visible, says what leaving did, and offers to hand agent wo
   const command = arg => mock.faur(arg, mock.ctx);
   const tool = params => mock.tools.faur_plan.execute('id', params, undefined, undefined, mock.ctx);
 
-  // A widget above the editor says the agent's own tools are off.
+  // The footer status says so, black on yellow; nothing is drawn above the input.
   await command('use a cheaper model');
-  assert.match(mock.widgets.faur.join('\n'), /maintaining this agent\. Its own tools are off[\s\S]*\/faur exit/);
+  assert.equal(mock.status.faur, `\x1b[30;43m ${MODE_STATUS} \x1b[0m`);
+  assert.match(MODE_STATUS, /your agent's tools are off[\s\S]*\/faur exit/);
+  assert.deepEqual(mock.widgets, {}, 'no lines above the input');
   await command('exit');
-  assert.equal(mock.widgets.faur, undefined, 'leaving clears the widget');
-  assert.equal(mock.status.faur, undefined);
+  assert.equal(mock.status.faur, undefined, 'leaving clears the status');
   assert.match(mock.notices.at(-1)[0], /^Left \/faur\. No changes in this session; your agent's tools are back\.$/);
 
   // Leaving with a discussed proposal says it was discarded.
@@ -1774,7 +1775,7 @@ test('maintenance is visible, says what leaving did, and offers to hand agent wo
   const sentBefore = mock.messages.length;
   await mock.endTurn();
   assert.deepEqual(mock.pi.getActiveTools(), ['read'], "the agent's tools are back");
-  assert.equal(mock.widgets.faur, undefined);
+  assert.equal(mock.status.faur, undefined);
   assert.equal(mock.messages.length, sentBefore + 1);
   assert.equal(mock.messages.at(-1), 'do a marketing review of example.com', 'the latest request goes to the agent');
   assert.deepEqual(mock.sent.at(-1), { deliverAs: 'followUp' });

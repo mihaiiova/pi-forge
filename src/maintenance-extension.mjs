@@ -23,6 +23,9 @@ import { unmetSetup, installSetup } from './setup.mjs';
 /** The environment variable Pi reads for a provider's API key, when it has a common one. */
 const PROVIDER_ENV = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', openrouter: 'OPENROUTER_API_KEY', google: 'GEMINI_API_KEY' };
 
+/** The footer status while /faur maintains a project. */
+export const MODE_STATUS = "In /faur: your agent's tools are off · reply to continue · /faur exit to leave";
+
 export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } = {}) {
   let armed = false;
   let review = false;
@@ -136,7 +139,6 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     proposedThisTurn = false;
     offerLeave = false;
     statusUi?.setStatus?.('faur', undefined);
-    statusUi?.setWidget?.('faur', undefined);
     statusUi = null;
     documents = new Map();
     pi.registerTool({ ...tool, exposure: 'hidden' });
@@ -144,11 +146,11 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     savedTools = null;
   };
   pi.registerTool({ ...tool, exposure: 'hidden' });
-  /** Make maintenance visible: the agent's own tools are off until it ends. */
+  /** Make maintenance visible: the agent's own tools are off until it ends.
+   * Black on yellow (plain ANSI; Pi's theme has no yellow background). */
   const showMode = (ctx) => {
     statusUi = ctx.ui;
-    ctx.ui?.setStatus?.('faur', 'In /faur: reply to continue · /faur exit to leave');
-    ctx.ui?.setWidget?.('faur', ["Faur · maintaining this agent. Its own tools are off.", "Reply to continue · /faur exit to go back to your agent"]);
+    ctx.ui?.setStatus?.('faur', `\x1b[30;43m ${MODE_STATUS} \x1b[0m`);
   };
   /** Stay in /faur: the person's next plain message continues the conversation. */
   const stay = (ctx) => {

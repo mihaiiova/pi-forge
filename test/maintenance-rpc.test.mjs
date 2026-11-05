@@ -69,11 +69,12 @@ export default pi => {
   await until(() => events.filter(e => e.type === 'agent_end').length >= 2);
 
   const ui = events.filter(e => e.type === 'extension_ui_request');
-  assert.ok(ui.some(e => e.method === 'setWidget' && e.widgetKey === 'faur' && /Its own tools are off/.test(JSON.stringify(e.widgetLines))), `maintenance shows a widget: ${JSON.stringify(ui.map(e => e.method))}`);
+  assert.ok(ui.some(e => e.method === 'setStatus' && e.statusKey === 'faur' && /In \/faur: your agent's tools are off/.test(e.statusText ?? '')), `maintenance shows its status: ${JSON.stringify(ui.filter(e => e.method === 'setStatus'))}`);
+  assert.ok(!ui.some(e => e.method === 'setWidget'), 'nothing is drawn above the input');
   const select = ui.find(e => e.method === 'select');
   assert.equal(select?.title, 'This is work for your agent, not a change to it.');
   assert.ok(ui.some(e => e.method === 'notify' && /^Left \/faur\. No changes in this session/.test(e.message)));
-  assert.ok(ui.some(e => e.method === 'setWidget' && e.widgetKey === 'faur' && !e.widgetLines), 'leaving clears the widget');
+  assert.ok(ui.some(e => e.method === 'setStatus' && e.statusKey === 'faur' && !e.statusText), 'leaving clears the status');
 
   // Active tools at each model turn: /faur first, then the agent's own.
   const turns = readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
