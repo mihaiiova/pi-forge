@@ -132,8 +132,12 @@ test('adopting Pi settings preserves the native file and survives another revisi
   const root = project(t);
   const settings = readJson(root, '.pi/settings.json');
   settings.defaultModel = 'hand-edited';
-  settings.defaultTools = ['read', 'grep'];
   settings.theme = 'my-theme';
+  // Removing a baseline tool cannot be represented, so it is refused.
+  settings.defaultTools = ['read', 'grep'];
+  writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
+  assert.throws(() => planSettingsAdoption(root), /Cannot adopt defaultTools without ls, find: every Faur agent keeps read, ls, find, grep/);
+  settings.defaultTools = ['read', 'grep', 'ls', 'find', 'bash'];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
   const original = readText(root, '.pi/settings.json');
   const adoption = planSettingsAdoption(root);
@@ -142,7 +146,7 @@ test('adopting Pi settings preserves the native file and survives another revisi
   assert.equal(readText(root, '.pi/settings.json'), original);
   const adopted = yaml.parse(readText(root, '.pi/system.yaml'));
   assert.equal(adopted.orchestrator.model, 'fixture/hand-edited');
-  assert.deepEqual(adopted.orchestrator.tools, ['read', 'grep']);
+  assert.deepEqual(adopted.orchestrator.tools, ['read', 'grep', 'ls', 'find', 'bash']);
   applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
   assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'hand-edited');
   assert.equal(readJson(root, '.pi/settings.json').theme, 'my-theme');
@@ -183,7 +187,7 @@ test('settings reconciliation adopts selected fields, reapplies others and prese
   mock.approve();
   await command('drift reconcile .pi/settings.json adopt=model', mock.ctx);
   assert.equal(readJson(root, path).defaultModel, 'manual');
-  assert.deepEqual(readJson(root, path).defaultTools, ['read']);
+  assert.deepEqual(readJson(root, path).defaultTools, ['read', 'ls', 'find', 'grep'], 'reapplied tools carry the browsing baseline');
   assert.equal(readJson(root, path).theme, 'native-theme');
   assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/manual');
   const stale = planSettingsReconciliation(root, []);
@@ -220,9 +224,14 @@ test('specialist prompt adoption preserves a manual edit through revision', t =>
 
 test('a representable added specialist is adopted without rewriting its file', t => {
   const root = project(t);
-  const agent = { name: 'scout', description: 'Research', model: 'fixture/small', tools: ['read'], prompt: 'Research carefully.' };
-  const file = generateProject({ ...model, agents: [agent] }, {}, { piPackages: pkg.pi.packages }).files.find(item => item.path === '.pi/agents/scout.md');
+  // A specialist without the browsing baseline cannot be adopted as it is.
+  const narrow = { name: 'scout', description: 'Research', model: 'fixture/small', tools: ['read'], prompt: 'Research carefully.' };
+  const narrowFile = generateProject({ ...model, agents: [narrow] }, {}, { piPackages: pkg.pi.packages }).files.find(item => item.path === '.pi/agents/scout.md');
   mkdirSync(join(root, '.pi/agents'), { recursive: true });
+  writeFileSync(join(root, narrowFile.path), narrowFile.content);
+  assert.throws(() => planAgentAdoption(root, narrowFile.path), /Cannot adopt \.pi\/agents\/scout\.md tools without ls, find, grep/);
+  const agent = { ...narrow, tools: ['read', 'ls', 'find', 'grep'] };
+  const file = generateProject({ ...model, agents: [agent] }, {}, { piPackages: pkg.pi.packages }).files.find(item => item.path === '.pi/agents/scout.md');
   writeFileSync(join(root, file.path), file.content);
   const plan = planAgentAdoption(root, file.path);
   assert.throws(() => applyChange(root, plan, false), /approval/);
@@ -236,7 +245,7 @@ test('a representable added specialist is adopted without rewriting its file', t
 test('unmarked specialist adoption preserves and reports native-only frontmatter', t => {
   const root = project(t);
   const path = '.pi/agents/scout.md';
-  const text = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\ncustomNative: retained\n---\nResearch carefully.\n';
+  const text = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n  - ls\n  - find\n  - grep\ncustomNative: retained\n---\nResearch carefully.\n';
   mkdirSync(join(root, '.pi/agents'), { recursive: true });
   writeFileSync(join(root, path), text);
   const plan = planAgentAdoption(root, path);
@@ -254,7 +263,7 @@ test('unmarked specialist adoption refuses ambiguous prompt sources and stale pr
   const root = project(t);
   const path = '.pi/agents/scout.md';
   mkdirSync(join(root, '.pi/agents'), { recursive: true });
-  const front = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n';
+  const front = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n  - ls\n  - find\n  - grep\n';
   writeFileSync(join(root, path), `${front}systemPrompt: First\n---\nSecond\n`);
   assert.throws(() => planAgentAdoption(root, path), /both systemPrompt and body/);
   writeFileSync(join(root, path), `${front}---\nResearch\n`);
@@ -1148,7 +1157,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/small');
   assert.match(mock.notices.at(-1)[0], /^Applied: [\s\S]*\.pi\/system\.yaml[\s\S]*\/reload/);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
-  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read']);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'ls', 'find', 'grep']);
 
   // Discard drops the proposal and leaves /faur.
   const applied = readText(root, '.pi/system.yaml');
@@ -1831,12 +1840,12 @@ test('the approval summary names what a change writes and grants', t => {
     { op: 'assign', name: 'lead', model: 'fixture/small' },
   ]);
   const lead = parsedModel(readText(root, '.pi/system.yaml')).orchestrator;
-  const granted = planChange(root, [{ op: 'set', target: 'orchestrator', value: { ...lead, tools: [...lead.tools.filter(t => t !== 'grep'), 'grep'] } }]);
+  const granted = planChange(root, [{ op: 'set', target: 'orchestrator', value: { ...lead, tools: [...lead.tools, 'bash'] } }]);
   const summary = approvalSummary(root, plan);
   assert.match(summary[0], /^Writes \.pi\/system\.yaml/);
   assert.ok(summary.includes('Adds command edit-label: gh label edit {name} (asks before each run).'), summary.join('\n'));
   assert.ok(summary.some(line => /^lead model: .* → fixture\/small\.$/.test(line)), summary.join('\n'));
-  assert.ok(approvalSummary(root, granted).includes('lead gains grep.'), approvalSummary(root, granted).join('\n'));
+  assert.ok(approvalSummary(root, granted).includes('lead gains bash.'), approvalSummary(root, granted).join('\n'));
 });
 
 test('approval previews show every changed line with short context, not whole files', () => {
@@ -1853,4 +1862,28 @@ test('a preview file left by a killed session is removed when the next one start
   writeFileSync(join(root, PREVIEW_FILE), 'stale preview');
   mock.events.session_start({}, mock.ctx);
   assert.equal(existsSync(join(root, PREVIEW_FILE)), false);
+});
+
+test('every agent can browse: the baseline is recorded, generated and named in the preview', t => {
+  const root = project(t);
+  // A design recorded before the baseline (like projects made by v0.34).
+  const recorded = { ...model, orchestrator: { ...model.orchestrator, tools: ['read', 'write'] }, agents: [{ name: 'scout', description: 'Research', model: 'fixture/small', tools: ['mcp:docs'], prompt: 'Research.' }], integrations: { mcp: [{ name: 'docs', config: { url: 'http://localhost:3002/mcp' } }] } };
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(recorded));
+  const plan = rebuildPlan(root);
+  const summary = approvalSummary(root, plan);
+  assert.ok(summary.includes('lead gains ls, find, grep.'), summary.join('\n'));
+  assert.ok(summary.includes('scout gains read, ls, find, grep.'), summary.join('\n'));
+  applyChange(root, plan, true);
+  const design = yaml.parse(readText(root, '.pi/system.yaml'));
+  assert.deepEqual(design.orchestrator.tools, ['read', 'write', 'ls', 'find', 'grep'], 'the record says it');
+  assert.deepEqual(design.agents[0].tools, ['mcp:docs', 'read', 'ls', 'find', 'grep']);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'write', 'ls', 'find', 'grep']);
+  assert.match(readText(root, '.pi/agents/scout.md'), /tools:\n(  - .*\n)*  - grep\n/);
+  assert.equal(rebuildPlan(root).rebuild.unchanged, true, 'idempotent');
+  // tools: [] stays empty, and an enforced policy stays the ceiling.
+  const none = { ...recorded, orchestrator: { ...recorded.orchestrator, tools: [] }, policies: { enforced: [{ agent: 'scout', tools: ['mcp:docs'] }] } };
+  writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(none));
+  applyChange(root, rebuildPlan(root), true);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, []);
+  assert.doesNotMatch(readText(root, '.pi/agents/scout.md').split('---')[1], /- read/, 'the policy ceiling keeps scout away from files');
 });

@@ -66,3 +66,30 @@ export function advisoryText(policies) {
   if (!isPlainObject(policies) || !Array.isArray(policies.advisory)) return [];
   return policies.advisory.filter((line) => typeof line === "string");
 }
+
+/**
+ * Every agent can browse and read files: an explicit, non-empty tool list
+ * always includes these. They add no reach `read` lacks (it opens any file
+ * the user can); they make it usable. `tools: []` stays empty, an omitted
+ * list keeps Pi's defaults (which include bash), and an enforced
+ * `{ agent, tools }` policy rule stays the ceiling, so a design can still
+ * keep an agent away from files.
+ */
+export const BASELINE_TOOLS = ['read', 'ls', 'find', 'grep'];
+
+/** `tools` with the baseline added, or unchanged when empty or omitted. */
+export function withBaseline(tools) {
+  if (!Array.isArray(tools) || !tools.length) return tools;
+  return [...tools, ...BASELINE_TOOLS.filter(tool => !tools.includes(tool))];
+}
+
+/** The design with the baseline in every agent's explicit tool list. */
+export function withBaselineTools(model) {
+  if (!isPlainObject(model)) return model;
+  const agent = a => isPlainObject(a) && Array.isArray(a.tools) ? { ...a, tools: withBaseline(a.tools) } : a;
+  return {
+    ...model,
+    ...(isPlainObject(model.orchestrator) ? { orchestrator: agent(model.orchestrator) } : {}),
+    ...(Array.isArray(model.agents) ? { agents: model.agents.map(agent) } : {}),
+  };
+}

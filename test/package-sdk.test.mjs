@@ -219,7 +219,7 @@ test('imported specialist guidance is regenerated, not retained as stale authore
   const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true, noExtensions: true });
   await loader.reload();
   const { session } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: loader, settingsManager, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(session.getActiveToolNames(), ['read']); } finally { session.dispose(); }
+  try { assert.deepEqual(session.getActiveToolNames(), ['read', 'ls', 'find', 'grep'], 'real Pi starts the lead with the browsing baseline'); } finally { session.dispose(); }
 });
 
 test('import refuses a modified generated specialist before writing a design record', async t => {
@@ -274,6 +274,9 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
   settings.defaultTools = ['read'];
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  assert.throws(() => planSettingsAdoption(root), /without ls, find, grep/, 'dropping the browsing baseline cannot be adopted');
+  settings.defaultTools = ['read', 'ls', 'find', 'grep', 'bash'];
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   assert.ok(inspectProject(root).nativeDrift.some(item => item.path === '.pi/settings.json'));
   const sdk = await sdkModule();
   const agentDir = join(root, 'home');
@@ -282,7 +285,7 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true });
   await loader.reload();
   const { session } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: loader, settingsManager, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(session.getActiveToolNames(), ['read']); }
+  try { assert.deepEqual(session.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash']); }
   finally { session.dispose(); }
   applyChange(root, planSettingsAdoption(root), true);
   applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
@@ -291,7 +294,7 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   await newLoader.reload();
   const { session: revised } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: newLoader, settingsManager: newSettings, sessionManager: sdk.SessionManager.inMemory(root) });
   try {
-    assert.deepEqual(revised.getActiveToolNames(), ['read']);
+    assert.deepEqual(revised.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash'], 'the adopted edit survives a revision');
     assert.match(revised.systemPrompt, /Cite full file paths and include a summary/);
   } finally { revised.dispose(); }
   const drifted = JSON.parse(readFileSync(settingsPath, 'utf8'));
@@ -302,7 +305,7 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   const reappliedLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: reappliedSettings, noContextFiles: true });
   await reappliedLoader.reload();
   const { session: reapplied } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: reappliedLoader, settingsManager: reappliedSettings, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(reapplied.getActiveToolNames(), ['read']); }
+  try { assert.deepEqual(reapplied.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash'], 'reapply restores the adopted design'); }
   finally { reapplied.dispose(); }
   writeFileSync(promptPath, readFileSync(promptPath, 'utf8').replace('include a summary', 'include a different summary'));
   applyChange(root, planNativeReapply(root, '.pi/APPEND_SYSTEM.md'), true);
@@ -316,6 +319,9 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   mixed.defaultModel = 'manual-model';
   mixed.defaultTools = ['read', 'grep'];
   writeFileSync(settingsPath, JSON.stringify(mixed, null, 2) + '\n');
+  assert.throws(() => planSettingsReconciliation(root, ['tools']), /without ls, find/);
+  mixed.defaultTools = ['read', 'grep', 'ls', 'find'];
+  writeFileSync(settingsPath, JSON.stringify(mixed, null, 2) + '\n');
   applyChange(root, planSettingsReconciliation(root, ['tools']), true);
   assert.notEqual(JSON.parse(readFileSync(settingsPath, 'utf8')).defaultModel, 'manual-model');
   applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
@@ -323,7 +329,7 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   const mergedLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: mergedSettings, noContextFiles: true });
   await mergedLoader.reload();
   const { session: merged } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: mergedLoader, settingsManager: mergedSettings, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(merged.getActiveToolNames().sort(), ['grep', 'read']); }
+  try { assert.deepEqual(merged.getActiveToolNames().sort(), ['find', 'grep', 'ls', 'read']); }
   finally { merged.dispose(); }
 });
 

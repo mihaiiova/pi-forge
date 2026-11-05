@@ -189,6 +189,12 @@ first; the user decides.
   …): `deliver: [{ mcp, tool, with?, note? }]`, any number per document; the
   writer needs that tool. The agreed format and deliveries are rendered into
   the writer's instructions.
+- **Tools:** every agent with a tools list gets `read`, `ls`, `find` and
+  `grep`; Faur adds them, so list them and don't argue them away. Add other
+  tools only for what the agent does (`write`/`edit` for files it produces,
+  `bash` only when nothing narrower works). To keep a specialist away from
+  files, use an enforced policy rule `{ agent, tools }`, which is not
+  extended.
 - **Command-line tools:** when an agent needs a CLI the user already has
   (`gh`, `wrangler`, `stripe`, a project script), prefer a declared command
   in `integrations.cli` over `bash`: a fixed shape such as

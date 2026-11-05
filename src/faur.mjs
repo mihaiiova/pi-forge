@@ -11,6 +11,7 @@ import { join, resolve, dirname, basename, relative } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseSystem } from "./parse.mjs";
+import { withBaselineTools } from "./policy.mjs";
 import { validateSystem } from "./validate.mjs";
 import { generateProject, managedPaths, intactScaffold } from "./generate.mjs";
 import { indent } from "./diff.mjs";
@@ -102,7 +103,7 @@ function loadModel(dir) {
   }
 
   const { ok, errors } = validateSystem(doc);
-  return { systemPath, normalized: doc, ok, errors };
+  return { systemPath, normalized: ok ? withBaselineTools(doc) : doc, ok, errors };
 }
 
 /** The machine's Pi model line-up (`provider/id`), or [] when unavailable. */

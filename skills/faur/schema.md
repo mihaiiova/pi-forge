@@ -65,6 +65,17 @@ level go into its own `.pi/agents/<name>.md` frontmatter. No routing overrides
 Allowed keys: `name` (required string), `description`, `prompt`, `model`
 (required `provider/id`), `thinking` and `tools` (array of strings).
 
+**Browsing baseline (enforced by the generator).** Every explicit, non-empty
+`tools` list, the orchestrator's and each subagent's, includes `read`, `ls`,
+`find` and `grep`. Faur adds any that are missing when it reads a design and
+writes them into `system.yaml` on its next change, which the preview names
+("<agent> gains ls, find, grep"). They give no reach `read` lacks (it opens
+any file the user can); they make it usable. `tools: []` stays empty, an
+omitted list keeps Pi's defaults, and an enforced `{ agent, tools }` policy
+rule is not extended, so a design can still keep a specialist away from
+files. A native edit that drops a baseline tool cannot be adopted; Faur
+refuses and says why.
+
 Pi loads the project's `AGENTS.md` (and `AGENTS.md` files in parent folders)
 into the orchestrator's prompt by itself. Generation
 warns about files from outside the project. They are instructions sent to the
@@ -91,7 +102,8 @@ prompts, workflows, documents and advisory policies that still name it.
 Allowed keys: `name` (required string), `description`, `tools` (array of
 strings), `model` (required `provider/id`), `thinking`, `skills` (array of
 declared `skills[].name`), `prompt`, `inheritProjectContext`, `inheritSkills`.
-`tools:` is the subagent allowlist (enforced by pi-subagents). Faur does not
+`tools:` is the subagent allowlist (enforced by pi-subagents), including the
+browsing baseline above. Faur does not
 select foreground or background execution. Built-in MCP tools work in either
 mode. A foreground specialist using an extension tool must also list the
 providing extension path in its native agent file; Faur cannot infer that path
@@ -259,7 +271,9 @@ documents:
 Allowed keys: `enforced` (array) and `advisory` (array of strings).
 
 - `enforced[]` entries carry exactly one discriminator:
-  - `{ agent: <agents[].name>, tools: [string, …] }` → subagent tool allowlist.
+  - `{ agent: <agents[].name>, tools: [string, …] }` → subagent tool allowlist,
+    the ceiling: it replaces the agent's `tools` and is not extended by the
+    browsing baseline.
   - `{ mcp: <integrations.mcp[].name>, hide: [string, …] }` → MCP
     hidden tools in `.pi/mcp.json` (registered but unreachable).
 - `advisory[]` are behavioral guidance strings (README + skill text).

@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, readdirSync, realpathSync } from 'node:fs';
+import { withBaselineTools } from './policy.mjs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { parsedModel } from './changes.mjs';
@@ -52,9 +53,10 @@ export function hostConflicts(root, model, { agentDir = process.env.PI_CODING_AG
 
 /** Check model validity, generated configuration and launch prerequisites. */
 export function checkProject(root, { registeredTools, mcpTools, env = process.env, hostAgentDir, mcpCommand } = {}) {
-  const doc = loadYaml().parse(readText(root, '.pi/system.yaml') ?? '');
-  const validation = validateSystem(doc).errors;
+  const raw = loadYaml().parse(readText(root, '.pi/system.yaml') ?? '');
+  const validation = validateSystem(raw).errors;
   if (validation.length) return { ok: false, validation, consistency: null, launch: null, advisories: [] };
+  const doc = withBaselineTools(raw);
   const piPackages = readJson(root, '.pi/settings.json').packages ?? [];
   const consistency = checkCapabilities(doc, { settings: readJson(root, '.pi/settings.json'), mcpJson: readText(root, '.pi/mcp.json') === null ? {} : readJson(root, '.pi/mcp.json') }, { piPackages }).errors;
   const launch = launchCheck(root, doc, { registeredTools, mcpTools }).problems.map(p => `${p.agent}: ${p.problem}`);

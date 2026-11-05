@@ -1,4 +1,5 @@
 /** Configuration maintenance reuses the Faur's existing model/ownership seams. */
+import { BASELINE_TOOLS } from './policy.mjs';
 import { changeModel, parsedModel } from './changes.mjs';
 import { scanSkills } from './discover.mjs';
 import { staleMentions } from './agent-context.mjs';
@@ -200,6 +201,7 @@ export function planSettingsAdoption(root) {
   const oldModel = parsedModel(readText(root, '.pi/system.yaml'));
   const imported = importSystem(settings, {}).system.orchestrator;
   if (!imported.model || !Array.isArray(settings.defaultTools)) throw new Error('Cannot adopt settings without an explicit provider, model and defaultTools');
+  assertBaselineAdoptable(settings.defaultTools, 'defaultTools');
   const retained = (oldModel.orchestrator.tools ?? []).filter(tool => tool === 'mcp' || tool.startsWith('mcp:') || tool.startsWith('cli:'));
   const orchestrator = { ...oldModel.orchestrator, model: imported.model, tools: [...imported.tools, ...retained] };
   if (imported.thinking === undefined) delete orchestrator.thinking;
@@ -227,6 +229,7 @@ export function planSettingsReconciliation(root, adopt) {
   const settings = readJson(root, path);
   const oldModel = parsedModel(readText(root, '.pi/system.yaml'));
   const imported = importSystem(settings, {}).system.orchestrator;
+  if (adopt.includes('tools')) assertBaselineAdoptable(settings.defaultTools, 'defaultTools');
   const orchestrator = { ...oldModel.orchestrator };
   if (adopt.includes('model')) {
     if (!imported.model) throw new Error('Cannot adopt settings without an explicit provider and model');
@@ -272,6 +275,13 @@ export function planPromptAdoption(root) {
 }
 
 /** Import an authored Pi specialist without rewriting its native definition. */
+/** Adopting native tools that drop part of the browsing baseline cannot be
+ * represented: the design would add them back. Refuse, and say so. */
+function assertBaselineAdoptable(tools, what) {
+  const dropped = Array.isArray(tools) && tools.length ? BASELINE_TOOLS.filter(tool => !tools.includes(tool)) : [];
+  if (dropped.length) throw new Error(`Cannot adopt ${what} without ${dropped.join(', ')}: every Faur agent keeps ${BASELINE_TOOLS.join(', ')}. Keep the edit native (reapplying the design would add them back) or add them first.`);
+}
+
 function planUnmarkedAgentAdoption(root, path, name, oldModel, text) {
   const match = text?.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) throw new Error('Specialist needs YAML frontmatter to adopt; its native file is preserved');
@@ -279,6 +289,7 @@ function planUnmarkedAgentAdoption(root, path, name, oldModel, text) {
   if (!native || typeof native !== 'object' || Array.isArray(native) || native.name !== name || typeof native.description !== 'string' || !Array.isArray(native.tools)) throw new Error('Specialist needs matching name, description and an explicit tools list to adopt');
   if (native.systemPrompt !== undefined && typeof native.systemPrompt !== 'string') throw new Error('Specialist systemPrompt must be text');
   if (native.systemPrompt !== undefined && match[2].trim()) throw new Error('Specialist has both systemPrompt and body; preserve it until their runtime precedence is resolved');
+  assertBaselineAdoptable(native.tools, `${path} tools`);
   const candidate = { name, description: native.description, tools: native.tools, prompt: native.systemPrompt ?? match[2] };
   for (const key of ['model', 'thinking', 'skills', 'inheritProjectContext', 'inheritSkills']) if (native[key] !== undefined) candidate[key] = native[key];
   const opts = { piPackages: pinsAt(root), contextFiles: skippedContextFiles(root) };
@@ -315,6 +326,7 @@ export function planAgentAdoption(root, path) {
     const native = loadYaml().parse(front[1]);
     const keys = ['name', 'description', 'tools', 'model', 'thinking', 'skills', 'inheritProjectContext', 'inheritSkills', 'async', 'systemPrompt'];
     if (!native || Object.keys(native).some(key => !keys.includes(key)) || native.name !== match[1] || !Array.isArray(native.tools) || typeof native.systemPrompt !== 'string') throw new Error('New specialist has unsupported frontmatter; preserve and reconcile it explicitly');
+    assertBaselineAdoptable(native.tools, `${path} tools`);
     const candidate = { name: native.name, description: native.description, tools: native.tools, prompt: '' };
     for (const key of ['model', 'thinking', 'skills', 'inheritProjectContext', 'inheritSkills']) if (native[key] !== undefined) candidate[key] = native[key];
     const opts = { piPackages: pinsAt(root), contextFiles: skippedContextFiles(root) };
@@ -591,7 +603,7 @@ export function planChange(root, operations, options = {}) {
     || new Set(inventory.registrySkills.map(skill => typeof skill === 'string' ? skill : skill.name)).size !== inventory.registrySkills.length)) {
     throw new Error('Invalid declaration inventory in .faur/build.json; resolve it before reconciliation');
   }
-  const { model, text } = changeModel(oldText, operations);
+  const { model, text, baselineAdded } = changeModel(oldText, operations);
   assertNoNewSecrets(loadYaml().parse(oldText), model);
   if (options.reconcileAgent !== undefined && (!/^\.pi\/agents\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(options.reconcileAgent) || operations.length !== 1 || operations[0].op !== 'update' || operations[0].target !== 'agent' || options.reconcileAgent !== `.pi/agents/${operations[0].name}.md`)) throw new Error('Invalid selected specialist reconciliation');
   if (options.preserveNativePath !== undefined && !['.pi/mcp.json', '.pi/commands.json'].includes(options.preserveNativePath)) throw new Error('Unsupported selected native merge path');
@@ -706,7 +718,9 @@ export function planChange(root, operations, options = {}) {
     remove: removedRegistry,
     verify,
   };
-  const writes = { '.pi/system.yaml': operations.length === 1 && operations[0].op === 'reconcile' ? oldText : text };
+  // A reconcile keeps the record byte-for-byte unless the browsing baseline
+  // had to be written into it (then the design diff shows it).
+  const writes = { '.pi/system.yaml': operations.length === 1 && operations[0].op === 'reconcile' && !baselineAdded ? oldText : text };
   const vendorModes = {};
   for (const copy of vendorCopies) {
     if (!vendoredSkills(model).some(skill => skill.name === copy.name && skill.source === copy.source) || copy.dest !== `.pi/skills/${copy.name}`) throw new Error(`Invalid vendored skill plan: ${copy.name}`);
@@ -898,7 +912,8 @@ export function planChange(root, operations, options = {}) {
         toolsAndPoliciesChanged: JSON.stringify([oldModel.orchestrator?.tools, oldModel.agents, oldModel.policies]) !== JSON.stringify([model.orchestrator?.tools, model.agents, model.policies]),
         warning: 'Setup checks execute shell commands automatically; installs execute after confirmation. Packages and stdio MCP servers execute code at next launch. MCP URLs expose data to their operators. Approval authorizes this declared execution surface.',
       },
-      grants: agentGrants(oldModel, model),
+      // Against the design as recorded, so tools the browsing baseline adds are named.
+      grants: agentGrants(loadYaml().parse(oldText), model),
       modelDiff: diffLines(oldText, text),
       advisories: configurationAdvisories(model),
       ...(stale.length ? { staleMentions: { note: 'These instructions still mention a capability this change removes, so agents would keep reaching for it. Update them in the same proposal.', mentions: stale } } : {}),

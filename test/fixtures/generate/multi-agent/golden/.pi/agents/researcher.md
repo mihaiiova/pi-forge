@@ -5,6 +5,9 @@ tools:
   - read
   - write
   - bash
+  - ls
+  - find
+  - grep
 model: provider-b/model-small
 thinking: low
 systemPrompt: |
@@ -15,9 +18,9 @@ systemPrompt: |
   
   Generated from this system's declarations; it changes when they do. Use only what is listed here.
   
-  - **Built-in tools:** read, write, bash
+  - **Built-in tools:** read, write, bash, ls, find, grep
   
   If a task needs something not listed, report what is missing to the orchestrator instead of working around it.
 ---
 
-<!-- faur:generated v1 sha256=858a6f74006026e0db8102247bb77e8239888ddf1649ec87efb749a0758ed9a6 -->
+<!-- faur:generated v1 sha256=cbb9f7662381aacdc09ed2d016c52f36caac88a2b81672ca11965018c1ad488c -->

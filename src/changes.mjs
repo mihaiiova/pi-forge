@@ -1,4 +1,5 @@
 /** Small schema-aware change layer. No filesystem or installation authority. */
+import { withBaseline, withBaselineTools } from './policy.mjs';
 import { loadYaml } from './yaml-loader.mjs';
 import { validateSystem } from './validate.mjs';
 
@@ -70,8 +71,17 @@ export function changeModel(text, operations) {
       }
     } else throw new Error(`Unknown target ${o.target}`);
   }
+  // Write the browsing baseline into the design, so the record says it.
+  const js = doc.toJS();
+  const paths = [['orchestrator'], ...(Array.isArray(js?.agents) ? js.agents.map((_, i) => ['agents', i]) : [])];
+  let baselineAdded = false;
+  for (const path of paths) {
+    const tools = path.reduce((v, k) => v?.[k], js)?.tools;
+    const full = withBaseline(tools);
+    if (Array.isArray(tools) && full.length !== tools.length) { put([...path, 'tools'], full); baselineAdded = true; }
+  }
   const model = assertValid(doc.toJS());
-  return { model, text: doc.toString() };
+  return { model, text: doc.toString(), baselineAdded };
 }
-/** Parse and validate the project's current model. */
-export function parsedModel(text) { return assertValid(loadYaml().parse(text)); }
+/** Parse and validate the project's current model, with the browsing baseline. */
+export function parsedModel(text) { return withBaselineTools(assertValid(loadYaml().parse(text))); }
