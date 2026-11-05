@@ -81,9 +81,7 @@ every decision is judged against.
   existing repository. It understands the stack and conventions, and adds
   reviewer, tester or planner specialists only where they help.
 
-Revisor, a web and CLI testing agent (`~/projects/revisor`), is the first agent
-built with Faur and the QA reference in
-[generated-agent-audit.md](generated-agent-audit.md).
+Revisor, a web and CLI testing agent, was the first agent built with Faur.
 
 ## 4. The specialized-agent model
 
@@ -159,9 +157,8 @@ something a project gets from a package, Faur moves to the built-in.
   credentials (the caller's environment and declared variables) to Pi, every
   agent, every tool and their subprocesses. `secret: true`, tool approval,
   path rules and separate files or processes do not hide values from other
-  same-user code; the investigation in
-  [protected-integration-investigation.md](protected-integration-investigation.md)
-  demonstrated this. A **protected integration** — selected secrets reachable
+  same-user code; the investigation recorded on #70 demonstrated this.
+  A **protected integration** — selected secrets reachable
   only by one authorized tool, not by Pi, other agents, other tools or other
   runs — is a different, stronger guarantee. Faur does not provide it today.
   It is deferred until a reference agent needs it; then it starts by proving

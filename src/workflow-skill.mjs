@@ -7,8 +7,7 @@
  * inputs, outputs, approval, verify) and authoring instructions to orchestrate
  * the named agents via `subagent` — but it deliberately does NOT prescribe a
  * fixed internal step graph. Execution decisions stay with the skill at
- * runtime, matching `docs/agent-factory.md` §C.3 ("declared boundaries,
- * dynamic decisions").
+ * runtime: declared boundaries, dynamic decisions.
  */
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);

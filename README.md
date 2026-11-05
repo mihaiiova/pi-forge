@@ -181,8 +181,7 @@ to see the servers, their tools and errors, and to sign in to
 servers that use OAuth.
 
 See [`schema.md`](skills/faur/schema.md) for every field, validation
-rule and the file-ownership contract, and [docs/agent-factory.md](docs/agent-factory.md)
-for the original architecture and MVP plan (kept as history).
+rule and the file-ownership contract.
 
 ### Prompts: roles, not tool manuals
 
@@ -285,8 +284,8 @@ does not automatically create that file or change its MCP configuration.
 A trusted run is not a **protected integration**, where selected secrets
 reach only one authorized tool and not Pi, other agents, other tools or other
 runs. Faur does not provide protected integrations: separate files, file
-modes, processes or path rules do not hide values from same-user code (see the
-[investigation](docs/protected-integration-investigation.md)). That boundary
+modes, processes or path rules do not hide values from same-user code (investigated
+in #70). That boundary
 is deferred until an agent needs it, and will be claimed only with
 adversarial evidence.
 

@@ -4,9 +4,8 @@ The single roadmap. Issues live in GitHub under epic
 [#24](https://github.com/mihaiiova/faur/issues/24); this file orders them.
 Engineering principles are in [AGENTS.md](../AGENTS.md). The 2026-11-02
 architecture review is recorded in
-[architecture-audit.md](architecture-audit.md),
-[generated-agent-audit.md](generated-agent-audit.md) and
-[backlog-review.md](backlog-review.md).
+[architecture-audit.md](architecture-audit.md); its backlog decisions are on
+the issues.
 
 ## Status (2026-11-03)
 
@@ -112,7 +111,7 @@ is inferred instead, it is marked as an assumption.
 | Selecting a subset of a package's resources | **Missing** | Pi supports `{source, extensions, skills, prompts}` filters (Pi `docs/packages.md`). `packages[]` accepts strings only |
 | Effective-capability verification | **Partial** | `capabilities.json` is derived from declarations only. `launchCheck` checks subagent tools at session start against cached MCP lists and live registrations. It checks only the orchestrator's CLI commands, and there is no explicit command to run it |
 | Workflows | **Partial** | Declared boundaries plus a generated orchestrating skill (`workflow-skill.mjs`). `trigger.kind` is `manual` or `headless`. There is no defined way to invoke one headlessly, and no exit-status or output contract |
-| Scheduling and event triggers | **Missing** | Deferred by design in the MVP (`docs/agent-factory.md` decision 2) |
+| Scheduling and event triggers | **Missing** | Deferred by design since the MVP |
 | Execution history | **Partial** | Pi sessions in `.factory/pi-home/sessions`. `subagentRuns` summarizes `pi-subagents` launches. Top-level headless runs are not recorded |
 | Functional verification | **Missing** | `workflows[].verify` is free text. Live tests are opt-in and generic, not agent-specific |
 | Maintenance: versioned bundles, integrity, update checks, rebuild, rollback, recovery | Implemented; **to be removed** | ≈1,600 lines plus a 478-line doc. Replaced by a pinned Pi package (#41) |

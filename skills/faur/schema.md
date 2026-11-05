@@ -301,8 +301,6 @@ rejected and must be redefined with per-agent models.
 
 ## 4. Ownership / edit-preservation contract
 
-Full text of `docs/agent-factory.md` §C.6:
-
 1. **Derived files** (`settings.json` model fragment + `packages` + `defaultTools`,
    and `mcp.json`) are faur-owned and regenerated on
    every `generate`; **unknown keys the faur does not own are preserved**

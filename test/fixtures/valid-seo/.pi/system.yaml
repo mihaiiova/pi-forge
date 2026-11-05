@@ -1,4 +1,4 @@
-# Reference example from docs/agent-factory.md §C.5 — must validate.
+# Reference SEO example — must validate.
 schema: 1
 name: seo-agent-system
 description: "SEO analysis + article drafting with OpenSEO"

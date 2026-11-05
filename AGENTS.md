@@ -15,7 +15,7 @@ The command, package, CLI and skill are `faur`; the maintenance tool is
 | What Faur is, its boundaries and non-goals | [docs/product-direction.md](docs/product-direction.md) |
 | What is planned, in what order | GitHub issues (epic #24), indexed in [docs/roadmap.md](docs/roadmap.md) — the only roadmap |
 | Current architecture, known complexity and cleanup plan | [docs/architecture-audit.md](docs/architecture-audit.md) |
-| What generated agents contain and why | [docs/generated-agent-audit.md](docs/generated-agent-audit.md) |
+| What generated agents contain | golden fixtures in `test/fixtures/generate/*/golden` |
 | `system.yaml` and file ownership | [skills/faur/schema.md](skills/faur/schema.md) |
 | Conversational builder behavior | [skills/faur/SKILL.md](skills/faur/SKILL.md), [docs/faur-conversation.md](docs/faur-conversation.md) |
 | Headless workflow contract | [docs/headless-workflows.md](docs/headless-workflows.md) |
@@ -81,8 +81,8 @@ schema field, runtime hook or dependency needs all of it.
 
 **Complexity is paid for by the use case that needs it.** A minimal
 single-agent project must not inherit files, packages, schema or runtime hooks
-that only advanced systems need. The minimal agent in
-[docs/generated-agent-audit.md](docs/generated-agent-audit.md) is the baseline.
+that only advanced systems need. The minimal agent
+(`test/fixtures/generate/minimal/golden`) is the baseline.
 
 ## Boundaries
 
