@@ -71,8 +71,8 @@ reference agents.
 6. **Enforcement is real:** every "enforced" statement in generated text has a
    passing real-Pi test; nothing claims credential protection or OS isolation.
 7. **Launch is what it says:** plain `pi` reports host conflicts (shown with
-   a global `pi-mcp-adapter`) and does not claim isolation. Generated `run`
-   scripts are to be removed under #62; callers own any isolation.
+   a global `pi-mcp-adapter`) and does not claim isolation. Faur no longer
+   generates `run` scripts (#62); callers own any isolation.
 8. **Truthful capabilities and outcomes:** capability text matches exposure;
    headless runs report task outcome separately from run status.
 
@@ -96,7 +96,7 @@ is inferred instead, it is marked as an assumption.
 | Conversational design (explore → synthesize → build) | Implemented, satisfactory | `SKILL.md`; scenarios in `docs/agent-factory-conversation.md`; skill-contract test |
 | Declarative model and validator (`system.yaml` schema 1) | Implemented, satisfactory | `validate.mjs`, `schema.md`; strict unknown-key and reference checks |
 | Deterministic generation, ownership, dry-run, idempotence | Implemented, satisfactory | `generate.mjs`; golden fixtures; fingerprint conflicts |
-| Plain Pi launch | Implemented; pending review | `generate.mjs`; real-Pi SDK and headless workflow tests |
+| Plain Pi launch | Implemented | `generate.mjs`; real-Pi SDK and headless workflow tests |
 | Per-agent models and thinking | Implemented, satisfactory | `models.mjs` |
 | Skills from skills.sh (search, preview, pin, project-local install) | Implemented, satisfactory | `registry-skills.mjs`, `skill-sources.mjs` |
 | Specialists and tool allowlists | Implemented; foreground extension paths require explicit verification | `policy.mjs`, `generate.mjs`, `asking.mjs` |

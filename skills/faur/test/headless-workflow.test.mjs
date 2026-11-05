@@ -64,6 +64,30 @@ function headless({ root, env }, request = 'check the login page') {
   return { status: result.status, stderr: result.stderr, text, toolResults };
 }
 
+test('minimal generated project runs plain Pi offline without Faur or system.yaml', t => {
+  const yaml = `schema: 1
+name: minimal
+orchestrator:
+  name: lead
+  model: faux/faux-1
+  tools: [read, grep, find, ls]
+  prompt: Answer questions about local notes.
+`;
+  const info = project(t, yaml, "fauxAssistantMessage('MINIMAL-OK')");
+  assert.ok(info);
+  const settings = JSON.parse(readFileSync(join(info.root, '.pi/settings.json'), 'utf8'));
+  assert.equal(settings.packages, undefined, 'minimal project needs no Faur or other package');
+  rmSync(join(info.root, '.pi/system.yaml'));
+  const run = spawnSync('pi', ['--approve', '--no-session', '--mode', 'json', '-p', 'Say hello'], {
+    cwd: info.root, env: { ...info.env, PI_CODING_AGENT_DIR: join(info.root, '.home') }, encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const events = run.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line));
+  const end = events.find(event => event.type === 'agent_end');
+  assert.ok(end?.messages?.some(message => message.role === 'assistant' && message.content?.some(part => part.text === 'MINIMAL-OK')), run.stdout);
+  assert.equal(existsSync(join(info.root, '.pi/system.yaml')), false);
+});
+
 const approvals = (called) => `schema: 1
 name: approval-workflow
 orchestrator:

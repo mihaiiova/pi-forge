@@ -1,0 +1,20 @@
+# A saved Toad suite. `toad run --suite example` runs it; commit it, it holds no secrets.
+# It is a handoff (kind, target, goal, scenarios, limitations) plus tags and writes.
+#
+# kind: web                          # web, cli or api
+# title: Smoke test of the home page
+# target:                            # omitted fields come from toad.yaml; --url and --workdir override
+#   url: http://localhost:3000
+# goal: Check that the public pages load and link together.
+# tags: [smoke]                      # `toad run --tag smoke` picks suites and scenarios by tag
+# writes: false                      # true: may create, change or delete data; needs --allow-writes
+# credentials:                       # references only: .toad/.env, or the CI environment with --env
+#   email: { env: TOAD_TEST_EMAIL }
+# scenarios:
+#   - name: Home page loads
+#     steps: Open the home page.
+#     expected: The page shows the product name and a sign-in link.
+#     tags: [smoke]
+# limitations:
+#   - Do not submit any form.
+# timeout_minutes: 10

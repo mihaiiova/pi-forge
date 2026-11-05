@@ -12,7 +12,7 @@
 > shell-like command can get around (#65).
 
 > Status: **implemented**. The `factory` CLI (`validate | generate | discover |
-> modify | import`), the `agent-factory` builder skill, and the hermetic
+> modify | import`), the `agent-factory` builder skill, and the historical
 > `./run` launcher ship under `skills/agent-factory/`. Generated systems now pin
 > the Factory as a Pi package, which provides `/factory-update` for declarative
 > changes, reviews and updates (see the README), superseding this MVP plan's
@@ -316,7 +316,7 @@ generated-project/
 ├── .factory/                  # isolated runtime home (gitignored)
 │   ├── pi-home/               # PI_CODING_AGENT_DIR (credentials, isolated config)
 │   └── capabilities.json      # effective-capability manifest (derived, inspectable)
-├── run                        # hermetic launcher — the canonical entry point
+├── run                        # historical launcher (not hermetic)
 ├── data/                      # mutable outputs + shared knowledge (gitignored)
 │   └── knowledge/
 ├── .gitignore                 # data/, .env, .factory/, .pi/state.json, .pi/sessions/

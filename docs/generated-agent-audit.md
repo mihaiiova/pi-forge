@@ -1,6 +1,9 @@
 # Generated-agent audit (v0.26.0)
 
-What Faur actually generates, judged against the minimal agent. Three
+> Historical snapshot, not current generated output. See `AGENTS.md`,
+> `skills/faur/schema.md` and `docs/architecture-audit.md` for current behavior.
+
+What Faur generated at v0.26.0, judged against the minimal agent. Three
 systems were generated with the historical `node skills/forge/forge.mjs generate` at
 `79d1b6a` (v0.26.0):
 

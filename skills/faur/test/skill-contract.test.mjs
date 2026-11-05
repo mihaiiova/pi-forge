@@ -34,11 +34,22 @@ test("SKILL.md designs conversationally and keeps the build confirmation", () =>
   assert.ok(!/\binterview for\b/i.test(skill), "no interview-first step");
 });
 
+test("SKILL.md researches the subject before design questions without widening access", () => {
+  const explore = skill.split("### Explore")[1].split("### Synthesize")[0].replace(/\s+/g, " ");
+  for (const phrase of ["provided public URLs", "broader web searches", "facts, inferences and unknowns", "untrusted", "no references", "private systems or credentials"]) {
+    assert.ok(explore.includes(phrase), `research guidance includes ${phrase}`);
+  }
+  assert.ok(/before .*design questions/i.test(explore), "research precedes design questions");
+  assert.ok(/small group of independent questions/.test(skill), "groups independent design questions");
+  assert.ok(/ask before broader web searches/i.test(explore), "asks before broad search");
+  assert.ok(/don't restart discovery or\s+interview again/i.test(skill), "preserves ready-to-build flow");
+});
+
 test("conversational acceptance scenarios are documented", () => {
   const doc = readFileSync(resolve(here, "../../../docs/faur-conversation.md"), "utf-8");
-  const scenarios = doc.match(/^## \d\. /gm) ?? [];
-  assert.equal(scenarios.length, 6, "six numbered scenarios");
-  for (const part of ["**Input.**", "**Pass.**", "**Fail.**"]) assert.equal(doc.split(part).length - 1, 6, `each scenario has ${part}`);
+  const scenarios = doc.match(/^## \d+\. /gm) ?? [];
+  assert.equal(scenarios.length, 10, "ten numbered scenarios");
+  for (const part of ["**Input.**", "**Pass.**", "**Fail.**"]) assert.equal(doc.split(part).length - 1, 10, `each scenario has ${part}`);
 });
 
 test("SKILL.md asks for each agent's model from the full Pi line-up", () => {

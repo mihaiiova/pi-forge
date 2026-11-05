@@ -28,8 +28,7 @@ decision:
 3. **Plain Pi launch.** Projects use `pi` and `pi -p`, without a generated
    `run` script. Plain Pi inherits the user's global configuration and is not
    hermetic; Faur reports relevant conflicts. Isolation, if needed, is the
-   caller's responsibility. Removal of the generated launcher is pending
-   review in #62.
+   caller's responsibility. Faur no longer generates a launcher (#62).
 4. **Trusted execution is not protected integration.** Credentials in a run
    are available to Pi, every agent and every tool in it. Faur offers no
    same-user confidentiality today; that stronger boundary is deferred (see

@@ -240,10 +240,10 @@ Rules that follow:
   when invoked and offers to adopt, reapply or reconcile per item, previewed
   and approved. No continuous synchronization.
 - One plan/apply path for create, change, reconcile and sync.
-- Plain `pi` inherits the user's global Pi configuration; that mode is not
-  hermetic and nothing claims it is. The optional `./run` isolates **Pi
-  configuration only** (no global packages, extensions, skills, MCP servers or
-  instructions). Neither is OS-level isolation.
+- Plain `pi` inherits the user's global Pi configuration and is not hermetic.
+  Generated projects have no launcher; callers own any isolation. A separate
+  Pi agent directory is not OS isolation: `~/.agents/skills` and parent
+  `AGENTS.md` files still load.
 - A capability one project needs (Revisor's sandboxed recorder) lives in that
   project. It becomes a separate package when a second project needs it, and
   enters Faur's schema only if Pi configuration cannot represent it.

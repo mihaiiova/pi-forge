@@ -1,0 +1,22 @@
+# Toad settings for this project. Commit this file; it holds no secrets.
+# Handoffs fill in anything they leave out from here.
+#
+# web:
+#   url: http://localhost:3000       # where the app runs while you build it
+# cli:
+#   workdir: .                       # relative to the project, or absolute
+#   program: node dist/cli.js        # how to invoke the program there
+#   image: node:22-bookworm          # the container CLI tests run in
+#   setup:                           # run once in the sandbox before any scenario
+#     - npm ci --ignore-scripts
+# api:
+#   url: http://localhost:8080/api   # the API's base URL
+#   spec: openapi.yaml               # its OpenAPI description, relative to workdir
+#   workdir: .                       # folder copied into the sandbox (spec, fixtures)
+#   setup: []                        # commands run once before any scenario
+# models:                           # override the models from `toad setup` for this project
+#   lead: anthropic/claude-sonnet-5-5
+#   tester: anthropic/claude-haiku-5-5
+# timeout_minutes: 15
+#
+# Saved suites for `toad run` live in suites/<name>.yaml; see suites/example.yaml.
