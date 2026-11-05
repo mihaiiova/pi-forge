@@ -115,6 +115,31 @@ orchestrator:
   assert.match(last.errorMessage, /402 Insufficient Balance/);
 });
 
+test('pi -p "/faur <request>" runs the design turn outside a Faur project', t => {
+  const root = mkdtempSync(join(tmpdir(), 'faur-design-headless-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const provider = join(root, 'provider.mjs');
+  const log = join(root, 'prompt.log');
+  writeFileSync(provider, `import {createFauxCore,fauxAssistantMessage} from ${JSON.stringify(ai)};
+import { appendFileSync } from 'node:fs';
+export default pi => {
+ const faux=createFauxCore({api:'faux-test',provider:'faux',models:[{id:'faux-1'}]});
+ faux.setResponses([fauxAssistantMessage('DESIGN-OK')]);
+ pi.registerProvider('faux',{baseUrl:'http://localhost',apiKey:'test',api:'faux-test',streamSimple:faux.streamSimple,models:[{type:'chat',id:'faux-1',name:'faux',reasoning:false,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:100000,maxTokens:1000}]});
+ pi.on('before_agent_start', async event => { appendFileSync(${JSON.stringify(log)}, event.prompt + '\\n'); });
+};`);
+  const work = join(root, 'work');
+  mkdirSync(work);
+  const run = spawnSync('pi', ['--no-extensions', '-e', provider, '-e', join(repo, 'extensions/faur/index.ts'), '--model', 'faux/faux-1', '--no-session', '-p', '/faur an agent for my notes'], {
+    cwd: work, env: { ...process.env, PI_OFFLINE: '1', PI_CODING_AGENT_DIR: join(root, 'home') }, encoding: 'utf8', timeout: 60000, input: '',
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /DESIGN-OK/, 'the design turn ran and answered');
+  const prompt = readFileSync(log, 'utf8');
+  assert.match(prompt, /Mode: DESIGN/);
+  assert.match(prompt, /User request: an agent for my notes/);
+});
+
 const approvals = (called) => `schema: 1
 name: approval-workflow
 orchestrator:

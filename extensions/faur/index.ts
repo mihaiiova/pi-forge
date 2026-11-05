@@ -13,6 +13,8 @@ export default function (pi: ExtensionAPI) {
     if (!ctx.isProjectTrusted() || !existsSync(join(ctx.cwd, '.pi/system.yaml'))) return;
     if (process.env.PI_SUBAGENT_CHILD !== '1') project = registerMaintenance(pi, Type, ctx.cwd);
   });
+  let endDesignTurn: (() => void) | undefined;
+  pi.on('agent_end', () => { endDesignTurn?.(); endDesignTurn = undefined; });
   pi.registerCommand('faur', {
     description: 'Design or revise a Pi agent: [request] | check | status | sync | env [set NAME] | permissions [add|remove]',
     handler: async (args, ctx) => {
@@ -24,8 +26,12 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       await ctx.waitForIdle();
+      const designTurn = new Promise<void>(resolve => { endDesignTurn = resolve; });
       const skill = readFileSync(new URL('../../skills/faur/SKILL.md', import.meta.url), 'utf8');
       pi.sendUserMessage(`${skill}\n\nMode: DESIGN (no Faur project here; faur_plan does not exist and is not needed). Research, discover and build with your ordinary tools and the faur CLI.\nFaur CLI: node ${new URL('../../src/faur.mjs', import.meta.url).pathname}\n\nUser request: ${request || '(none: continue from this conversation)'}`);
+      // Print mode exits when the command returns, so wait for the design
+      // turn to end. (waitForIdle can resolve before that turn is busy.)
+      if (!ctx.hasUI) await designTurn;
     },
   });
 }
