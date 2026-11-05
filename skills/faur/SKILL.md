@@ -420,13 +420,14 @@ when this turn ends. Don't do the work, and don't tell them to type
    defaults. Ask the user to add, remove or change anything, and propose the
    document operations only after they agree.
 5. Present the change in plain words: what changes in the model and in the
-   generated files, what agents gain or lose, and whether it takes a /reload
-   or a restart. Then end your turn: Faur prompts the human to discuss, apply
-   or discard it. Never say the change is applied, waiting or "nothing applied
-   yet", and don't tell them how to approve; the prompt does that. If they
+   generated files, and what agents gain or lose. End with one sentence: "Faur
+   will now ask you to apply, discuss or discard it." Mention /reload or a
+   restart only as what follows applying it ("once applied, /reload"); never
+   say the change is applied or takes effect before they apply it. If they
    choose to discuss, their replies come to you: revise and propose again.
-   Propose at most one change per turn (a later proposal replaces an earlier
-   one).
+   If they ask whether it was applied, read `pendingProposal` from
+   faur_plan inspect instead of guessing. Propose at most one change per turn
+   (a later proposal replaces an earlier one).
 
 ## Prompts describe roles, not tools
 

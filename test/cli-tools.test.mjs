@@ -53,7 +53,8 @@ function adapter({ hasUI = true, choices = [], confirm = true } = {}) {
   const ctx = {
     hasUI, waitForIdle: async () => {},
     ui: {
-      select: async (title, options) => { asked.push({ title, options }); const c = choices.shift(); return typeof c === 'number' ? options[c] : c; },
+      // A yes/no preview (Cancel first) is a confirmation.
+      select: async (title, options) => { if (options[0] === 'Cancel') return (await ctx.ui.confirm(title, title)) ? options[1] : 'Cancel'; asked.push({ title, options }); const c = choices.shift(); return typeof c === 'number' ? options[c] : c; },
       confirm: async (title, message) => { asked.push({ title, message }); return confirm; },
       input: async () => inputs.shift(),
       notify: (m, level) => notices.push({ m, level }),

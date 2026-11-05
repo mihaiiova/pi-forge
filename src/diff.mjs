@@ -26,7 +26,13 @@ export function diffLines(oldText, newText) {
 /** Only the changed lines of `diffLines`, with `context` unchanged lines
  * around each change and "  …" where unchanged lines were left out. */
 export function changedLines(oldText, newText, context = 2) {
-  const lines = lineDiff(oldText, newText);
+  return compactDiff(lineDiff(oldText, newText).join("\n"), context);
+}
+
+/** Elide unchanged runs of a `diffLines` diff, keeping every changed line and
+ * `context` lines around it. */
+export function compactDiff(diff, context = 2) {
+  const lines = String(diff).split("\n");
   const keep = lines.map((line, i) => lines.slice(Math.max(0, i - context), i + context + 1).some(l => !l.startsWith("  ")));
   const out = [];
   lines.forEach((line, i) => { if (keep[i]) out.push(line); else if (out.at(-1) !== "  …") out.push("  …"); });

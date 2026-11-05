@@ -17,6 +17,7 @@ import { parsedModel } from './changes.mjs';
 import { launchCheck } from './launch-check.mjs';
 import { checkAgent } from './check.mjs';
 import { permissionsCommand } from './permissions-command.mjs';
+import { choosePreview, confirmPreview } from './preview-dialog.mjs';
 import { unmetSetup, installSetup } from './setup.mjs';
 
 /** The environment variable Pi reads for a provider's API key, when it has a common one. */
@@ -77,6 +78,8 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
           value = { offered: true, note: 'When this turn ends the person chooses whether to leave /faur and give the request to their agent. Say so briefly; do not tell them to type /faur exit.' };
         } else if (params.action === 'inspect') {
           value = inspectProject(root);
+          // The model cannot see the approval dialog; say whether a proposal still waits.
+          value.pendingProposal = pending && !review ? { applied: false, note: 'Proposed in this /faur session and not applied: the person has not chosen Apply.' } : null;
           value.launchCheck = launchCheck(root, value.parsedModel, loaded());
           value.schemaReference = readFileSync(new URL('../skills/faur/schema.md', import.meta.url), 'utf8');
           value.availableModels = (ctx.modelRegistry?.getAvailable?.() ?? []).map(m => ({ provider: m.provider, id: m.id, cost: m.cost }));
@@ -161,7 +164,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     tell(ctx, discarded ? 'Left /faur. The pending proposal was discarded; no files changed. Your agent\'s tools are back.' : 'Left /faur. No changes in this session; your agent\'s tools are back.');
   };
   /** The approval is based on deterministic data, not a model-written summary. */
-  const promptFor = plan => `Apply this change?\n\n${approvalPreview(root, plan)}`;
+  const promptFor = plan => approvalPreview(root, plan);
   // A revision turn that proposes a change ends with a prompt: discuss (the
   // default, so a stray Enter changes nothing), apply or discard. Only a
   // direct /faur request arms the planner, the prompt is the approval, and a
@@ -195,7 +198,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     let prompt;
     try { prompt = promptFor(plan); }
     catch (error) { hide(); tell(ctx, error.message, 'error'); return; }
-    const choice = await ctx.ui.select(prompt, ["Let's discuss", 'Apply', 'Discard']);
+    const choice = await choosePreview(ctx, 'Apply this change?', prompt, ["Let's discuss", 'Apply', 'Discard']);
     if (choice === 'Apply') {
       const files = [...new Set(['.pi/system.yaml', ...(plan.preview?.files ?? []).map(f => f.path)])].join(', ');
       hide();
@@ -226,7 +229,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     const name = plan.rebuild.version ? `Faur ${plan.rebuild.version}` : 'this Faur version';
     if (plan.rebuild.unchanged) return { message: `Already built with ${name}; nothing to rebuild.` };
     if (!ctx.hasUI) throw new Error('Rebuilding needs interactive confirmation; nothing applied');
-    if (!await ctx.ui.confirm('Rebuild this project?', approvalPreview(root, plan))) return { message: 'Cancelled; nothing rebuilt.' };
+    if (!await confirmPreview(ctx, 'Rebuild this project?', approvalPreview(root, plan))) return { message: 'Cancelled; nothing rebuilt.' };
     const message = applyChange(root, plan, true);
     plan.applied = true;
     return { plan, message: `Rebuilt with ${name}${plan.rebuild.changed.length ? `: ${plan.rebuild.changed.join(', ')}` : ''}. ${message}` };
@@ -331,7 +334,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         const listing = steps.map(s => `${s.owner}: ${s.description}\n${s.install}${s.needsRoot ? ' (run manually; needs root)' : ''}`).join('\n\n');
         if (redactForModel(root, listing) !== listing) throw new Error('Setup refused: the approval listing contains a sensitive value that cannot be shown safely. Configure secrets outside Faur; no installs run.');
         if (listing.length > 100000) throw new Error('Setup approval preview exceeds 100000 characters; no installs run');
-        if (!await ctx.ui.confirm('Run unmet setup installs?', listing)) { tell(ctx, 'Cancelled; no installs run.'); return; }
+        if (!await confirmPreview(ctx, 'Run unmet setup installs?', listing, 'Run installs')) { tell(ctx, 'Cancelled; no installs run.'); return; }
         const results = installSetup(root, model, steps);
         tell(ctx, redactForModel(root, results.map(s => `${s.description}: ${s.status}${s.needsRoot ? `; run manually: ${s.install}` : ''}`).join('\n')));
         return;
@@ -343,7 +346,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         await ctx.waitForIdle();
         const path = request.slice('drift adopt '.length);
         const plan = path === '.pi/settings.json' ? planSettingsAdoption(root) : path === '.pi/APPEND_SYSTEM.md' ? planPromptAdoption(root) : path.startsWith('.pi/agents/') ? planAgentAdoption(root, path) : planIntegrationAdoption(root, path);
-        if (!await ctx.ui.confirm('Adopt native change?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
+        if (!await confirmPreview(ctx, 'Adopt native change?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
         tell(ctx, `Adopted ${plan.preview.adoption.path}. ${applyChange(root, plan, true)}`);
         return;
       }
@@ -352,7 +355,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         await ctx.waitForIdle();
         const value = request.slice(request.indexOf('adopt=') + 6);
         const plan = planSettingsReconciliation(root, value === 'none' ? [] : value.split(','));
-        if (!await ctx.ui.confirm('Reconcile native settings?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
+        if (!await confirmPreview(ctx, 'Reconcile native settings?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
         tell(ctx, `Reconciled .pi/settings.json. ${applyChange(root, plan, true)}`);
         return;
       }
@@ -361,7 +364,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         await ctx.waitForIdle();
         const adopt = request.endsWith('=prompt');
         const plan = adopt ? planPromptAdoption(root) : planNativeReapply(root, '.pi/APPEND_SYSTEM.md');
-        if (!await ctx.ui.confirm('Reconcile native prompt?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
+        if (!await confirmPreview(ctx, 'Reconcile native prompt?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
         tell(ctx, `Reconciled .pi/APPEND_SYSTEM.md. ${applyChange(root, plan, true)}`);
         return;
       }
@@ -370,7 +373,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         await ctx.waitForIdle();
         const [, , path, value] = request.split(' ');
         const plan = planAgentReconciliation(root, path, value.slice(6) === 'none' ? [] : value.slice(6).split(','));
-        if (!await ctx.ui.confirm('Reconcile native specialist?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
+        if (!await confirmPreview(ctx, 'Reconcile native specialist?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
         tell(ctx, `Reconciled ${path}. ${applyChange(root, plan, true)}`);
         return;
       }
@@ -379,7 +382,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         await ctx.waitForIdle();
         const [, , path, value] = request.split(' ');
         const plan = planIntegrationReconciliation(root, path, value.slice(6) === 'none' ? [] : value.slice(6).split(','));
-        if (!await ctx.ui.confirm('Reconcile native integrations?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
+        if (!await confirmPreview(ctx, 'Reconcile native integrations?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
         tell(ctx, `Reconciled ${path}. ${applyChange(root, plan, true)}`);
         return;
       }
@@ -387,7 +390,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
         if (!ctx.hasUI) throw new Error('Reapply needs interactive confirmation; nothing changed');
         await ctx.waitForIdle();
         const plan = planNativeReapply(root, request.slice('drift reapply '.length));
-        if (!await ctx.ui.confirm('Reapply recorded design?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
+        if (!await confirmPreview(ctx, 'Reapply recorded design?', approvalPreview(root, plan))) { tell(ctx, 'Cancelled; nothing applied.'); return; }
         tell(ctx, `Reapplied ${plan.preview.reapply.path}. ${applyChange(root, plan, true)}`);
         return;
       }

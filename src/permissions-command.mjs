@@ -10,6 +10,7 @@ import { readText } from './maintenance-store.mjs';
 import { planChange, applyChange, approvalPreview } from './maintenance.mjs';
 import { cliEntries, cliAgents, checkShape, formatCommand, splitCommandLine, grantOps, revokeOps, commandShape, readerFileWarning } from './cli-tools.mjs';
 import { enforcedAgentTools } from './policy.mjs';
+import { confirmPreview } from './preview-dialog.mjs';
 
 const shape = (entry) => formatCommand(entry.command, entry.args ?? []);
 
@@ -17,7 +18,7 @@ const shape = (entry) => formatCommand(entry.command, entry.args ?? []);
 async function confirmChange(root, ctx, title, ops) {
   const plan = planChange(root, ops);
   const summary = approvalPreview(root, plan);
-  if (!await ctx.ui.confirm(title, summary)) return null;
+  if (!await confirmPreview(ctx, title, summary)) return null;
   return applyChange(root, plan, true);
 }
 

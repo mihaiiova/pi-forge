@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { SHOW_PREVIEW, choosePreview, confirmPreview } from '../src/preview-dialog.mjs';
+import { compactDiff } from '../src/diff.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, symlinkSync, existsSync, chmodSync, realpathSync, cpSync, statSync } from 'node:fs';
@@ -63,16 +65,26 @@ function adapter(initialTools = ['read']) {
     sendUserMessage: (m, options) => { messages.push(m); sent.push(options); },
   };
   const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map(k => [k, v => v]));
-  const dialogs = [], prompts = [], choices = [], status = {}, widgets = {};
+  const dialogs = [], prompts = [], choices = [], status = {}, widgets = {}, editors = [];
+  let full;
   const ctx = { hasUI: true, waitForIdle: async () => {}, ui: {
     notify: (...v) => notices.push(v),
     confirm: async (title, body) => { dialogs.push({ title, body }); return confirm; },
-    // A proposal prompt; with no scripted choice, the person dismisses it (Esc).
-    select: async (title, options) => { prompts.push({ title, options }); return choices.shift(); },
+    // A yes/no preview (Cancel first) answers with the scripted confirmation.
+    // A proposal prompt takes the next scripted choice; none means Esc.
+    // Like a careful reviewer, a long preview is read in full before deciding.
+    select: async (title, options) => {
+      if (options.includes(SHOW_PREVIEW) && full === undefined) return SHOW_PREVIEW;
+      const seen = full === undefined ? title : `${title}\n${full}`;
+      full = undefined;
+      if (options[0] === 'Cancel') return (await ctx.ui.confirm(seen, seen)) ? options[1] : 'Cancel';
+      prompts.push({ title: seen, options: options.filter(o => o !== SHOW_PREVIEW) }); return choices.shift();
+    },
+    editor: async (title, text) => { editors.push({ title, text }); full = text; },
     setStatus: (key, text) => { status[key] = text; },
     setWidget: (key, lines) => { widgets[key] = lines; },
   }, sessionManager: { getBranch: () => [] }, modelRegistry: { getAvailable: () => [] } };
-  return { pi, Type, ctx, events, tools, commands, messages, notices, sent, dialogs, prompts, status, widgets, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
+  return { pi, Type, ctx, events, tools, commands, messages, notices, sent, dialogs, editors, prompts, status, widgets, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
 }
 test('reconcile plans and builds a new project without existing settings', t => {
   const root = mkdtempSync(join(tmpdir(), 'faur-new-plan-'));
@@ -317,8 +329,9 @@ test('reapplying one native configuration requires approval and leaves other edi
   const command = registerMaintenance(mock.pi, mock.Type, root);
   await command('drift reapply .pi/settings.json', mock.ctx);
   assert.match(mock.dialogs[0].body, /File: \.pi\/settings\.json \(write\)/);
-  assert.match(mock.dialogs[0].body, /\[redacted\]/);
+  // Unchanged lines are elided; a secret line that is shown is masked.
   assert.doesNotMatch(mock.dialogs[0].body, /reapply-private-secret/);
+  for (const line of mock.dialogs[0].body.split('\n').filter(l => /"(apiKey|token|secret)"\s*:/i.test(l))) assert.match(line, /\[redacted\]/);
   assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'manual');
   mock.approve();
   await command('drift reapply .pi/settings.json', mock.ctx);
@@ -1171,7 +1184,11 @@ test('proposal approval shows redacted exact CLI and MCP diffs and rejects a sta
   ];
   await mock.tools.faur_plan.execute('id', { action: 'propose', operations: json(operations) }, undefined, undefined, mock.ctx);
   const before = readText(root, '.pi/system.yaml');
-  mock.ctx.ui.select = async title => {
+  let read = '';
+  mock.ctx.ui.editor = async (_title, text) => { read = text; };
+  mock.ctx.ui.select = async (shown, options) => {
+    if (options.includes(SHOW_PREVIEW) && !read) return SHOW_PREVIEW;
+    const title = `${shown}\n${read}`;
     assert.match(title, /Design diff \(\.pi\/system\.yaml\)/);
     assert.match(title, /File: \.pi\/commands\.json \(write\)/);
     assert.match(title, /\+\s+"command": "printf"/);
@@ -1180,7 +1197,7 @@ test('proposal approval shows redacted exact CLI and MCP diffs and rejects a sta
     assert.match(title, /"changedCli"/);
     assert.match(title, /"changedMcp"/);
     assert.doesNotMatch(title, /\[object Object\]|private-existing-token/);
-    assert.match(title, /\[redacted\]/);
+    for (const line of title.split('\n').filter(l => /"apiKey"\s*:/.test(l))) assert.match(line, /\[redacted\]/);
     writeFileSync(join(root, '.pi/settings.json'), json({ ...settings, theme: 'changed-after-preview' }));
     return 'Apply';
   };
@@ -1775,4 +1792,34 @@ test('SKILL.md tells maintenance to offer leaving for agent work, not to send pe
   const text = readFileSync(new URL('../skills/faur/SKILL.md', import.meta.url), 'utf8').split('## Project maintenance workflow')[1].replace(/\s+/g, ' ');
   assert.match(text, /agent's own work rather than a change to the agent .* call faur_plan with action=leave/);
   assert.match(text, /don't tell them to type `\/faur exit`/);
+});
+
+test('approval dialogs keep their choices on screen and show every change on request', async () => {
+  const asked = [], opened = [];
+  const ui = answers => ({ ui: {
+    select: async (title, options) => { asked.push({ title, options }); return answers.shift(); },
+    editor: async (title, text) => { opened.push({ title, text }); },
+  } });
+  const long = Array.from({ length: 40 }, (_, i) => `+ line ${i + 1}`).join('\n');
+  const choice = await choosePreview(ui([SHOW_PREVIEW, 'Apply']), 'Apply this change?', long, ["Let's discuss", 'Apply', 'Discard']);
+  assert.equal(choice, 'Apply');
+  assert.equal(asked[0].title.split('\n').length, 2 + 12 + 1, 'the question, the first 12 lines and a note');
+  assert.match(asked[0].title, /… 28 more lines: choose "Show the full preview"/);
+  assert.deepEqual(asked[0].options, ["Let's discuss", 'Apply', 'Discard', SHOW_PREVIEW]);
+  assert.equal(opened[0].text, long, 'the editor shows every line');
+  assert.equal(asked.length, 2, 'closing the preview returns to the choice');
+  asked.length = 0;
+  assert.equal(await choosePreview(ui(['Discard']), 'Apply this change?', '+ one', ["Let's discuss", 'Apply', 'Discard']), 'Discard');
+  assert.deepEqual(asked[0].options, ["Let's discuss", 'Apply', 'Discard'], 'a short preview needs no extra choice');
+  assert.equal(asked[0].title, 'Apply this change?\n\n+ one');
+  asked.length = 0;
+  assert.equal(await confirmPreview(ui([undefined]), 'Rebuild?', '+ one'), false, 'Esc declines');
+  assert.deepEqual(asked[0].options, ['Cancel', 'Apply'], 'Cancel first, so a stray Enter changes nothing');
+});
+
+test('approval previews show every changed line with short context, not whole files', () => {
+  const lines = Array.from({ length: 30 }, (_, i) => `  same ${i}`);
+  lines.splice(15, 0, '- old', '+ new');
+  const compact = compactDiff(lines.join('\n')).split('\n');
+  assert.deepEqual(compact, ['  …', '  same 13', '  same 14', '- old', '+ new', '  same 15', '  same 16', '  …']);
 });

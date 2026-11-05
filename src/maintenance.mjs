@@ -7,7 +7,7 @@ import { importSystem } from './import.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { managedPaths, generateProject, declarationInventory, intactScaffold } from './generate.mjs';
 import { effectiveCapabilities, checkCapabilities } from './capabilities.mjs';
-import { diffLines, changedLines, indent } from './diff.mjs';
+import { diffLines, changedLines, compactDiff, indent } from './diff.mjs';
 import { setupSteps } from './setup.mjs';
 import { configurationAdvisories } from './advisories.mjs';
 import { cliEntries } from './cli-tools.mjs';
@@ -979,9 +979,12 @@ export function approvalPreview(root, plan) {
   const preview = publicChangePreview(root, plan);
   if (preview.redactedChanges.length) throw new Error('Approval refused: changed sensitive values cannot be shown safely. Configure them outside Faur and reconcile the resulting native files explicitly; nothing applied.');
   const { modelDiff, files, ...details } = preview;
+  // Every changed line is shown; unchanged runs are elided to two lines of context.
+  const written = [...new Set([...(modelDiff ? ['.pi/system.yaml'] : []), ...files.map(file => file.path)])];
   const text = [
-    'Design diff (.pi/system.yaml):', modelDiff,
-    ...files.flatMap(file => [`File: ${file.path} (${file.action})`, file.diff]),
+    `Writes ${written.join(', ') || 'no files'}.${preview.restart ? ` ${preview.restart}` : ''}`,
+    'Design diff (.pi/system.yaml):', compactDiff(modelDiff ?? ''),
+    ...files.flatMap(file => [`File: ${file.path} (${file.action})`, compactDiff(file.diff ?? '')]),
     ...(preview.skills?.install ?? []).map(skill => `Install registry skill ${skill.name} from ${skill.source} into ${skill.into}`),
     ...(preview.skills?.how ? [preview.skills.how] : []),
     'Execution surface and other preview details:', json(details),
