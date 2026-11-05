@@ -26,7 +26,7 @@ const PROVIDER_ENV = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY',
 /** The footer status while /faur maintains a project. */
 export const MODE_STATUS = "In /faur: your agent's tools are off · reply to continue · /faur exit to leave";
 
-export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } = {}) {
+export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, Text } = {}) {
   let armed = false;
   let review = false;
   let pending = null;
@@ -70,6 +70,16 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     name: 'faur_plan', label: 'Faur proposal',
     description: 'Inspect the local declarative system, discover public skills (skills.sh), packages and MCP servers, available models and local CLIs, fetch public documentation, or preview structured changes. action=leave: the request is work for the agent itself (a report, using its tools), not a change to it; when this turn ends the person is asked whether to leave /faur and give it to their agent. Cannot apply, install, authenticate, leave or run anything. Only available during a direct /faur request.',
     parameters,
+    // Only the TUI rendering is shortened; Pi still records the full call and
+    // result and delivers the unchanged result to the model and RPC clients.
+    ...(Text ? {
+      renderCall(args, theme) {
+        return new Text(theme.fg('toolTitle', theme.bold('faur_plan')) + theme.fg('muted', ` action=${JSON.stringify(args.action ?? '')}`), 0, 0);
+      },
+      renderResult(_result, _options, theme, context) {
+        return new Text(theme.fg(context.isError ? 'error' : 'dim', context.isError ? 'Failed — details in session log, if enabled' : 'Full call and result in session log, if enabled'), 0, 0);
+      },
+    } : {}),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       if (!armed) throw new Error('Invoke /faur directly to authorize a maintenance proposal');
       if (planning) throw new Error('A Faur proposal is already being computed');
@@ -118,7 +128,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
           }
           value = documentSlice(doc, offset);
         } else if (params.action === 'propose') {
-          if (review) throw new Error('Review mode is read-only. Request a specific change with /faur before proposing edits.');
+          if (review) throw new Error('The initial review is read-only. Reply with the change you want; a proposal can follow in this conversation.');
           pending = null;
           const ops = JSON.parse(params.operations ?? 'null');
           if (ops?.some(o => o.op === 'reconcile')) throw new Error('Use /faur sync to regenerate the project');
@@ -212,7 +222,7 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     tell(ctx, 'The proposal is not applied yet. Reply to discuss or change it; /faur exit leaves without changes.');
   });
   pi.on('tool_call', event => {
-    if (armed && event.toolName !== 'faur_plan') return { block: true, reason: 'Maintenance uses only faur_plan; operational tools are suspended while in /faur' };
+    if (armed && event.toolName !== 'faur_plan' && !(event.toolName === 'ask_user_question' && savedTools?.includes(event.toolName))) return { block: true, reason: 'Maintenance uses faur_plan and the available question dialog; operational tools are suspended while in /faur' };
   });
   // A preview file belongs to one open dialog; drop one a killed session left.
   const dropPreview = () => { try { rmSync(join(root, PREVIEW_FILE), { force: true }); } catch { /* best effort */ } };
@@ -314,13 +324,13 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument } 
     armed = true;
     savedTools = pi.getActiveTools().filter(n => n !== 'faur_plan');
     pi.registerTool({ ...tool, exposure: 'model-only' });
-    // Maintenance is a separate loadout, not an expansion of operational
-    // authority. Review cannot reach Bash/write/edit, MCP or subagents.
-    pi.setActiveTools(['faur_plan']);
+    // Only retain the question dialog if it was already active. Like any
+    // installed extension, its implementation runs with the user's authority.
+    pi.setActiveTools(['faur_plan', ...savedTools.filter(n => n === 'ask_user_question')]);
     lastRequest = request;
     showMode(ctx);
     const workflow = readFileSync(new URL('../skills/faur/SKILL.md', import.meta.url), 'utf8').split('## Project maintenance workflow\n')[1];
-    pi.sendUserMessage(`${workflow}\n\nMode: ${review ? 'READ-ONLY REVIEW' : 'CHANGE PROPOSAL'}.\nUser request: ${request || 'review'}\n\nUse faur_plan inspect first. The command grants no Bash/write privileges. The person's replies continue this conversation until they apply or discard a proposal, or leave with /faur exit.`);
+    pi.sendUserMessage(`${workflow}\n\nInitial response: ${review ? 'REVIEW ONLY; do not propose yet' : 'CHANGE PROPOSAL'}.\nUser request: ${request || 'review'}\n\nUse faur_plan inspect first. The command grants no Bash/write privileges. After an initial review, the person's replies can request a proposal in this same conversation; do not require another /faur request. The conversation continues until they apply or discard a proposal, or leave with /faur exit.`);
   };
   return async (args, ctx) => {
     try {

@@ -87,6 +87,20 @@ function adapter(initialTools = ['read']) {
   }, sessionManager: { getBranch: () => [] }, modelRegistry: { getAvailable: () => [] } };
   return { pi, Type, ctx, events, tools, commands, messages, notices, sent, dialogs, editors, prompts, status, widgets, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
 }
+test('maintenance tool renders a compact call without changing its result', async t => {
+  const root = project(t);
+  const mock = adapter();
+  class Text { constructor(text) { this.text = text; } }
+  const theme = { fg: (_color, text) => text, bold: text => text };
+  await registerMaintenance(mock.pi, mock.Type, root, { Text })('change the system', mock.ctx);
+  const tool = mock.tools.faur_plan;
+  assert.equal(tool.renderCall({ action: 'inspect', operations: 'large private input' }, theme).text, 'faur_plan action="inspect"');
+  const result = await tool.execute('1', { action: 'inspect' }, undefined, undefined, mock.ctx);
+  assert.match(result.content[0].text, /systemYaml/);
+  assert.equal(tool.renderResult(result, { expanded: true }, theme, { isError: false }).text, 'Full call and result in session log, if enabled');
+  assert.match(tool.renderResult(result, {}, theme, { isError: true }).text, /^Failed/);
+});
+
 test('reconcile plans and builds a new project without existing settings', t => {
   const root = mkdtempSync(join(tmpdir(), 'faur-new-plan-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -1119,7 +1133,8 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   await assert.rejects(tool({ action: 'inspect' }), /Invoke/);
   await command('how can we improve this agent?');
   assert.deepEqual(mock.pi.getActiveTools(), ['faur_plan']);
-  assert.match(mock.messages[0], /READ-ONLY REVIEW/);
+  assert.match(mock.messages[0], /Initial response: REVIEW ONLY/);
+  assert.match(mock.messages[0], /replies can request a proposal in this same conversation/);
   assert.match(mock.messages[0], /Discover and fetch only when the request adds or changes something outside\s+this system[\s\S]*need only\s+the inspection from step 1: go straight to the proposal/, 'prompt-only changes skip registry search');
   await tool({ action: 'inspect' });
   await assert.rejects(tool({ action: 'propose', operations: '[]' }), /read-only/);
@@ -1127,6 +1142,13 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.deepEqual(mock.prompts, [], 'a review opens no prompt');
   assert.deepEqual(mock.pi.getActiveTools(), ['faur_plan'], 'replies stay in /faur');
   assert.match(mock.status.faur, /\/faur exit/);
+  const reviewBefore = readText(root, '.pi/system.yaml');
+  await tool({ action: 'propose', operations: JSON.stringify([{ op: 'assign', name: 'lead', model: 'fixture/small' }]) });
+  assert.equal(readText(root, '.pi/system.yaml'), reviewBefore, 'follow-up proposal writes nothing');
+  mock.choose('Discard');
+  await mock.endTurn();
+  assert.equal(readText(root, '.pi/system.yaml'), reviewBefore, 'discard leaves the project unchanged');
+  mock.prompts.length = 0;
   await command('exit');
   assert.deepEqual(mock.pi.getActiveTools(), ['read'], '/faur exit returns to the agent');
   assert.equal(mock.tools.faur_plan.exposure, 'hidden');
@@ -1177,6 +1199,22 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.equal(mock.prompts.length, prompts, 'headless sessions never prompt');
   assert.equal(readText(root, '.pi/system.yaml'), applied);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
+});
+
+test('maintenance retains an already-active question tool but blocks operational tools', async t => {
+  const root = project(t);
+  const mock = adapter(['read', 'ask_user_question', 'bash']);
+  const command = registerMaintenance(mock.pi, mock.Type, root);
+  await command('review the agent', mock.ctx);
+  assert.deepEqual(mock.pi.getActiveTools(), ['faur_plan', 'ask_user_question']);
+  assert.equal(mock.events.tool_call({ toolName: 'ask_user_question' }), undefined);
+  assert.match(mock.events.tool_call({ toolName: 'bash' }).reason, /operational tools are suspended/);
+  await command('exit', mock.ctx);
+  assert.deepEqual(mock.pi.getActiveTools(), ['read', 'ask_user_question', 'bash']);
+  const absent = adapter(['read']);
+  await registerMaintenance(absent.pi, absent.Type, root)('review the agent', absent.ctx);
+  assert.deepEqual(absent.pi.getActiveTools(), ['faur_plan']);
+  assert.equal(absent.events.tool_call({ toolName: 'ask_user_question' }).block, true);
 });
 
 test('proposal approval shows redacted exact CLI and MCP diffs and rejects a stale preview', async t => {
@@ -1277,11 +1315,11 @@ test('review-only wording routes without suppressing explicit change requests', 
   mock.faur = registerMaintenance(mock.pi, mock.Type, root);
   for (const request of ['list improvements', "don't make them, just list them", 'suggest improvements']) {
     await mock.faur(request, mock.ctx);
-    assert.match(mock.messages.at(-1), /Mode: READ-ONLY REVIEW/);
+    assert.match(mock.messages.at(-1), /Initial response: REVIEW ONLY/);
     await mock.faur('exit', mock.ctx);
   }
   await mock.faur('review and fix the model', mock.ctx);
-  assert.match(mock.messages.at(-1), /Mode: CHANGE PROPOSAL/);
+  assert.match(mock.messages.at(-1), /Initial response: CHANGE PROPOSAL/);
 });
 
 test('change previews surface command advisories without blocking', t => {

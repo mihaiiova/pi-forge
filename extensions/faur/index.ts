@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Type } from 'typebox';
+import { Text } from '@earendil-works/pi-tui';
 import { registerMaintenance } from '../../src/maintenance-extension.mjs';
 import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 export default function (pi: ExtensionAPI) {
@@ -11,7 +12,7 @@ export default function (pi: ExtensionAPI) {
   pi.on('session_start', (_event, ctx) => {
     project = undefined;
     if (!ctx.isProjectTrusted() || !existsSync(join(ctx.cwd, '.pi/system.yaml'))) return;
-    if (process.env.PI_SUBAGENT_CHILD !== '1') project = registerMaintenance(pi, Type, ctx.cwd);
+    if (process.env.PI_SUBAGENT_CHILD !== '1') project = registerMaintenance(pi, Type, ctx.cwd, { Text });
   });
   let endDesignTurn: (() => void) | undefined;
   pi.on('agent_end', () => { endDesignTurn?.(); endDesignTurn = undefined; });
