@@ -29,10 +29,9 @@ architecture review is recorded in
   extension tools need a native extension path, which Faur cannot generally
   infer. Real-Pi MCP delegation verification is network-dependent and opt-in.
 - **Next, in order:**
-  1. Migration #59: #60, #61, #62, #64 and #67 are closed; #72 is closed.
-     #63 remains open for verification of its amended CLI-command criteria,
-     and #59 remains open for independent-project and reference-agent
-     acceptance. Stage-0 results are in
+  1. Migration #59: #60, #61, #62, #63, #64 and #67 are closed; #72 is
+     closed. #63's live marketing/QA reference runs moved to #68; #59 remains
+     open for independent-project and reference-agent acceptance. Stage-0 results are in
      [architecture-audit.md §5](architecture-audit.md#stage-0-results-2026-11-03-60);
      #61's exact capability-section and marketing/QA reference runs remain
      candidates for the #68 public-alpha gate.

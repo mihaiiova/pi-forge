@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 // Headless workflows are skills Pi runs in print mode: `pi --approve -p
@@ -103,6 +103,69 @@ test('a headless declared command that needs approval is refused by pi-commands,
   const result = blocked(t, 'cli_make_file', {});
   if (!result) return;
   assert.ok(result.toolResults.some(r => /make-file needs the user's approval for each run, which this session can't ask for; nothing ran/.test(r)), result.toolResults.join('\n'));
+});
+
+test('declared commands ask through Pi RPC and preserve arguments without a shell', async t => {
+  const base = mkdtempSync(join(tmpdir(), 'faur-command-'));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const output = join(base, 'argument.json');
+  const injected = join(base, 'injected');
+  const argument = `literal; touch ${injected} $(touch ${injected})`;
+  const yaml = approve => `schema: 1
+name: command-test
+orchestrator:
+  name: lead
+  model: faux/faux-1
+  tools: [read, cli:record]
+  prompt: Test a command.
+integrations:
+  cli:
+    - name: record
+      command: ${JSON.stringify(process.execPath)}
+      args: ["-e", ${JSON.stringify(`require('fs').writeFileSync(${JSON.stringify(output)}, JSON.stringify(process.argv[1]))`)}, "{value}"]
+      ${approve === false ? 'approve: false' : ''}
+workflows:
+  - name: test
+    entry: lead
+`;
+  const responses = `fauxAssistantMessage([fauxToolCall("cli_record",${JSON.stringify({ value: argument })})]), fauxAssistantMessage('done')`;
+  const info = project(t, yaml(true), responses);
+  if (!info) { t.skip('the pinned runtime packages could not be installed (network)'); return; }
+  const rpc = confirmed => new Promise((resolve, reject) => {
+    const child = spawn('pi', ['--approve', '--no-session', '--mode', 'rpc'], { cwd: info.root, env: { ...info.env, PI_CODING_AGENT_DIR: join(info.root, '.home') }, stdio: ['pipe', 'pipe', 'pipe'] });
+    let buffer = '', stderr = '', settled = false;
+    const events = [];
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`Pi RPC timed out: ${stderr}\n${JSON.stringify(events)}`)); }, 30000);
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('exit', (code) => { clearTimeout(timer); if (!settled) reject(new Error(`Pi RPC exited ${code}: ${stderr}`)); });
+    child.stdout.on('data', chunk => {
+      buffer += chunk.toString();
+      let end;
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+        if (!line) continue;
+        const event = JSON.parse(line); events.push(event);
+        if (event.type === 'extension_ui_request' && event.method === 'select') child.stdin.write(`${JSON.stringify({ type: 'extension_ui_response', id: event.id, value: confirmed ? 'Allow once' : 'Deny' })}\n`);
+        if (event.type === 'agent_end') { settled = true; clearTimeout(timer); child.stdin.end(); resolve(events); }
+      }
+    });
+    child.stdin.write(`${JSON.stringify({ type: 'prompt', message: '/skill:test run' })}\n`);
+  });
+  const denied = await rpc(false);
+  assert.equal(denied.filter(e => e.type === 'extension_ui_request' && e.method === 'select').length, 1, 'denial is asked for');
+  assert.equal(existsSync(output), false, 'denied command did not run');
+  const allowed = await rpc(true);
+  assert.equal(allowed.filter(e => e.type === 'extension_ui_request' && e.method === 'select').length, 1, 'approval is asked for');
+  assert.equal(JSON.parse(readFileSync(output, 'utf8')), argument, 'argument is passed literally');
+  assert.equal(existsSync(injected), false, 'shell syntax was not executed');
+  rmSync(output);
+  const noApproval = project(t, yaml(false), responses);
+  if (!noApproval) { t.skip('the pinned runtime packages could not be installed (network)'); return; }
+  const run = headless(noApproval);
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(readFileSync(output, 'utf8')), argument, 'approve:false runs headless');
+  assert.equal(existsSync(injected), false, 'headless shell syntax was not executed');
 });
 
 test('a headless MCP call runs without per-call approval', t => {
