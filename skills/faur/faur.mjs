@@ -1,25 +1,8 @@
 #!/usr/bin/env node
 /**
- * faur — the deterministic Faur CLI (Node ESM).
- *
- * Commands:
- *   validate <dir>             parse + validate <dir>/.pi/system.yaml
- *   generate <dir> [--dry-run] materialize a Pi project from system.yaml
- *   discover [dir] [--cli <name>]...
-                             print a read-only capability inventory as JSON;
-                             probes only the CLIs named with --cli
- *   modify <dir> [--dry-run] [--yes]  diff project vs model, apply confirmed changes
- *   search-skills <query...>   search skills.sh (JSON)
- *   preview-skill <spec>       pin owner/repo@name, or show a skills: source
- *   import <dir>               reconstruct system.yaml from an existing project
- *   change <dir> --operations <file> [--dry-run] [--yes] declarative change batch
- *
- * Exit codes:
- *   0  valid / generated / discovered / modified / imported (reported conflicts do not fail)
- *   1  invalid, missing, or unparseable system.yaml; or an unknown command
- *
- * Generated sessions use /faur from the pinned Faur package, not
- * this development CLI or the user's globally installed Faur.
+ * faur — the deterministic Faur CLI (Node ESM). Commands and exit codes are
+ * in USAGE below. It runs in the developer's environment; generated projects
+ * never depend on it.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, chmodSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -37,6 +20,7 @@ import { importSystem } from "./import.mjs";
 import { parseModelList, unavailableModelWarnings } from "./models.mjs";
 import { vendoredSkills } from "./skill-sources.mjs";
 import { installedDir, searchSkills, previewRegistrySkill, resolveRegistrySkill } from "./registry-skills.mjs";
+import { fetchDocument, documentSlice } from "./maintenance-fetch.mjs";
 import { planChange, applyChange, approvalPreview, publicChangePreview, withSkillPreviews } from './maintenance.mjs';
 import { atomicWrite } from './maintenance-store.mjs';
 import { checkAgent, loadProjectTools, connectMcp } from './check.mjs';
@@ -67,6 +51,8 @@ Commands:
                              pin a skills.sh result to its current commit, or
                              read a pinned "skills:<owner>/<repo>/<dir>@<commit>"
                              source; prints the source, SKILL.md and files (JSON)
+  fetch <url> [--offset <n>] read a public https:// page as untrusted text (JSON);
+                             github.com repo pages return the README
   import <dir>               reconstruct <dir>/.pi/system.yaml from an existing
                              Pi project (settings + detected agents/skills/MCP)
 
@@ -603,6 +589,17 @@ async function main(argv) {
         : args[0].startsWith("skills:") ? await previewRegistrySkill(args[0]) : await resolveRegistrySkill(args[0]);
       console.log(JSON.stringify(result, null, 2));
     } catch (err) { fail(err.message); }
+    return;
+  }
+
+  if (command === "fetch") {
+    // The same checked fetcher as faur_plan: https only, public addresses,
+    // no credential-bearing URLs, bounded size; a failure is never content.
+    const at = rest.indexOf("--offset");
+    const offset = at === -1 ? 0 : Number(rest[at + 1]);
+    if (!dir) { fail("fetch requires a public https:// URL"); return; }
+    try { console.log(JSON.stringify(documentSlice(await fetchDocument(dir), offset), null, 2)); }
+    catch (err) { fail(err.message); }
     return;
   }
 

@@ -59,8 +59,11 @@ skip ahead when the user is already specific; go back when something changes.
 Before asking design questions, make a short, bounded research pass to
 understand the subject. Use references already in the conversation and inspect
 relevant project documentation in the known repository; don't ask for a
-reference the user already gave. Fetch provided public URLs using available Pi
-web tools. Ask before broader web searches. If the subject or references are
+reference the user already gave. Fetch provided public URLs with
+`faur fetch <url>` (continue a long page with `--offset <nextOffset>`), not
+with bash or curl: it reads only public https pages and refuses URLs that
+carry credentials. Ask before broader web searches; they need a search tool
+this session provides, and Faur has none. If the subject or references are
 unclear, ask for a website, repository or documentation, or offer public search;
 if there are no references, continue from the user's description. If a tool is
 unavailable or a source fails, say so rather than guessing.

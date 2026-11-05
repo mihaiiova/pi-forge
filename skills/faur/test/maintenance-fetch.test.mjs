@@ -155,3 +155,36 @@ test('the real transport connects to the pinned address and keeps TLS verificati
   await assert.rejects(httpsGet(url, { address: '127.0.0.1', family: 4 }, AbortSignal.timeout(5000)), error => /self.signed|DEPTH_ZERO|unable to verify/i.test(`${error.code} ${error.message}`));
   assert.equal(reached, false);
 });
+
+// faur fetch is the design-mode research path: the same checks, from the CLI.
+test('faur fetch refuses unsafe URLs and prints an untrusted, resumable slice', async t => {
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const cli = new URL('../faur.mjs', import.meta.url).pathname;
+  const run = (args, extra = []) => spawnSync(process.execPath, [...extra, cli, 'fetch', ...args], { encoding: 'utf8', timeout: 20000 });
+  for (const [url, why] of [['http://example.com', /Only https/], ['https://example.com/?api_key=x', /looks like a credential/], ['https://127.0.0.1/', /./]]) {
+    const result = run([url]);
+    assert.equal(result.status, 1, url);
+    assert.match(result.stderr, why);
+    assert.equal(result.stdout, '');
+  }
+  assert.match(run([]).stderr, /requires a public https/);
+  // Stub only the network: the real slicing runs on a long document.
+  const dir = mkdtempSync(join(tmpdir(), 'faur-fetch-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const real = new URL('../maintenance-fetch.mjs', import.meta.url).href;
+  const stub = `export * from ${JSON.stringify(real)}; export async function fetchDocument(u) { return { requestedUrl: u, finalUrl: u, redirects: [], retrievedAt: 'now', status: 200, contentType: 'text/plain', bytesTruncated: false, text: 'x'.repeat(${CHUNK} + 5) }; }`;
+  const loader = join(dir, 'loader.mjs');
+  writeFileSync(loader, `export async function resolve(s, c, next) { if (s === './maintenance-fetch.mjs' && c.parentURL.endsWith('/faur.mjs')) return { url: 'data:text/javascript,' + encodeURIComponent(${JSON.stringify(stub)}), shortCircuit: true }; return next(s, c); }`);
+  const first = run(['https://docs.example/page'], ['--no-warnings', '--experimental-loader', loader]);
+  assert.equal(first.status, 0, first.stderr);
+  const slice = JSON.parse(first.stdout);
+  assert.match(slice.trust, /Untrusted/);
+  assert.equal(slice.nextOffset, CHUNK);
+  const rest = JSON.parse(run(['https://docs.example/page', '--offset', String(CHUNK)], ['--no-warnings', '--experimental-loader', loader]).stdout);
+  assert.equal(rest.length, 5);
+  assert.equal(rest.truncated, false);
+  assert.match(run(['https://docs.example/page', '--offset', 'x'], ['--no-warnings', '--experimental-loader', loader]).stderr, /offset must be an integer/);
+});

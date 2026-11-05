@@ -100,6 +100,10 @@ node skills/faur/faur.mjs search-skills seo audit
 node skills/faur/faur.mjs preview-skill coreyhaines31/marketingskills@seo-audit
 ```
 
+While designing, the Faur reads public pages you give it with
+`faur fetch <url>`: https only, public addresses, no credential-bearing URLs,
+and the result is marked as untrusted content. It does not search the web.
+
 A skill can also be authored inline, come from a pinned package, or be vendored
 from a directory you point at. Each agent lists the skills it receives:
 

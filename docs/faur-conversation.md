@@ -98,7 +98,7 @@ design, or keeping parts of the abandoned architecture.
 public website." The repository README describes the product and audience.
 
 **Pass.** The Faur reads relevant repository documentation and fetches the
-provided public website with an available tool before asking design questions.
+provided public website with `faur fetch` before asking design questions.
 It summarizes facts with sources, marks inferences and unknowns, then asks a
 small group of independent questions about outcomes or constraints. It does not
 ask the user to repeat facts the sources already established.

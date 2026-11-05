@@ -42,6 +42,7 @@ test("SKILL.md researches the subject before design questions without widening a
   assert.ok(/before .*design questions/i.test(explore), "research precedes design questions");
   assert.ok(/small group of independent questions/.test(skill), "groups independent design questions");
   assert.ok(/ask before broader web searches/i.test(explore), "asks before broad search");
+  assert.ok(explore.includes("`faur fetch <url>`") && /not with bash or curl/.test(explore), "fetches through the checked faur fetch");
   assert.ok(/don't restart discovery or\s+interview again/i.test(skill), "preserves ready-to-build flow");
 });
 
