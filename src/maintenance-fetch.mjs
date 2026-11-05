@@ -171,7 +171,6 @@ async function fetchHops(requested, url, signal, { resolver, transport, now, tim
     const type = String(response.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
     if (!TEXT_TYPES.test(type)) throw new Error(`Unsupported content type "${type || 'none'}"; only text, JSON, XML and YAML documents are read`);
     let raw = response.body.toString('utf8');
-    if (raw.includes('\u0000')) throw new Error('Binary content refused');
     // GitHub's contents/readme API wraps the file in base64 JSON.
     if (url.hostname === 'api.github.com' && type === 'application/json' && !response.truncated) {
       try {
@@ -179,6 +178,10 @@ async function fetchHops(requested, url, signal, { resolver, transport, now, tim
         if (file?.encoding === 'base64' && typeof file.content === 'string') raw = `# ${file.path ?? file.name ?? 'file'} (${file.html_url ?? url.href})\n\n${Buffer.from(file.content, 'base64').toString('utf8')}`;
       } catch { /* plain JSON document */ }
     }
+    // Judge the text the model will read: HTML pages legitimately carry NUL
+    // bytes inside inline scripts, which readable() strips.
+    const text = readable(raw, type);
+    if (text.includes('\u0000')) throw new Error('Binary content refused');
     return {
       requestedUrl: requested.origin + requested.pathname + requested.search,
       finalUrl: url.origin + url.pathname + url.search,
@@ -187,7 +190,7 @@ async function fetchHops(requested, url, signal, { resolver, transport, now, tim
       status: response.status,
       contentType: type,
       bytesTruncated: response.truncated,
-      text: readable(raw, type),
+      text,
     };
   }
 }

@@ -57,12 +57,13 @@ skip ahead when the user is already specific; go back when something changes.
 ### Explore
 
 Before asking design questions, make a short, bounded research pass to
-understand the subject. Use references already in the conversation and inspect
-relevant project documentation in the known repository; don't ask for a
-reference the user already gave. Fetch provided public URLs with
-`faur fetch <url>` (continue a long page with `--offset <nextOffset>`), not
-with bash or curl: it reads only public https pages and refuses URLs that
-carry credentials. Ask before broader web searches; they need a search tool
+understand the subject. Use references already in the conversation and read
+relevant project documentation in a repository the user named (with `read`,
+`ls`, `find`, `grep`, or read-only shell commands); don't ask for a reference
+the user already gave. Fetch provided public URLs by running
+`faur fetch <url>` (continue a long page with `--offset <nextOffset>`)
+instead of curl or another ad-hoc fetch: it reads only public https pages and
+refuses URLs that carry credentials. Ask before broader web searches; they need a search tool
 this session provides, and Faur has none. If the subject or references are
 unclear, ask for a website, repository or documentation, or offer public search;
 if there are no references, continue from the user's description. If a tool is
@@ -277,8 +278,13 @@ extension code. `faur import` is preserved for non-Faur projects.
 
 ## Project maintenance workflow
 
+This section and *Review mode* apply only when `/faur` runs inside a trusted
+Faur project and provides the `faur_plan` tool. When designing a new agent
+there is no `faur_plan`: research, discover and build with your ordinary
+tools and the `faur` CLI as described above.
+
 You are maintaining this generated Pi system, not building a second framework.
-Use only faur_plan for maintenance IO. It can inspect, discover, fetch
+In maintenance, use only faur_plan for IO. It can inspect, discover, fetch
 public documentation and preview, but cannot apply, install, authenticate or
 run anything. Do not bypass it with Bash/write/edit, MCP calls or
 operational agents even if such tools happen to be available. The only way a

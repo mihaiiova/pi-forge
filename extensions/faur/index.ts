@@ -25,7 +25,7 @@ export default function (pi: ExtensionAPI) {
       }
       await ctx.waitForIdle();
       const skill = readFileSync(new URL('../../skills/faur/SKILL.md', import.meta.url), 'utf8');
-      pi.sendUserMessage(`${skill}\n\nFaur CLI: node ${new URL('../../src/faur.mjs', import.meta.url).pathname}\n\nUser request: ${request || '(none: continue from this conversation)'}`);
+      pi.sendUserMessage(`${skill}\n\nMode: DESIGN (no Faur project here; faur_plan does not exist and is not needed). Research, discover and build with your ordinary tools and the faur CLI.\nFaur CLI: node ${new URL('../../src/faur.mjs', import.meta.url).pathname}\n\nUser request: ${request || '(none: continue from this conversation)'}`);
     },
   });
 }

@@ -91,10 +91,15 @@ test('failures are explicit: HTTP errors, unsupported content, binaries and time
   const { transport } = site({
     'https://a.example/png': reply(200, 'PNG', { 'content-type': 'image/png' }),
     'https://a.example/bin': reply(200, 'a\u0000b', { 'content-type': 'text/plain' }),
+    'https://a.example/app': reply(200, '<html><body><h1>App</h1><script>state={i:"root\u0000"}</script></body></html>', { 'content-type': 'text/html' }),
+    'https://a.example/binhtml': reply(200, '<html><body>a\u0000b</body></html>', { 'content-type': 'text/html' }),
   });
   await assert.rejects(fetchDocument('https://a.example/missing', { resolver: resolver(), transport }), /HTTP 404 .*nothing was verified/);
   await assert.rejects(fetchDocument('https://a.example/png', { resolver: resolver(), transport }), /Unsupported content type "image\/png"/);
   await assert.rejects(fetchDocument('https://a.example/bin', { resolver: resolver(), transport }), /Binary content/);
+  // A NUL inside an inline script (framework state) is not page text.
+  assert.equal((await fetchDocument('https://a.example/app', { resolver: resolver(), transport })).text, 'App');
+  await assert.rejects(fetchDocument('https://a.example/binhtml', { resolver: resolver(), transport }), /Binary content/);
   const hang = (_url, _pinned, signal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
   await assert.rejects(fetchDocument('https://a.example/slow', { resolver: resolver(), transport: hang, timeout: 50 }), /Timed out/);
   await assert.rejects(fetchDocument('https://a.example/dns', { resolver: () => new Promise(() => {}), transport, timeout: 50 }), /Timed out after 0\.05s resolving a\.example/);
