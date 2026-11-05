@@ -41,10 +41,10 @@ resist termination. Hiding a value from the model is not sufficient.
 ## Reproduction and observed results
 
 ```sh
-node skills/faur/test/probes/same-user-boundary.mjs
-node skills/faur/test/probes/same-user-socket.mjs
-node --test skills/faur/test/mcp-runtime.test.mjs
-FAUR_TEST_SCOPE=1 node --test skills/faur/test/workflow-launcher.test.mjs
+node test/probes/same-user-boundary.mjs
+node test/probes/same-user-socket.mjs
+node --test test/mcp-runtime.test.mjs
+FAUR_TEST_SCOPE=1 node --test test/workflow-launcher.test.mjs
 ```
 
 On Linux 6.12.96+deb13-amd64 x86_64, UID 1000, Node and Pi 1.4.0,
@@ -123,7 +123,7 @@ A disposable local smoke test uses the cached exact `@playwright/mcp@0.0.83`
 package and an already-installed Chromium browser:
 
 ```sh
-node skills/faur/test/probes/playwright-secret-smoke.mjs /path/to/@playwright/mcp/cli.js
+node test/probes/playwright-secret-smoke.mjs /path/to/@playwright/mcp/cli.js
 ```
 
 On this host the local HTTP form received its random sentinel when the MCP

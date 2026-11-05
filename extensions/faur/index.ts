@@ -2,7 +2,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Type } from 'typebox';
-import { registerMaintenance } from '../../skills/faur/maintenance-extension.mjs';
+import { registerMaintenance } from '../../src/maintenance-extension.mjs';
 import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 export default function (pi: ExtensionAPI) {
   // Inside a trusted generated project, /faur maintains it; Faur adds nothing
@@ -25,7 +25,7 @@ export default function (pi: ExtensionAPI) {
       }
       await ctx.waitForIdle();
       const skill = readFileSync(new URL('../../skills/faur/SKILL.md', import.meta.url), 'utf8');
-      pi.sendUserMessage(`${skill}\n\nFaur skill location: ${new URL('../../skills/faur/', import.meta.url).pathname}\n\nUser request: ${request || '(none: continue from this conversation)'}`);
+      pi.sendUserMessage(`${skill}\n\nFaur CLI: node ${new URL('../../src/faur.mjs', import.meta.url).pathname}\n\nUser request: ${request || '(none: continue from this conversation)'}`);
     },
   });
 }

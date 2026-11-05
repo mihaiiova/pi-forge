@@ -93,7 +93,8 @@ agent: projects never pin Faur, declared commands come from
 [pi-commands](https://github.com/mihaiiova/pi-commands) pinned by need and configured natively. Faur does not provide MCP per-call approvals.
 Do not add run-time code to Faur.
 
-- **Faur** (`skills/faur/`, `extensions/faur/`): discover, validate,
+- **Faur** (`extensions/faur/` the `/faur` command, `src/` the CLI and
+  modules, `skills/faur/` the skill and schema, `test/`): discover, validate,
   generate, diff, apply, reconcile, check. Pure functions where possible
   (`validateSystem`, `generateProject`, `effectiveCapabilities`); file I/O in
   one apply path. It runs in the developer's Pi, never inside a generated
@@ -141,10 +142,12 @@ configuration, a skill or an existing package cannot do it.
 - Node ESM (`.mjs`), no build step, no dependencies beyond pinned `yaml`.
   Match the surrounding style: short modules, pure seams, comments that explain
   why.
-- Run the suite: `bash skills/faur/test/test.sh`. Live tests are opt-in
-  (`RUN_FAUR_LIVE_TESTS=1`, `RUN_FACTORY_LIVE_TESTS=1`) and cost tokens.
+- Run the suite: `bash test/test.sh`. Opt-in gates:
+  `RUN_FAUR_DELEGATION_TEST=1` (real Pi, local fake model, needs network);
+  `RUN_FAUR_LIVE_TESTS=1` and `RUN_CLEAN_ENV_TEST=1` (real providers, cost
+  tokens); `FAUR_CLEAN_MACHINE_TEST=1` (after publishing a release).
 - Generated output is pinned by golden fixtures in
-  `skills/faur/test/fixtures/generate/*/golden`. A golden change is a product
+  `test/fixtures/generate/*/golden`. A golden change is a product
   change: review the diff and say why each generated file changed.
 - Schema changes update `schema.md`, `validate.mjs` and its tests together.
   The validator rejects unknown keys; keep it that way.

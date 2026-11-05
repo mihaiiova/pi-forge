@@ -10,8 +10,8 @@ agent system, and later modifies that system conversationally. It is a
 **conversational builder over the deterministic `faur` CLI** — the CLI is the
 single source of truth for generation; this skill drives it. There is no
 `faur` executable on PATH: `faur <command>` below means
-`node <Faur skill location>/faur.mjs <command>`, where the skill location is
-the directory containing this file (`/faur` states it).
+`node <Faur CLI path> <command>`. `/faur` states the path; otherwise it is
+`src/faur.mjs` in the Faur package, two levels above this file.
 
 Invoke with `/faur` outside a Faur project, `/skill:faur`, or describe an agent-system outcome ("I want an
 SEO system", "set up a coding agent with a reviewer", …) and this skill routes here.

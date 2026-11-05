@@ -72,10 +72,10 @@ the generated files and applies them only after you confirm. See the
 [conversational acceptance scenarios](docs/faur-conversation.md). The deterministic CLI behind it:
 
 ```sh
-node skills/faur/faur.mjs discover [dir]          # models, your skills, MCP, CLIs
-node skills/faur/faur.mjs validate <dir>
-node skills/faur/faur.mjs generate <dir> --dry-run  # then without --dry-run
-node skills/faur/faur.mjs modify <dir> --dry-run
+node src/faur.mjs discover [dir]          # models, your skills, MCP, CLIs
+node src/faur.mjs validate <dir>
+node src/faur.mjs generate <dir> --dry-run  # then without --dry-run
+node src/faur.mjs modify <dir> --dry-run
 ```
 
 ### Models: chosen per agent
@@ -96,8 +96,8 @@ the project's own `.agents/skills/` (never globally), recorded in
 `skills-lock.json`:
 
 ```sh
-node skills/faur/faur.mjs search-skills seo audit
-node skills/faur/faur.mjs preview-skill coreyhaines31/marketingskills@seo-audit
+node src/faur.mjs search-skills seo audit
+node src/faur.mjs preview-skill coreyhaines31/marketingskills@seo-audit
 ```
 
 While designing, the Faur reads public pages you give it with
@@ -152,7 +152,7 @@ it cannot verify. MCP servers connect after
 start, so `/faur check` also checks their tools. The last result is saved in
 `.faur/check.json` and shown by `/faur status`.
 
-Outside a session, run `node /path/to/faur/skills/faur/faur.mjs check-agent <project>`.
+Outside a session, run `node /path/to/faur/src/faur.mjs check-agent <project>`.
 It makes no model calls and does not connect MCP by default; `--connect` runs
 `pi mcp list --json` using the project's isolated Pi home and may connect to
 networks and use configured credentials. Pi's shell commands read project MCP
@@ -308,8 +308,8 @@ because `maintenance-rebuild.mjs` was removed. Keep the original untouched.
 ```sh
 mkdir -p /path/to/new-project/.pi
 cp /path/to/old-project/.pi/system.yaml /path/to/new-project/.pi/system.yaml
-node /path/to/faur/skills/faur/faur.mjs generate /path/to/new-project --dry-run
-node /path/to/faur/skills/faur/faur.mjs generate /path/to/new-project
+node /path/to/faur/src/faur.mjs generate /path/to/new-project --dry-run
+node /path/to/faur/src/faur.mjs generate /path/to/new-project
 ```
 
 Review the copied design for old paths and unsupported declarations first;
@@ -322,7 +322,7 @@ Projects predating Pi Forge need the same fresh regeneration.
 ### Tests
 
 ```sh
-bash skills/faur/test/test.sh
+bash test/test.sh
 ```
 
 ### Releasing
