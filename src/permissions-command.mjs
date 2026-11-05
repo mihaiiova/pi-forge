@@ -7,7 +7,7 @@
  */
 import { parsedModel } from './changes.mjs';
 import { readText } from './maintenance-store.mjs';
-import { planChange, applyChange, approvalPreview } from './maintenance.mjs';
+import { planChange, applyChange, approvalPreview, approvalSummary } from './maintenance.mjs';
 import { cliEntries, cliAgents, checkShape, formatCommand, splitCommandLine, grantOps, revokeOps, commandShape, readerFileWarning } from './cli-tools.mjs';
 import { enforcedAgentTools } from './policy.mjs';
 import { confirmPreview } from './preview-dialog.mjs';
@@ -17,8 +17,8 @@ const shape = (entry) => formatCommand(entry.command, entry.args ?? []);
 /** Preview a system.yaml change, ask, and apply it. Returns a message, or null when declined. */
 async function confirmChange(root, ctx, title, ops) {
   const plan = planChange(root, ops);
-  const summary = approvalPreview(root, plan);
-  if (!await confirmPreview(ctx, title, summary)) return null;
+  const preview = approvalPreview(root, plan);
+  if (!await confirmPreview(ctx, { root, question: title, preview, summary: approvalSummary(root, plan) })) return null;
   return applyChange(root, plan, true);
 }
 

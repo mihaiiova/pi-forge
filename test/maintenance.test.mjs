@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { SHOW_PREVIEW, choosePreview, confirmPreview } from '../src/preview-dialog.mjs';
+import { SHOW_PREVIEW, PREVIEW_FILE, choosePreview, confirmPreview } from '../src/preview-dialog.mjs';
 import { compactDiff } from '../src/diff.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +11,8 @@ import { execFileSync, spawnSync as requireResult } from 'node:child_process';
 import { loadYaml } from '../src/yaml-loader.mjs';
 import { generateProject, managedPaths } from '../src/generate.mjs';
 import { changeModel } from '../src/changes.mjs';
-import { planChange, planSettingsAdoption, planSettingsReconciliation, planPromptAdoption, planAgentAdoption, planAgentReconciliation, planIntegrationAdoption, planIntegrationReconciliation, planNativeReapply, applyChange, approvalPreview, inspectProject, rebuildPlan, changesReach } from '../src/maintenance.mjs';
+import { approvalSummary, planChange, planSettingsAdoption, planSettingsReconciliation, planPromptAdoption, planAgentAdoption, planAgentReconciliation, planIntegrationAdoption, planIntegrationReconciliation, planNativeReapply, applyChange, approvalPreview, inspectProject, rebuildPlan, changesReach } from '../src/maintenance.mjs';
+import { parsedModel } from '../src/changes.mjs';
 import { readJson, readText, json, atomicWrite, fingerprints, applyWrites } from '../src/maintenance-store.mjs';
 import { redactedDiffPair } from '../src/maintenance-secrets.mjs';
 import { registerMaintenance } from '../src/maintenance-extension.mjs';
@@ -1794,27 +1795,47 @@ test('SKILL.md tells maintenance to offer leaving for agent work, not to send pe
   assert.match(text, /don't tell them to type `\/faur exit`/);
 });
 
-test('approval dialogs keep their choices on screen and show every change on request', async () => {
+test('approval dialogs show a short summary, put every changed line in a file, and remove it after', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'faur-dialog-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const asked = [], opened = [];
+  let fileWhileAsking;
   const ui = answers => ({ ui: {
-    select: async (title, options) => { asked.push({ title, options }); return answers.shift(); },
+    select: async (title, options) => { asked.push({ title, options }); fileWhileAsking = readFileSync(join(root, PREVIEW_FILE), 'utf8'); return answers.shift(); },
     editor: async (title, text) => { opened.push({ title, text }); },
   } });
-  const long = Array.from({ length: 40 }, (_, i) => `+ line ${i + 1}`).join('\n');
-  const choice = await choosePreview(ui([SHOW_PREVIEW, 'Apply']), 'Apply this change?', long, ["Let's discuss", 'Apply', 'Discard']);
+  const preview = Array.from({ length: 400 }, (_, i) => `+ line ${i + 1}`).join('\n');
+  const summary = ['Writes .pi/system.yaml.', 'lead gains cli:edit-label.'];
+  const choice = await choosePreview(ui([SHOW_PREVIEW, 'Apply']), { root, question: 'Apply this change?', summary, preview, options: ["Let's discuss", 'Apply', 'Discard'] });
   assert.equal(choice, 'Apply');
-  assert.equal(asked[0].title.split('\n').length, 2 + 12 + 1, 'the question, the first 12 lines and a note');
-  assert.match(asked[0].title, /… 28 more lines: choose "Show the full preview"/);
+  assert.equal(asked[0].title, `Apply this change?\n\nWrites .pi/system.yaml.\nlead gains cli:edit-label.\n\nEvery changed line: ${PREVIEW_FILE}`, 'the dialog holds only the summary, never the diff');
   assert.deepEqual(asked[0].options, ["Let's discuss", 'Apply', 'Discard', SHOW_PREVIEW]);
-  assert.equal(opened[0].text, long, 'the editor shows every line');
+  assert.match(fileWhileAsking, /lead gains cli:edit-label[\s\S]*\+ line 400/, 'the file has the summary and every changed line');
+  assert.equal(opened[0].text, preview, 'reading here shows every line');
   assert.equal(asked.length, 2, 'closing the preview returns to the choice');
+  assert.equal(existsSync(join(root, PREVIEW_FILE)), false, 'the file is removed once the person decides');
+  // A very long summary is cut too; the rest is in the file.
   asked.length = 0;
-  assert.equal(await choosePreview(ui(['Discard']), 'Apply this change?', '+ one', ["Let's discuss", 'Apply', 'Discard']), 'Discard');
-  assert.deepEqual(asked[0].options, ["Let's discuss", 'Apply', 'Discard'], 'a short preview needs no extra choice');
-  assert.equal(asked[0].title, 'Apply this change?\n\n+ one');
-  asked.length = 0;
-  assert.equal(await confirmPreview(ui([undefined]), 'Rebuild?', '+ one'), false, 'Esc declines');
-  assert.deepEqual(asked[0].options, ['Cancel', 'Apply'], 'Cancel first, so a stray Enter changes nothing');
+  await confirmPreview(ui([undefined]), { root, question: 'Rebuild?', summary: Array.from({ length: 30 }, (_, i) => `change ${i}`), preview: '+ x' });
+  assert.ok(asked[0].title.split('\n').length <= 14);
+  assert.match(asked[0].title, /… 21 more in the preview\./);
+  assert.deepEqual(asked[0].options, ['Cancel', 'Apply', SHOW_PREVIEW], 'Cancel first, so a stray Enter changes nothing');
+  assert.equal(existsSync(join(root, PREVIEW_FILE)), false, 'removed after Esc as well');
+});
+
+test('the approval summary names what a change writes and grants', t => {
+  const root = project(t, pinnedModel);
+  const plan = planChange(root, [
+    { op: 'add', target: 'cli', name: 'edit-label', value: { command: 'gh', args: ['label', 'edit', '{name}'] } },
+    { op: 'assign', name: 'lead', model: 'fixture/small' },
+  ]);
+  const lead = parsedModel(readText(root, '.pi/system.yaml')).orchestrator;
+  const granted = planChange(root, [{ op: 'set', target: 'orchestrator', value: { ...lead, tools: [...lead.tools.filter(t => t !== 'grep'), 'grep'] } }]);
+  const summary = approvalSummary(root, plan);
+  assert.match(summary[0], /^Writes \.pi\/system\.yaml/);
+  assert.ok(summary.includes('Adds command edit-label: gh label edit {name} (asks before each run).'), summary.join('\n'));
+  assert.ok(summary.some(line => /^lead model: .* → fixture\/small\.$/.test(line)), summary.join('\n'));
+  assert.ok(approvalSummary(root, granted).includes('lead gains grep.'), approvalSummary(root, granted).join('\n'));
 });
 
 test('approval previews show every changed line with short context, not whole files', () => {
@@ -1822,4 +1843,13 @@ test('approval previews show every changed line with short context, not whole fi
   lines.splice(15, 0, '- old', '+ new');
   const compact = compactDiff(lines.join('\n')).split('\n');
   assert.deepEqual(compact, ['  …', '  same 13', '  same 14', '- old', '+ new', '  same 15', '  same 16', '  …']);
+});
+
+test('a preview file left by a killed session is removed when the next one starts', t => {
+  const root = project(t);
+  const mock = adapter();
+  registerMaintenance(mock.pi, mock.Type, root);
+  writeFileSync(join(root, PREVIEW_FILE), 'stale preview');
+  mock.events.session_start({}, mock.ctx);
+  assert.equal(existsSync(join(root, PREVIEW_FILE)), false);
 });

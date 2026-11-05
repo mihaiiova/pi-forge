@@ -10,7 +10,7 @@ import { effectiveCapabilities, checkCapabilities } from './capabilities.mjs';
 import { diffLines, changedLines, compactDiff, indent } from './diff.mjs';
 import { setupSteps } from './setup.mjs';
 import { configurationAdvisories } from './advisories.mjs';
-import { cliEntries } from './cli-tools.mjs';
+import { cliEntries, formatCommand } from './cli-tools.mjs';
 import { envStatus } from './maintenance-env.mjs';
 import { redacted, redactedDiffPair, redactForModel, assertNoNewSecrets } from './maintenance-secrets.mjs';
 import { vendoredSkills } from './skill-sources.mjs';
@@ -898,6 +898,7 @@ export function planChange(root, operations, options = {}) {
         toolsAndPoliciesChanged: JSON.stringify([oldModel.orchestrator?.tools, oldModel.agents, oldModel.policies]) !== JSON.stringify([model.orchestrator?.tools, model.agents, model.policies]),
         warning: 'Setup checks execute shell commands automatically; installs execute after confirmation. Packages and stdio MCP servers execute code at next launch. MCP URLs expose data to their operators. Approval authorizes this declared execution surface.',
       },
+      grants: agentGrants(oldModel, model),
       modelDiff: diffLines(oldText, text),
       advisories: configurationAdvisories(model),
       ...(stale.length ? { staleMentions: { note: 'These instructions still mention a capability this change removes, so agents would keep reaching for it. Update them in the same proposal.', mentions: stale } } : {}),
@@ -913,6 +914,58 @@ export function planChange(root, operations, options = {}) {
     },
   };
 }
+/** Per agent: tools gained or lost and a model change, between two designs. */
+function agentGrants(before, after) {
+  const agents = model => Object.fromEntries([model?.orchestrator, ...(Array.isArray(model?.agents) ? model.agents : [])].filter(a => a?.name).map(a => [a.name, a]));
+  const was = agents(before), now = agents(after);
+  return [...new Set([...Object.keys(was), ...Object.keys(now)])].flatMap(name => {
+    const a = was[name], b = now[name];
+    const tools = x => Array.isArray(x?.tools) ? x.tools : [];
+    const gains = tools(b).filter(t => !tools(a).includes(t)), loses = tools(a).filter(t => !tools(b).includes(t));
+    const model = a?.model !== b?.model ? { from: a?.model ?? null, to: b?.model ?? null } : undefined;
+    return gains.length || loses.length || model || !a || !b ? [{ agent: name, ...(!a ? { added: true } : {}), ...(!b ? { removed: true } : {}), gains, loses, ...(model ? { model } : {}) }] : [];
+  });
+}
+
+/**
+ * The few lines a person needs to decide on a change: what it writes and what
+ * it grants or removes (tools, commands, MCP servers, packages, setup steps,
+ * skills). Built from the redacted public preview; every changed line is in
+ * approvalPreview.
+ */
+export function approvalSummary(root, plan) {
+  const preview = publicChangePreview(root, plan);
+  const surface = preview.executionSurface ?? {};
+  const written = [...new Set([...(preview.modelDiff ? ['.pi/system.yaml'] : []), ...(preview.files ?? []).map(file => file.path)])];
+  const lines = [`Writes ${written.join(', ') || 'no files'}.`];
+  for (const g of preview.grants ?? []) {
+    if (g.added) lines.push(`Adds agent ${g.agent}${g.gains.length ? ` with ${g.gains.join(', ')}` : ''}.`);
+    else if (g.removed) lines.push(`Removes agent ${g.agent}.`);
+    else {
+      if (g.gains.length) lines.push(`${g.agent} gains ${g.gains.join(', ')}.`);
+      if (g.loses.length) lines.push(`${g.agent} loses ${g.loses.join(', ')}.`);
+    }
+    if (g.model && !g.added && !g.removed) lines.push(`${g.agent} model: ${g.model.from} → ${g.model.to}.`);
+  }
+  for (const c of surface.changedCli ?? []) {
+    const verb = !c.before ? 'Adds' : !c.after ? 'Removes' : 'Changes';
+    lines.push(c.after ? `${verb} command ${c.name}: ${formatCommand(c.after.command, c.after.args ?? [])} (${c.after.approve === false ? 'runs without asking' : 'asks before each run'}).` : `${verb} command ${c.name}.`);
+  }
+  for (const m of surface.changedMcp ?? []) {
+    const verb = !m.before ? 'Adds' : !m.after ? 'Removes' : 'Changes';
+    const where = m.after?.config?.url ?? m.after?.config?.command;
+    lines.push(`${verb} MCP server ${m.name}${where ? ` (${where})` : ''}.`);
+  }
+  for (const p of surface.addedPackages ?? []) lines.push(`Adds package ${p}.`);
+  for (const step of surface.setupCommands ?? []) lines.push(`Adds setup step: ${step.description ?? step.install ?? 'a check'}.`);
+  for (const skill of preview.skills?.install ?? []) lines.push(`Installs skill ${skill.name} from ${skill.source}.`);
+  for (const skill of preview.skills?.remove ?? []) lines.push(`Removes skill ${skill}.`);
+  if (lines.length === 1) lines.push('No tools, commands, MCP servers, packages or skills change.');
+  if (preview.rebuilt) lines.push('Also rebuilds files this Faur version generates differently.');
+  if (preview.restart) lines.push(preview.restart);
+  return lines;
+}
+
 /** Generated files whose content can change without changing what agents can run or reach. */
 const TEXT_FILES = new Set(['.pi/APPEND_SYSTEM.md', 'README.md', '.gitignore', '.env.example']);
 function frontmatter(text, ignore) {
