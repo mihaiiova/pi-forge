@@ -64,9 +64,13 @@ the user already gave. Fetch provided public URLs by running
 `faur fetch <url>` (continue a long page with `--offset <nextOffset>`)
 instead of curl or another ad-hoc fetch: it reads only public https pages and
 refuses URLs that carry credentials. Ask before broader web searches; they need a search tool
-this session provides, and Faur has none. If the subject or references are
-unclear, ask for a website, repository or documentation, or offer public search;
-if there are no references, continue from the user's description. If a tool is
+this session provides, and Faur has none. When the agent is about a specific
+product, project, publication or organization and you have no source for it
+from the user, ask in your first reply for a website, repository or
+documentation (or offer a public search) alongside your first question. Treat
+anything else you find, such as a similarly named skill or project, as an
+inference to confirm, not the subject. If there are no references, continue
+from the user's description. If a tool is
 unavailable or a source fails, say so rather than guessing.
 
 Summarize what you learned briefly, cite the sources, and distinguish facts,
