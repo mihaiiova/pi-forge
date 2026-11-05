@@ -33,9 +33,10 @@ pi --approve -p "/skill:<workflow> <request>"     # plain pi
 | Mode | Success | Failure |
 |---|---|---|
 | `-p` | exit 0; the final answer on stdout | exit 1; the error on stderr, stdout empty (a provider error is retried first) |
-| `--mode json -p` | JSONL events ending with `agent_end` (final messages, usage) and `agent_settled` | as above |
+| `--mode json -p` | JSONL events ending with `agent_end` (final messages, usage) and `agent_settled` | **exit 0**; the last assistant message in `agent_end` has `stopReason: "error"` and `errorMessage` (Pi 1.5.0; `headless-workflow.test.mjs`) |
 
-The exit code reports the run, not the task: a workflow whose test failed
+In JSON mode a caller must read `stopReason`, not the exit code, to detect
+a failed run. The exit code reports the run, not the task: a workflow whose test failed
 still exits 0. A caller reads the task outcome from the answer (for example a
 first line `Verdict: FAIL` that a document format requires).
 

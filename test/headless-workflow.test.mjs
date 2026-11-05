@@ -88,6 +88,33 @@ orchestrator:
   assert.equal(existsSync(join(info.root, '.pi/system.yaml')), false);
 });
 
+test('a provider failure exits 1 in text print mode but 0 in JSON mode, with the error in agent_end', t => {
+  const yaml = `schema: 1
+name: failing
+orchestrator:
+  name: lead
+  model: faux/faux-1
+  tools: [read]
+  prompt: Answer briefly.
+`;
+  const failure = "fauxAssistantMessage('', { stopReason: 'error', errorMessage: '402 Insufficient Balance' })";
+  const info = project(t, yaml, Array(8).fill(failure).join(','));
+  assert.ok(info);
+  const run = mode => spawnSync('pi', ['--approve', '--no-session', ...mode, '-p', 'Say hello'], {
+    cwd: info.root, env: { ...info.env, PI_CODING_AGENT_DIR: join(info.root, '.home') }, encoding: 'utf8', timeout: 60000, input: '',
+  });
+  const text = run([]);
+  assert.equal(text.status, 1, text.stdout);
+  assert.match(text.stderr, /402 Insufficient Balance/);
+  const json = run(['--mode', 'json']);
+  // Pi 1.5: JSON mode reports the failure in the stream, not the exit code.
+  assert.equal(json.status, 0, json.stderr);
+  const end = json.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(e => e.type === 'agent_end').at(-1);
+  const last = end.messages.filter(m => m.role === 'assistant').at(-1);
+  assert.equal(last.stopReason, 'error');
+  assert.match(last.errorMessage, /402 Insufficient Balance/);
+});
+
 const approvals = (called) => `schema: 1
 name: approval-workflow
 orchestrator:

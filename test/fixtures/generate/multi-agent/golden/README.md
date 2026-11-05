@@ -1,4 +1,4 @@
-<!-- faur:generated v1 sha256=d32ed088309587f11e93284300f1d1484416dae47298cbf07d8f5dc384180fcb -->
+<!-- faur:generated v1 sha256=96f09ae0e2e87aa29d0bdda8d4d02d5bfc2347079ada3102598d5339755439b5 -->
 # seo-agent-system
 
 SEO analysis + article drafting with specialist subagents
@@ -22,7 +22,8 @@ pi --approve -p "/skill:analyze-and-draft <request>"
 A workflow is a skill: the text after it is the request. Print mode exits 0
 with the final answer on stdout, or non-zero with the error on stderr; the
 exit code reports the run, not whether the task succeeded. Add
-`--mode json` for an event stream. Pi waits for stdin to close when it is
+`--mode json` for an event stream; it exits 0 even when the run fails, so
+check `stopReason` in its `agent_end` event. Pi waits for stdin to close when it is
 not a terminal, so callers close it. Approval is never granted unattended:
 a call that asks the user is refused in a headless run.
 
