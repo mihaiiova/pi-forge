@@ -135,12 +135,14 @@ orchestrator; subagents get only the skills listed for them.
 
 ### Tasks and document formats
 
-Use an ordinary Pi skill for task procedures, document formats, paths and
-any delivery instructions. Its instructions are advisory, not enforced
-output guarantees. Local skills are developer-owned: Faur does not generate or
-overwrite them. Review and approve proposed changes before editing the skill
-with ordinary Pi tools; those external edits are not enforced by Faur's
-maintenance approval mechanism.
+Faur puts an agent's procedures in skills, not in a schema. When the
+conversation shows a repeatable task, report or handoff, Faur drafts a skill
+for that agent (when to use it, steps, output paths and format, rules) and
+proposes it with the design. Approving the change writes
+`.pi/skills/<name>/SKILL.md`; `system.yaml` records only its name and
+description. From then on the file is yours: Faur never regenerates it, and
+revising it is another previewed proposal. Skill instructions are advisory,
+not enforced output guarantees.
 
 Faur does not choose foreground or background launches. Built-in MCP tools
 work in either mode; foreground specialists need extension paths in their native
@@ -310,9 +312,9 @@ node /path/to/faur/src/faur.mjs generate /path/to/new-project
 ```
 
 Review the copied design for old paths and unsupported declarations first.
-The removed `documents`, `workflows` and `skills[].body` fields must be
-replaced with ordinary developer-owned skill files; preserve their procedures
-and output instructions in those files. Review the preview before approval. Compare the original native files and
+A design that still has `documents` or `workflows` can be migrated in
+place: run `/faur`, and it proposes skills that carry those procedures and
+removes the old declarations in the same approved change. Review the preview before approval. Compare the original native files and
 manually reconcile every authored prompt, skill, script and configuration
 change into the new project, without copying credentials or stale runtime
 state blindly. Verify the result before replacing or retiring the original.

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { withBaselineTools } from './policy.mjs';
+import { LEGACY_KEYS } from './changes.mjs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { parsedModel } from './changes.mjs';
@@ -55,6 +56,8 @@ export function hostConflicts(root, model, { agentDir = process.env.PI_CODING_AG
 export function checkProject(root, { registeredTools, mcpTools, env = process.env, hostAgentDir, mcpCommand, verifyCodemode = true } = {}) {
   const raw = loadYaml().parse(readText(root, '.pi/system.yaml') ?? '');
   const validation = validateSystem(raw).errors;
+  const legacy = LEGACY_KEYS.filter(key => raw?.[key] !== undefined);
+  if (legacy.length) validation.push(`${legacy.join(' and ')} ${legacy.length > 1 ? 'are' : 'is'} no longer supported: run /faur to migrate; it proposes skills that carry these procedures and removes the old declarations in one approved change`);
   if (validation.length) return { ok: false, validation, consistency: null, launch: null, advisories: [] };
   const doc = withBaselineTools(raw);
   const piPackages = readJson(root, '.pi/settings.json').packages ?? [];

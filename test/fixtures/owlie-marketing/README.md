@@ -1,6 +1,9 @@
 # Owlie marketing: skill-first comparison
 
-This is a reference fixture, not the live Owlie project. The source was the
+This is a reference fixture, not the live Owlie project, and not a template:
+it is evidence that one real agent's declarations fit in an ordinary skill.
+In a real project Faur drafts such skills from the conversation (or from the
+old declarations when migrating) and writes them through an approved change. The source was the
 available Faur 0.35.0 marketing design. It has one `marketing` workflow
 (four fields), three document declarations (19 top-level fields), one
 third-party skill and seven scoped GitHub commands. The workflow generates a
