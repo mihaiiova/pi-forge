@@ -1,4 +1,4 @@
-<!-- faur:generated v1 sha256=96f09ae0e2e87aa29d0bdda8d4d02d5bfc2347079ada3102598d5339755439b5 -->
+<!-- faur:generated v1 sha256=ab4a6561e05219aeaffd25ad2ddc3acd1d8177dc9d78b4cd0483629dd4aea5ec -->
 # seo-agent-system
 
 SEO analysis + article drafting with specialist subagents
@@ -16,16 +16,7 @@ project; headless runs pass `--approve` instead.
 ```sh
 pi                          # interactive
 pi --approve -p "..."       # headless one-shot
-pi --approve -p "/skill:analyze-and-draft <request>"
 ```
-
-A workflow is a skill: the text after it is the request. Print mode exits 0
-with the final answer on stdout, or non-zero with the error on stderr; the
-exit code reports the run, not whether the task succeeded. Add
-`--mode json` for an event stream; it exits 0 even when the run fails, so
-check `stopReason` in its `agent_end` event. Pi waits for stdin to close when it is
-not a terminal, so callers close it. Approval is never granted unattended:
-a call that asks the user is refused in a headless run.
 
 On the first interactive run, Pi may start npm package installation processes
 that continue briefly after Pi exits and may keep output pipes open. Callers

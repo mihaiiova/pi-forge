@@ -40,24 +40,10 @@ const multiModel = {
     {
       name: "refresh-product-knowledge",
       description: "Refresh product knowledge",
-      body: "# Refresh product knowledge\n\nScrape and distill product info.\n",
     },
     { name: "analyze-and-draft", description: "Analyze and draft" },
   ],
-  workflows: [
-    {
-      name: "analyze-and-draft",
-      description: "Analyze SEO data, pick opportunities, draft articles",
-      skill: "analyze-and-draft",
-      trigger: { kind: "manual" },
-      entry: "orchestrator",
-      agents: ["seo-analyst", "article-writer", "researcher"],
-      inputs: ["data/opportunities/*.md"],
-      outputs: ["data/analyses/", "data/articles/"],
-      approval: "publish",
-      verify: "a draft exists under data/articles/",
-    },
-  ],
+
 };
 
 function byPath(files, path) {
@@ -106,31 +92,12 @@ test("declared inheritProjectContext / inheritSkills are emitted as frontmatter"
   assert.ok(analyst.content.includes("inheritSkills: true"));
 });
 
-test("skills materialize to .pi/skills/<name>/SKILL.md with body", () => {
+test("developer-owned skills are not generated; agent scaffolds retain markers", () => {
   const { files } = generateProject(multiModel, {});
-  const skill = byPath(files, ".pi/skills/refresh-product-knowledge/SKILL.md");
-  assert.ok(skill.content.includes("name: refresh-product-knowledge"));
-  assert.ok(skill.content.includes("# Refresh product knowledge"));
-});
-
-test("a workflow-referenced skill without a body gets a generated body", () => {
-  const { files } = generateProject(multiModel, {});
-  const skill = byPath(files, ".pi/skills/analyze-and-draft/SKILL.md");
-  assert.ok(skill.content.includes("# analyze-and-draft"));
-  assert.ok(skill.content.includes("Approval boundary: publish"));
-  assert.ok(skill.content.includes("subagent"));
-  assert.ok(!/\n[ \t]*\d+[.)][ \t]/.test(skill.content), "no fixed step graph");
-});
-
-test("agent and skill files carry a TRAILING marker, not a leading one", () => {
-  const { files } = generateProject(multiModel, {});
+  assert.equal(byPath(files, ".pi/skills/refresh-product-knowledge/SKILL.md"), undefined);
   const agent = byPath(files, ".pi/agents/seo-analyst.md").content;
-  const skill = byPath(files, ".pi/skills/refresh-product-knowledge/SKILL.md").content;
-
-  assert.match(agent, /^---\n/, "frontmatter is the first line (no leading marker)");
+  assert.match(agent, /^---\n/);
   assert.match(agent, /<!-- faur:generated v1 sha256=[0-9a-f]{64} -->\n$/);
-  assert.match(skill, /^---\n/);
-  assert.match(skill, /<!-- faur:generated v1 sha256=[0-9a-f]{64} -->\n$/);
 });
 
 test("round-trip-lite: a user edit to an agent file survives regeneration", () => {
@@ -163,6 +130,4 @@ test("SEO delegation structure: writer research, independent researcher, no anal
   assert.ok(analyst.includes("tools:\n  - read\n  - grep\n  - find\n  - ls\n"), "analyst allowlist is read-only");
   assert.ok(!analyst.includes("write"), "analyst allowlist has no write tool → cannot auto-publish");
 
-  const workflow = byPath(files, ".pi/skills/analyze-and-draft/SKILL.md").content;
-  assert.ok(workflow.includes("Approval boundary: publish"), "publication gated behind approval");
 });

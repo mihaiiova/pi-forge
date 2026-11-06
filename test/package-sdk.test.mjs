@@ -219,7 +219,7 @@ test('imported specialist guidance is regenerated, not retained as stale authore
   const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true, noExtensions: true });
   await loader.reload();
   const { session } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: loader, settingsManager, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(session.getActiveToolNames(), ['read', 'ls', 'find', 'grep'], 'real Pi starts the lead with the browsing baseline'); } finally { session.dispose(); }
+  try { assert.deepEqual(session.getActiveToolNames(), ['read', 'ls', 'find', 'grep'], 'noExtensions disables Pi’s codemode extension even when configured'); } finally { session.dispose(); }
 });
 
 test('import refuses a modified generated specialist before writing a design record', async t => {
@@ -275,26 +275,26 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   settings.defaultTools = ['read'];
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   assert.throws(() => planSettingsAdoption(root), /without ls, find, grep/, 'dropping the browsing baseline cannot be adopted');
-  settings.defaultTools = ['read', 'ls', 'find', 'grep', 'bash'];
+  settings.defaultTools = ['read', 'ls', 'find', 'grep', 'bash', 'codemode'];
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   assert.ok(inspectProject(root).nativeDrift.some(item => item.path === '.pi/settings.json'));
   const sdk = await sdkModule();
   const agentDir = join(root, 'home');
   mkdirSync(agentDir);
   const settingsManager = sdk.SettingsManager.create(root, agentDir, { projectTrusted: true });
-  const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true });
+  const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true, extensionFactories: [sdk.createCodemodeExtension()] });
   await loader.reload();
   const { session } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: loader, settingsManager, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(session.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash']); }
+  try { assert.deepEqual(session.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash', 'codemode']); }
   finally { session.dispose(); }
   applyChange(root, planSettingsAdoption(root), true);
   applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
   const newSettings = sdk.SettingsManager.create(root, agentDir, { projectTrusted: true });
-  const newLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: newSettings, noContextFiles: true });
+  const newLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: newSettings, noContextFiles: true, extensionFactories: [sdk.createCodemodeExtension()] });
   await newLoader.reload();
   const { session: revised } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: newLoader, settingsManager: newSettings, sessionManager: sdk.SessionManager.inMemory(root) });
   try {
-    assert.deepEqual(revised.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash'], 'the adopted edit survives a revision');
+    assert.deepEqual(revised.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash', 'codemode'], 'the adopted edit survives a revision');
     assert.match(revised.systemPrompt, /Cite full file paths and include a summary/);
   } finally { revised.dispose(); }
   const drifted = JSON.parse(readFileSync(settingsPath, 'utf8'));
@@ -302,10 +302,10 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   writeFileSync(settingsPath, JSON.stringify(drifted, null, 2) + '\n');
   applyChange(root, planNativeReapply(root, '.pi/settings.json'), true);
   const reappliedSettings = sdk.SettingsManager.create(root, agentDir, { projectTrusted: true });
-  const reappliedLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: reappliedSettings, noContextFiles: true });
+  const reappliedLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: reappliedSettings, noContextFiles: true, extensionFactories: [sdk.createCodemodeExtension()] });
   await reappliedLoader.reload();
   const { session: reapplied } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: reappliedLoader, settingsManager: reappliedSettings, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(reapplied.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash'], 'reapply restores the adopted design'); }
+  try { assert.deepEqual(reapplied.getActiveToolNames(), ['read', 'ls', 'find', 'grep', 'bash', 'codemode'], 'reapply restores the adopted design'); }
   finally { reapplied.dispose(); }
   writeFileSync(promptPath, readFileSync(promptPath, 'utf8').replace('include a summary', 'include a different summary'));
   applyChange(root, planNativeReapply(root, '.pi/APPEND_SYSTEM.md'), true);
@@ -320,16 +320,16 @@ test('native prompt and settings edits survive adoption and revision in real Pi'
   mixed.defaultTools = ['read', 'grep'];
   writeFileSync(settingsPath, JSON.stringify(mixed, null, 2) + '\n');
   assert.throws(() => planSettingsReconciliation(root, ['tools']), /without ls, find/);
-  mixed.defaultTools = ['read', 'grep', 'ls', 'find'];
+  mixed.defaultTools = ['read', 'grep', 'ls', 'find', 'codemode'];
   writeFileSync(settingsPath, JSON.stringify(mixed, null, 2) + '\n');
   applyChange(root, planSettingsReconciliation(root, ['tools']), true);
   assert.notEqual(JSON.parse(readFileSync(settingsPath, 'utf8')).defaultModel, 'manual-model');
   applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
   const mergedSettings = sdk.SettingsManager.create(root, agentDir, { projectTrusted: true });
-  const mergedLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: mergedSettings, noContextFiles: true });
+  const mergedLoader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager: mergedSettings, noContextFiles: true, extensionFactories: [sdk.createCodemodeExtension()] });
   await mergedLoader.reload();
   const { session: merged } = await sdk.createAgentSession({ cwd: root, agentDir, resourceLoader: mergedLoader, settingsManager: mergedSettings, sessionManager: sdk.SessionManager.inMemory(root) });
-  try { assert.deepEqual(merged.getActiveToolNames().sort(), ['find', 'grep', 'ls', 'read']); }
+  try { assert.deepEqual(merged.getActiveToolNames().sort(), ['codemode', 'find', 'grep', 'ls', 'read']); }
   finally { merged.dispose(); }
 });
 
@@ -409,7 +409,7 @@ test('Faur installed in the developer\'s Pi maintains a generated project and ad
   writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ packages: [repo] }));
   assert.equal(JSON.parse(readFileSync(join(root, '.pi/settings.json'), 'utf8')).packages, undefined);
   const settingsManager = sdk.SettingsManager.create(root, agentDir, { projectTrusted: true });
-  const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true });
+  const loader = new sdk.DefaultResourceLoader({ cwd: root, agentDir, settingsManager, noContextFiles: true, extensionFactories: [sdk.createCodemodeExtension()] });
   const oldCwd = process.cwd();
   const child = process.env.PI_SUBAGENT_CHILD;
   delete process.env.PI_SUBAGENT_CHILD;
@@ -425,7 +425,7 @@ test('Faur installed in the developer\'s Pi maintains a generated project and ad
     assert.deepEqual(commands.filter(name => /factory/.test(name)), [], 'no old command names');
     const tools = session.extensionRunner.getAllRegisteredTools().map(t => t.definition.name);
     assert.ok(!tools.includes('request_permission') && !tools.includes('memory') && !tools.some(n => n.startsWith('cli_')), 'Faur adds nothing the agent runs');
-    assert.deepEqual(session.getActiveToolNames().sort(), ['find', 'grep', 'ls', 'read']);
+    assert.deepEqual(session.getActiveToolNames().sort(), ['codemode', 'find', 'grep', 'ls', 'read']);
     const notices = [];
     const command = session.extensionRunner.getCommand('faur');
     assert.match(command.description, /check \| status \| sync/);

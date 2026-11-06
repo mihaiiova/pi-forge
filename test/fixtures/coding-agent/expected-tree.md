@@ -15,7 +15,7 @@ coding-agent-project/
 │   │   ├── worker.md
 │   │   ├── reviewer.md
 │   │   └── oracle.md
-│   ├── skills/                # authored skills incl. workflows
+│   ├── skills/                # developer-owned skills
 │   │   ├── spec-start/SKILL.md
 │   │   ├── spec-review/SKILL.md
 │   │   ├── spec-close/SKILL.md

@@ -69,8 +69,7 @@ function declaredSpecError(spec) {
 /**
  * Which runtime packages a design uses: pi-commands for declared commands,
  * pi-subagents for declared
- * specialists or a lead that lists the `subagent` tool. Everything else,
- * workflows included, runs on Pi alone.
+ * specialists or a lead that lists the `subagent` tool. Local skills run on Pi alone.
  */
 export function runtimeNeeds(model) {
   const lead = leadTools(model);

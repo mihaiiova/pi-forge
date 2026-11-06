@@ -83,7 +83,7 @@ export function capabilitySection(model, name) {
   const other = tools.filter((t) => !BUILTIN.has(t) && !t.startsWith("mcp") && !cliRef(t) && t !== "subagent");
   if (other.length) lines.push(`- **Other tools:** ${other.join(", ")}`);
 
-  const skills = list(agent.skills).map((s) => list(model?.skills).find((d) => d?.name === s) ?? { name: s });
+  const skills = isLead ? list(model?.skills) : list(agent.skills).map((s) => list(model?.skills).find((d) => d?.name === s) ?? { name: s });
   if (skills.length) {
     lines.push("- **Skills:**");
     for (const s of skills) lines.push(`  - \`${s.name}\`${isNonEmptyString(s.description) ? ` — ${s.description}` : ""}`);
@@ -113,14 +113,6 @@ function instructionTexts(model) {
   const out = [];
   if (isNonEmptyString(model?.orchestrator?.prompt)) out.push([`orchestrator (${model.orchestrator.name}) prompt`, model.orchestrator.prompt]);
   for (const a of list(model?.agents)) if (isNonEmptyString(a?.prompt)) out.push([`agent ${a.name} prompt`, a.prompt]);
-  for (const w of list(model?.workflows)) {
-    const text = [w?.description, w?.approval, w?.verify].filter(isNonEmptyString).join("\n");
-    if (text) out.push([`workflow ${w.name}`, text]);
-  }
-  for (const d of list(model?.documents)) {
-    const text = [d?.purpose, ...list(d?.rules), ...list(d?.sections).map((s) => s?.guide)].filter(isNonEmptyString).join("\n");
-    if (text) out.push([`document ${d.name}`, text]);
-  }
   const advisory = advisoryText(model?.policies).join("\n");
   if (advisory) out.push(["advisory policies", advisory]);
   return out;
@@ -141,8 +133,8 @@ function capabilityNames(model) {
 }
 
 /**
- * Capabilities removed by a change that the new model's prompts, workflows,
- * documents or advisory policies still mention, with the lines that do.
+ * Capabilities removed by a change that the new model's prompts or advisory
+ * policies still mention, with the lines that do.
  * @returns {Array<{ removed: string, where: string, lines: string[] }>}
  */
 export function staleMentions(oldModel, newModel) {

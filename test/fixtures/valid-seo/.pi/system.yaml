@@ -10,12 +10,12 @@ orchestrator:
     You coordinate the SEO system. Delegate analysis to the analyst, …
   model: provider-a/model-large
   thinking: medium
-  tools: [read, grep, find, ls, bash, edit, write, subagent]
+  tools: [ read, grep, find, ls, bash, edit, write, subagent ]
 
 agents:
   - name: seo-analyst
     description: "Analyzes SEO data and recommends opportunities"
-    tools: [read, grep, find, ls]
+    tools: [ read, grep, find, ls ]
     model: provider-b/model-small
     thinking: low
     prompt: |
@@ -24,14 +24,8 @@ agents:
 skills:
   - name: refresh-product-knowledge
     description: "Scrape and distill product info into data/knowledge/"
-    body: |
-      # Refresh product knowledge
-      … (procedure text; can reference bundled references/)
   - name: analyze-and-draft
     description: "Analyze SEO data, pick opportunities, draft articles"
-    body: |
-      # Analyze and draft
-      … (orchestrates the seo-analyst subagent and writes to data/articles/)
 
 integrations:
   mcp:
@@ -40,23 +34,12 @@ integrations:
   env:
     - { name: OPENSEO_URL, secret: false }
 
-workflows:
-  - name: analyze-and-draft
-    description: "Analyze SEO data, pick opportunities, draft articles"
-    skill: analyze-and-draft
-    trigger: { kind: manual }
-    entry: orchestrator
-    agents: [seo-analyst]
-    inputs: [data/opportunities/*.md]
-    outputs: [data/analyses/, data/articles/]
-    approval: publish
-    verify: "a draft exists under data/articles/"
-
 policies:
   enforced:
     - agent: seo-analyst
-      tools: [read, grep, find, ls]
+      tools: [ read, grep, find, ls ]
     - mcp: openseo
-      hide: ["publish_*", "delete_*"]
+      hide: [ "publish_*", "delete_*" ]
   advisory:
-    - "Publishing requires human confirmation: the workflow drafts to data/articles/ and the user publishes."
+    - "Publishing requires human confirmation: the workflow drafts to
+      data/articles/ and the user publishes."

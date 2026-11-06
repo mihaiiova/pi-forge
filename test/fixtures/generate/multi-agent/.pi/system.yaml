@@ -12,12 +12,12 @@ orchestrator:
     without the workflow's approval boundary.
   model: provider-a/model-large
   thinking: medium
-  tools: [read, grep, find, ls, bash, edit, write, subagent]
+  tools: [ read, grep, find, ls, bash, edit, write, subagent ]
 
 agents:
   - name: seo-analyst
     description: "Analyzes SEO data and identifies opportunities"
-    tools: [read, grep, find, ls]
+    tools: [ read, grep, find, ls ]
     model: provider-b/model-small
     thinking: low
     prompt: |
@@ -25,7 +25,7 @@ agents:
       access, so you never publish; publication requires the orchestrator.
   - name: article-writer
     description: "Drafts articles"
-    tools: [read, write]
+    tools: [ read, write ]
     model: provider-a/model-medium
     thinking: high
     prompt: |
@@ -33,7 +33,7 @@ agents:
       researcher subagent.
   - name: researcher
     description: "Maintains shared product knowledge independently"
-    tools: [read, write, bash]
+    tools: [ read, write, bash ]
     model: provider-b/model-small
     thinking: low
     prompt: |
@@ -43,20 +43,5 @@ agents:
 skills:
   - name: refresh-product-knowledge
     description: "Scrape and distill product info into data/knowledge/"
-    body: |
-      # Refresh product knowledge
-      Scrape and distill product info into data/knowledge/.
   - name: analyze-and-draft
     description: "Analyze SEO data, pick opportunities, draft articles"
-
-workflows:
-  - name: analyze-and-draft
-    description: "Analyze SEO data, pick opportunities, draft articles"
-    skill: analyze-and-draft
-    trigger: { kind: manual }
-    entry: orchestrator
-    agents: [seo-analyst, article-writer, researcher]
-    inputs: [data/opportunities/*.md]
-    outputs: [data/analyses/, data/articles/]
-    approval: publish
-    verify: "a draft exists under data/articles/"

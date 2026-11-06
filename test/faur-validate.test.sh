@@ -22,7 +22,7 @@ for name in valid-seo coding-agent; do
 done
 
 # ── Invalid fixtures exit 1 ──────────────────────────────────────
-for name in invalid-unknown-key invalid-bad-reference invalid-malformed-workflow \
+for name in invalid-unknown-key invalid-bad-reference \
             invalid-incompatible invalid-malformed-yaml invalid-duplicate; do
   if run_validate "$fixtures/$name"; then
     fail "faur validate should reject $name but exited 0"

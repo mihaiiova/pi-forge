@@ -2,7 +2,7 @@
  * skill-sources — where a declared skill's content comes from.
  *
  * Pure module. The faur ships no skills of its own: a skill is either
- * authored inline (`body`), provided by a pinned package (`source:
+ * developer-owned, provided by a pinned package (`source:
  * npm:<name>@<version>` / `git:<repo>@<ref>`), or vendored from a directory the
  * user supplies (`source: ./path`, `../path`, `/abs/path`, `~/path`), or comes
  * from the open Agent Skills ecosystem pinned to a commit (`source:
@@ -32,11 +32,6 @@ export function skillSourceKind(source) {
 function skillList(model) {
   return (Array.isArray(model?.skills) ? model.skills : [])
     .filter((skill) => skill && typeof skill === "object" && typeof skill.name === "string");
-}
-
-/** Skills whose SKILL.md the generator writes (inline or workflow-derived). */
-export function authoredSkills(model) {
-  return skillList(model).filter((skill) => skill.source === undefined);
 }
 
 /** Skills vendored from a user-supplied directory. */

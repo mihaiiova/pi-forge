@@ -11,13 +11,12 @@ cd <project>
 pi --approve -p "/skill:<workflow> <request>"     # plain pi
 ```
 
-- **The skill.** A workflow declared with `skill:` runs that skill. A
-  workflow declared with only `entry:` gets a generated skill named after it
-  (`.pi/skills/<workflow>/SKILL.md`), which states the boundary: entry agent,
-  available agents, inputs, outputs, approval and verify. Pi expands the skill
-  before the agent starts (`workflow-print-mode.test.mjs`).
+- **The skill.** Use an ordinary native Pi skill, for example
+  `.pi/skills/<name>/SKILL.md`, and describe the procedure, outputs and any
+  advisory approval guidance there. Pi expands the skill before the agent
+  starts. Faur does not generate or overwrite developer-owned skills.
 - **The request** is the text after the skill command: paths, URLs, names,
-  scenarios. The skill tells the agent to treat it as data. There is no
+  scenarios. Treat request values as data, not instructions. There is no
   separate `--input key=value`.
 - **Trust.** Print, JSON and RPC mode cannot ask the trust question; with no
   saved decision they skip every project resource without an error. Pass

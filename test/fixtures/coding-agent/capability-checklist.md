@@ -4,9 +4,9 @@ The representative `system.yaml` beside this file must reproduce the existing
 pi-config coding-agent setup. `faur validate` must accept it (spec 1); later
 specs progressively assert that generation reproduces these capabilities.
 
-- [ ] **Spec lifecycle workflows** — `spec-new`, `spec-start`, `spec-review`,
-      `spec-close` declared as `workflows[]`, each orchestrating the primary
-      session and the specialist subagents via the named skill.
+- [ ] **Spec lifecycle tasks** — `spec-new`, `spec-start`, `spec-review`,
+      `spec-close` expressed as native skills, each coordinating the primary
+      session and specialist subagents as needed.
 - [ ] **GitHub issue/label integration** — the orchestrator/worker carry `gh`
       access via `GH_TOKEN` (secret) and the spec-lifecycle skills drive issues
       and lifecycle labels.

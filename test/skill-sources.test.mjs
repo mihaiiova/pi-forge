@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { skillSourceKind, authoredSkills, vendoredSkills, declaredPackages } from "../src/skill-sources.mjs";
+import { skillSourceKind, vendoredSkills, declaredPackages } from "../src/skill-sources.mjs";
 
 const model = {
   packages: ["npm:extra@1.0.0"],
   skills: [
-    { name: "inline", body: "# Inline" },
+    { name: "local-authored" },
     { name: "workflow" },
     { name: "packaged", source: "npm:@acme/skills@2.0.0" },
     { name: "from-git", source: "git:github.com/acme/skills@v3" },
@@ -19,10 +19,6 @@ test("skillSourceKind distinguishes pinned packages from directory paths", () =>
   assert.equal(skillSourceKind("git:github.com/a/b@main"), "package");
   for (const p of ["./x", "../x", "/x", "~/x"]) assert.equal(skillSourceKind(p), "path", p);
   for (const bad of ["npm:x", "x", "", undefined]) assert.equal(skillSourceKind(bad), null, String(bad));
-});
-
-test("authoredSkills are the ones without a source", () => {
-  assert.deepEqual(authoredSkills(model).map((s) => s.name), ["inline", "workflow"]);
 });
 
 test("vendoredSkills are the directory-sourced ones", () => {

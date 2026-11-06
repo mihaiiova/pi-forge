@@ -20,25 +20,12 @@ function validDoc(overrides = {}) {
       { name: "article-writer", tools: ["write"], model: "provider-a/model-medium", thinking: "high" },
     ],
     skills: [
-      { name: "analyze-and-draft", description: "Workflow", body: "# Analyze\n..." },
+      { name: "analyze-and-draft", description: "Skill" },
     ],
     integrations: {
       mcp: [{ name: "openseo", config: { url: "http://localhost:3002/mcp" } }],
       env: [{ name: "OPENSEO_URL", secret: false }],
     },
-    workflows: [
-      {
-        name: "analyze-and-draft",
-        skill: "analyze-and-draft",
-        trigger: { kind: "manual" },
-        entry: "orchestrator",
-        agents: ["seo-analyst", "article-writer"],
-        inputs: ["data/opportunities/*.md"],
-        outputs: ["data/articles/"],
-        approval: "publish",
-        verify: "a draft exists",
-      },
-    ],
     policies: {
       enforced: [
         { agent: "seo-analyst", tools: ["read"] },
@@ -128,28 +115,7 @@ test("validateSystem accepts package and path skill sources and rejects others",
   }
   const both = validDoc();
   both.skills.push({ name: "extra", source: "./x", body: "inline" });
-  assert.ok(validateSystem(both).errors.some((e) => e.includes('either "body" or "source", not both')));
-});
-
-test("validateSystem rejects a workflow referencing an undeclared skill", () => {
-  const doc = validDoc();
-  doc.workflows[0].skill = "does-not-exist";
-  const { errors } = validateSystem(doc);
-  assert.ok(errors.some((e) => e.includes('workflows[0].skill references "does-not-exist"')));
-});
-
-test("validateSystem rejects a workflow referencing an undeclared agent", () => {
-  const doc = validDoc();
-  doc.workflows[0].agents = ["ghost-agent"];
-  const { errors } = validateSystem(doc);
-  assert.ok(errors.some((e) => e.includes('workflows[0].agents[0] references "ghost-agent"')));
-});
-
-test("validateSystem rejects a malformed workflow (no skill or entry)", () => {
-  const doc = validDoc();
-  doc.workflows[0] = { name: "lonely", agents: [] };
-  const { errors } = validateSystem(doc);
-  assert.ok(errors.some((e) => e.includes('workflows[0] must declare at least one of "skill" or "entry"')));
+  assert.ok(validateSystem(both).errors.some((e) => e.includes('unknown key "body"')));
 });
 
 test("validateSystem rejects an incompatible policy (undeclared mcp)", () => {
@@ -215,47 +181,6 @@ test("validateSystem requires shell-safe, non-reserved env names", () => {
   for (const name of ["PATH", "NODE_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "https_proxy", "PI_CODING_AGENT_DIR", "BASH_ENV", "faur_line"]) {
     assert.ok(validateSystem(withEnv(name)).errors.some((e) => /is reserved/.test(e)), name);
   }
-});
-
-test("validateSystem checks document formats, writers and paths", () => {
-  const sections = [{ heading: "Decide now", guide: "Yes/no questions" }];
-  const ok = validDoc({ documents: [
-    { name: "decisions", path: "data/decisions.md", writer: "article-writer", maxWords: 600, sections, rules: ["One page"] },
-    { name: "evidence", writer: "seo-analyst", sections },
-  ] });
-  assert.deepEqual(validateSystem(ok).errors, []);
-
-  const bad = validateSystem(validDoc({ documents: [
-    { name: "a", path: "../out.md", writer: "nobody", sections: [] },
-    { name: "b", path: ".pi/agents/x.md", writer: "article-writer", maxWords: 0, sections: [{ guide: "x" }], extra: 1 },
-    { name: "c", path: "reports/c.md", writer: "seo-analyst", sections },
-  ] })).errors;
-  assert.ok(bad.some((e) => e.includes("documents[0].path must be a project-relative")));
-  assert.ok(bad.some((e) => e.includes("documents[0].writer references \"nobody\"")));
-  assert.ok(bad.some((e) => e.includes("documents[0].sections must be a non-empty array")));
-  assert.ok(bad.some((e) => e.includes("documents[1].path must be a project-relative")));
-  assert.ok(bad.some((e) => e.includes("documents[1].maxWords")));
-  assert.ok(bad.some((e) => e.includes("documents[1].sections[0].heading")));
-  assert.ok(bad.some((e) => e.includes('documents[1] has unknown key "extra"')));
-  assert.ok(bad.some((e) => e.includes('documents[2].writer "seo-analyst" has no write or edit tool')));
-});
-
-test("validateSystem checks document delivery targets against declared MCP servers and writer tools", () => {
-  const sections = [{ heading: "Body" }];
-  const base = validDoc();
-  const ok = validDoc({
-    agents: [...base.agents, { name: "publisher", model: "provider-a/m", tools: ["read", "mcp:openseo/save_doc"] }],
-    documents: [{ name: "brief", writer: "publisher", sections, deliver: [{ mcp: "openseo", tool: "save_doc", with: { folder: "Briefs" }, note: "one file per brief" }] }],
-  });
-  assert.deepEqual(validateSystem(ok).errors, []);
-  const bad = validateSystem(validDoc({ documents: [
-    { name: "a", writer: "seo-analyst", sections, deliver: [{ mcp: "nowhere", tool: "x" }, { mcp: "openseo", tool: "save_doc", with: "folder" }, { tool: "x", extra: 1 }] },
-  ] })).errors;
-  assert.ok(bad.some((e) => e.includes('deliver[0].mcp references "nowhere"')));
-  assert.ok(bad.some((e) => e.includes("deliver[1].with must be an object")));
-  assert.ok(bad.some((e) => e.includes('deliver[1]: writer "seo-analyst" cannot call openseo/save_doc')));
-  assert.ok(bad.some((e) => e.includes("deliver[2].mcp must be a non-empty string")));
-  assert.ok(bad.some((e) => e.includes('deliver[2] has unknown key "extra"')));
 });
 
 test("validateSystem rejects tools that ask the user in a background subagent", () => {

@@ -11,7 +11,7 @@ test("buildRuntimePlan derives the agent dir, packages, and warnings", () => {
   assert.deepEqual(plan.packages, ["npm:foo@1.0.0"], "nothing the design does not use");
   const commands = buildRuntimePlan({ orchestrator: { name: "l", tools: ["read", "subagent", "cli:x"] }, integrations: { cli: [{ name: "x", command: "echo" }] } }, { piPackages: PI_PACKAGES });
   assert.deepEqual(commands.packages, [COMMANDS_PACKAGE, "npm:pi-subagents@0.83.1"]);
-  assert.deepEqual(buildRuntimePlan({ orchestrator: { name: "l", tools: ["read"] }, workflows: [{ name: "w" }] }, { piPackages: PI_PACKAGES }).packages, [], "workflows run on Pi alone");
+  assert.deepEqual(buildRuntimePlan({ orchestrator: { name: "l", tools: ["read"] }, skills: [{ name: "w" }] }, { piPackages: PI_PACKAGES }).packages, [], "local skills run on Pi alone");
   assert.deepEqual(plan.errors, []);
   assert.deepEqual(plan.warnings, [], "no warning that does not apply");
 });

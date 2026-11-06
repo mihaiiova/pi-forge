@@ -57,9 +57,6 @@ export function effectiveCapabilities(model, opts = {}) {
       ...(typeof agent.thinking === "string" ? { thinking: agent.thinking } : {}),
       skills: sortUnique(agent.skills),
     })),
-    documents: (Array.isArray(model.documents) ? model.documents : []).map((d) => ({
-      name: d.name, writer: d.writer, ...(d.path ? { path: d.path } : {}),
-    })),
     skills: (Array.isArray(model.skills) ? model.skills : []).map((skill) => ({
       name: skill.name,
       source: skillSourceKind(skill.source) ?? "authored",
@@ -151,7 +148,7 @@ export function checkCapabilities(model, generated, opts = {}) {
     }
   }
   if (Object.keys(actualServers).length && mcp.autoEnableCodemode !== false) {
-    errors.push("mcp.json must set autoEnableCodemode: false, or codemode would reach every server's tools");
+    errors.push("mcp.json must set autoEnableCodemode: false so Pi does not activate codemode outside the configured tool lists");
   }
 
   return { ok: errors.length === 0, errors };

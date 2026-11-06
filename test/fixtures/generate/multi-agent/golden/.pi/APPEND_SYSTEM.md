@@ -9,6 +9,10 @@ without the workflow's approval boundary.
 Generated from this system's declarations; it changes when they do. Use only what is listed here.
 
 - **Built-in tools:** read, grep, find, ls, bash, edit, write
+- **Other tools:** codemode
+- **Skills:**
+  - `refresh-product-knowledge` — Scrape and distill product info into data/knowledge/
+  - `analyze-and-draft` — Analyze SEO data, pick opportunities, draft articles
 - **Specialists** (delegate with the subagent tool):
   - `seo-analyst` — Analyzes SEO data and identifies opportunities
   - `article-writer` — Drafts articles
@@ -17,4 +21,4 @@ Generated from this system's declarations; it changes when they do. Use only wha
 Specialist completion notices may be truncated. When the subagent tool supports durable output binding, bind reports to project paths only when the specialist can write there and you have an authorized way to read them; otherwise request a concise return and report missing access rather than assuming a path is readable.
 
 If a task needs something not listed, say what is missing. Don't work around a missing capability.
-<!-- faur:derived v1 end sha256=394b3610267bd2d083a1506eb28f58429f09c2987cc7d8e7f234c34a038e0741 -->
+<!-- faur:derived v1 end sha256=b24aefd2fa9437a12e683626d0b14d89352e48cf77bed06386aba958ba243282 -->

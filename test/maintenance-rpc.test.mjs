@@ -84,3 +84,67 @@ export default pi => {
   assert.equal(handed.find(m => m.role === 'user')?.content?.[0]?.text, 'do a marketing review of example.com', 'the request goes to the agent');
   assert.equal(handed.filter(m => m.role === 'assistant').at(-1).content.find(p => p.type === 'text')?.text, 'AGENT-OK');
 });
+
+test('/faur stays in force across /reload in real Pi', async t => {
+  // Pi's reload keeps the active tools and activates every re-registered
+  // extension tool; Faur's new instance must restore the mode, not drop it.
+  const root = mkdtempSync(join(tmpdir(), 'faur-maint-reload-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, '.pi'));
+  writeFileSync(join(root, '.pi/system.yaml'), `schema: 1
+name: reporter
+orchestrator:
+  name: lead
+  model: faux/faux-1
+  tools: [read, ls]
+  prompt: Write marketing reports.
+`);
+  const generated = spawnSync(process.execPath, [join(repo, 'src/faur.mjs'), 'generate', root], { encoding: 'utf8' });
+  assert.equal(generated.status, 0, generated.stderr);
+  const log = join(root, 'prompts.log');
+  const provider = join(root, 'provider.mjs');
+  writeFileSync(provider, `import {createFauxCore,fauxAssistantMessage} from ${JSON.stringify(ai)};
+import { appendFileSync } from 'node:fs';
+export default pi => {
+ const faux=createFauxCore({api:'faux-test',provider:'faux',models:[{id:'faux-1'}]});
+ faux.setResponses([fauxAssistantMessage('NOTED'), fauxAssistantMessage('NOTED')]);
+ pi.registerProvider('faux',{baseUrl:'http://localhost',apiKey:'test',api:'faux-test',streamSimple:faux.streamSimple,models:[{type:'chat',id:'faux-1',name:'faux',reasoning:false,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:100000,maxTokens:1000}]});
+ pi.registerTool({ name: 'agent_probe', label: 'probe', description: 'An operational extension tool.', parameters: { type: 'object', properties: {} }, execute: async () => ({ content: [{ type: 'text', text: 'ran' }] }) });
+ pi.registerCommand('test-reload', { description: 'reload', handler: async (_args, ctx) => { await ctx.reload(); } });
+ pi.on('turn_start', async () => { appendFileSync(${JSON.stringify(log)}, JSON.stringify(pi.getActiveTools()) + '\\n'); });
+};`);
+  const child = spawn('pi', ['--no-extensions', '-e', provider, '-e', join(repo, 'extensions/faur/index.ts'), '--approve', '--no-session', '--mode', 'rpc'], {
+    cwd: root, env: { ...process.env, PI_OFFLINE: '1', PI_CODING_AGENT_DIR: join(root, '.home') }, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  t.after(() => child.kill());
+  const events = [];
+  let buffer = '';
+  let wake = () => {};
+  child.stdout.on('data', chunk => {
+    buffer += chunk;
+    let i;
+    while ((i = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
+      try { events.push(JSON.parse(line)); } catch { continue; }
+      wake();
+    }
+  });
+  const until = (predicate, ms = 30000) => new Promise((ok, fail) => {
+    const timer = setTimeout(() => fail(new Error(`timed out; events: ${events.map(e => e.type + (e.method ? ':' + e.method : '')).join(' ')}`)), ms);
+    const check = () => { if (predicate()) { clearTimeout(timer); wake = () => {}; ok(); } };
+    wake = check; check();
+  });
+  const ends = () => events.filter(e => e.type === 'agent_end').length;
+  const send = (id, message) => child.stdin.write(JSON.stringify({ id, type: 'prompt', message }) + '\n');
+  send('1', '/faur add a reviewer');
+  await until(() => ends() >= 1);
+  send('2', '/test-reload');
+  await until(() => events.some(e => e.type === 'extension_ui_request' && e.method === 'notify' && /Still in \/faur after \/reload/.test(e.message)));
+  send('3', 'what would that change?');
+  await until(() => ends() >= 2);
+  const turns = readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(turns[0], ['faur_plan'], 'in /faur only faur_plan is active');
+  assert.deepEqual(turns.at(-1), ['faur_plan'], `after /reload the mode still holds: ${turns.at(-1)}`);
+  const ui = events.filter(e => e.type === 'extension_ui_request' && e.method === 'setStatus' && e.statusKey === 'faur');
+  assert.match(ui.at(-1)?.statusText ?? '', /In \/faur/, 'the mode is still shown');
+});

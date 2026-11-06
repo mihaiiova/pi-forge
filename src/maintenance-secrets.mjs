@@ -3,6 +3,7 @@ import { loadYaml } from './yaml-loader.mjs';
 import { readText } from './maintenance-store.mjs';
 const sensitive = /(token|secret|password|authorization|cookie|credential|api[-_]?key|private[-_]?key|auth$|^key$)/i;
 const reference = /^(?:Bearer )?\$\{[A-Z_][A-Z0-9_]*\}$/;
+const knownToken = /(?:sk-|ghp_|gho_|github_pat_|xox[abp]-|AKIA|AIza)[A-Za-z0-9_-]{12,}/;
 function walk(value, path, visit) {
   if (Array.isArray(value)) return value.map((v, i) => walk(v, [...path, i], visit));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k,v]) => [k, walk(v, [...path, k], visit)]));
@@ -12,8 +13,13 @@ function isCredential(value, path) {
   if (typeof value !== 'string' || !value.length || reference.test(value)) return false;
   if (path.length === 4 && path[0] === 'integrations' && ['mcp', 'cli'].includes(path[1]) && Number.isInteger(path[2]) && path[3] === 'secretsFile') return false;
   const plain = value.replace(/\$\{[A-Z_][A-Z0-9_]*\}/g, '');
-  const embedded = /https?:\/\/[^/@\s:]+(?::[^/@\s]+)?@|[?&](?:token|api_key|key|secret|password)=[^&#\s]+/i.test(plain);
-  return sensitive.test(String(path.at(-1))) || path.at(-2) === 'env' || embedded;
+  const embedded = /https?:\/\/[^/@\s:]+(?::[^/@\s]+)?@|\b[a-z][a-z0-9+.-]*:\/\/[^/@\s:]+:[^/@\s]+@|[?&](?:token|api_key|key|secret|password)=[^&#\s]+/i.test(plain);
+  // An `env` value is a credential when its name or shape says so, not merely
+  // because it is in `env`: non-secret settings (OAuth scopes, regions, ports)
+  // belong in the reviewed config as literals. Best effort, not DLP: a secret
+  // under an innocuous name with no recognizable shape is not detected.
+  const tokenShaped = path.at(-2) === 'env' && (knownToken.test(plain) || (/^[A-Za-z0-9_\-+=]{32,}$/.test(plain) && /\d/.test(plain)));
+  return sensitive.test(String(path.at(-1))) || tokenShaped || embedded;
 }
 export function redacted(value) {
   return walk(value, [], (v, path) => isCredential(v, path) ? '[redacted]' : v);

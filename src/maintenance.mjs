@@ -114,7 +114,7 @@ function nativeUnrepresented(root, model, settings, mcpJson) {
       return existsSync(file) && lstatSync(file).isFile();
     })) add(path, 'extension', 'Project-local extension is not represented in the design.');
   }
-  const declaredSkills = new Set([...managedPaths(model).filter(path => /^\.pi\/skills\/[^/]+\/SKILL\.md$/.test(path)), ...registrySkills(model).map(skill => `${installedDir(skill.name)}/SKILL.md`)]);
+  const declaredSkills = new Set([...(model.skills ?? []).filter(skill => !skill.source).map(skill => `.pi/skills/${skill.name}/SKILL.md`), ...vendoredSkills(model).map(skill => `.pi/skills/${skill.name}/SKILL.md`), ...registrySkills(model).map(skill => `${installedDir(skill.name)}/SKILL.md`)]);
   for (const directory of ['.pi/skills', '.agents/skills']) {
     for (const entry of entries(directory)) {
       if (!entry.isDirectory()) continue;
@@ -124,6 +124,22 @@ function nativeUnrepresented(root, model, settings, mcpJson) {
     }
   }
   return result;
+}
+
+/**
+ * Native JSON a developer edited by hand can be malformed (a trailing comma
+ * after deleting an entry). Name the file and position instead of surfacing a
+ * bare parser error from deep inside a plan; nothing has been changed.
+ */
+const NATIVE_JSON = ['.pi/settings.json', '.pi/mcp.json', '.pi/commands.json'];
+function assertNativeJson(root) {
+  for (const path of NATIVE_JSON) {
+    const text = readText(root, path);
+    if (text === null) continue;
+    try { JSON.parse(text); } catch (error) {
+      throw new Error(`${path} is not valid JSON (${error.message}). Fix its syntax first; Faur changed nothing.`);
+    }
+  }
 }
 
 /** Report native-file differences without changing or exposing their contents. */
@@ -173,6 +189,7 @@ export function nativeDrift(root, model) {
 }
 
 export function inspectProject(root) {
+  assertNativeJson(root);
   const text = readText(root, '.pi/system.yaml');
   const model = parsedModel(text);
   const settings = readJson(root, '.pi/settings.json');
@@ -197,6 +214,7 @@ export function inspectProject(root) {
 /** Adopt the Pi settings fields represented by the orchestrator declaration.
  * Refuse when adoption would rewrite the selected file or another edited file. */
 export function planSettingsAdoption(root) {
+  assertNativeJson(root);
   const settings = readJson(root, '.pi/settings.json');
   const oldModel = parsedModel(readText(root, '.pi/system.yaml'));
   const imported = importSystem(settings, {}).system.orchestrator;
@@ -223,6 +241,7 @@ export function planSettingsAdoption(root) {
 
 /** Reconcile modeled settings field-by-field; unknown settings are retained. */
 export function planSettingsReconciliation(root, adopt) {
+  assertNativeJson(root);
   const allowed = ['model', 'thinking', 'tools'];
   if (!Array.isArray(adopt) || new Set(adopt).size !== adopt.length || adopt.some(field => !allowed.includes(field))) throw new Error('Settings reconciliation accepts model, thinking and tools only');
   const path = '.pi/settings.json';
@@ -260,6 +279,7 @@ export function planSettingsReconciliation(root, adopt) {
 
 /** Adopt the authored portion of a Faur-marked lead prompt. */
 export function planPromptAdoption(root) {
+  assertNativeJson(root);
   const path = '.pi/APPEND_SYSTEM.md';
   const text = readText(root, path);
   const match = text?.match(/^<!-- faur:generated v1 sha256=[0-9a-f]{64} -->\n([\s\S]*?)\n<!-- faur:derived v1 begin: generated from system\.yaml; edits here are reported, not kept -->\n/);
@@ -315,6 +335,7 @@ function planUnmarkedAgentAdoption(root, path, name, oldModel, text) {
 
 /** Adopt a specialist's prompt and modeled frontmatter when safely representable. */
 export function planAgentAdoption(root, path) {
+  assertNativeJson(root);
   const match = /^\.pi\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path);
   if (!match) throw new Error('Invalid agent path');
   const oldModel = parsedModel(readText(root, '.pi/system.yaml'));
@@ -390,6 +411,7 @@ export function planAgentAdoption(root, path) {
 
 /** Adopt representable connection or command edits without replacing the native file. */
 export function planIntegrationAdoption(root, path) {
+  assertNativeJson(root);
   if (!['.pi/mcp.json', '.pi/commands.json'].includes(path)) throw new Error('Unsupported integration file');
   const text = readText(root, path);
   if (text === null) throw new Error(`${path} is missing; resolve the deletion explicitly`);
@@ -439,6 +461,7 @@ const MCP_REAPPLY = Symbol('mcp reapply');
 
 /** Reapply a single native file while preserving unrepresented content. */
 export function planNativeReapply(root, path) {
+  assertNativeJson(root);
   const agentName = /^\.pi\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path)?.[1];
   const prompt = path === '.pi/APPEND_SYSTEM.md';
   if (!prompt && !agentName && !['.pi/settings.json', '.pi/mcp.json', '.pi/commands.json'].includes(path)) throw new Error(`Reapply is not supported for ${path}; preserve the file and reconcile it explicitly`);
@@ -472,15 +495,21 @@ export function planNativeReapply(root, path) {
     }
   }
   if (typeof desired !== 'string' || desired === before) throw new Error(`No representable change to reapply for ${path}`);
+  // Exposure and codemode are derived from the design, so an explicit,
+  // previewed reapply restores them. Pi's /mcp rewrites them in place (choosing
+  // codemode deletes `exposure`), and adoption cannot represent them; refusing
+  // here would leave a hand edit as the only way back to the approved access.
+  const accessChanges = [];
   if (before !== null && path === '.pi/mcp.json') {
     const actual = JSON.parse(before), next = JSON.parse(desired);
-    if (!isDeepStrictEqual(actual.autoEnableCodemode, next.autoEnableCodemode)) throw new Error('Unrepresented MCP autoEnableCodemode difference; preserve it and reconcile manually');
+    const shown = value => value === undefined ? '(unset)' : JSON.stringify(value);
+    if (!isDeepStrictEqual(actual.autoEnableCodemode, next.autoEnableCodemode)) accessChanges.push(`autoEnableCodemode: ${shown(actual.autoEnableCodemode)} → ${shown(next.autoEnableCodemode)}`);
     for (const [name, server] of Object.entries(actual.mcpServers ?? {})) {
       if (!next.mcpServers?.[name]) throw new Error(`MCP server ${name} is not represented in the design; preserve it and reconcile explicitly`);
       const unsupported = Object.keys(server).filter(key => !Object.hasOwn(next.mcpServers[name], key) && !['exposure', 'toolExposure'].includes(key));
       if (unsupported.length) throw new Error(`MCP server ${name} has unrepresented settings: ${unsupported.join(', ')}`);
       for (const key of ['exposure', 'toolExposure']) {
-        if (!isDeepStrictEqual(server[key], next.mcpServers[name][key])) throw new Error(`Unrepresented MCP ${name}.${key} difference; preserve it and reconcile manually`);
+        if (!isDeepStrictEqual(server[key], next.mcpServers[name][key])) accessChanges.push(`${name}.${key}: ${shown(server[key])} → ${shown(next.mcpServers[name][key])}`);
       }
     }
   }
@@ -497,12 +526,14 @@ export function planNativeReapply(root, path) {
   plan.restart = restartNeeded(root, plan.writes);
   plan.preview.files = [{ path, action: before === null ? 'create' : 'write', diff: diffLines(before ?? '', desired) }];
   plan.preview.reapply = { path, note: 'Reapply only this native configuration; the design and other native files stay unchanged.' };
+  if (accessChanges.length) plan.preview.reapply.accessChanges = { note: 'Restores the designed MCP tool access.', changes: accessChanges };
   plan.preview.restart = plan.restart ? 'Takes effect after restarting Pi: packages change.' : 'Takes effect after /reload; no restart needed.';
   return plan;
 }
 
 /** Reconcile a marked specialist's modeled prompt and frontmatter fields. */
 export function planAgentReconciliation(root, path, adopt) {
+  assertNativeJson(root);
   const match = /^\.pi\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path);
   const allowed = ['description', 'model', 'thinking', 'prompt'];
   if (!match || !Array.isArray(adopt) || new Set(adopt).size !== adopt.length || adopt.some(field => !allowed.includes(field))) throw new Error('Invalid specialist reconciliation choices');
@@ -544,6 +575,7 @@ export function planAgentReconciliation(root, path, adopt) {
 
 /** Reconcile selected integration fields; all other modeled fields are reapplied. */
 export function planIntegrationReconciliation(root, path, adopt) {
+  assertNativeJson(root);
   if (!['.pi/mcp.json', '.pi/commands.json'].includes(path)) throw new Error('Unsupported integration file');
   if (!Array.isArray(adopt) || new Set(adopt).size !== adopt.length || adopt.some(field => !/^[a-z0-9]+(?:-[a-z0-9]+)*\.[A-Za-z][A-Za-z0-9_]*$/.test(field))) throw new Error('Use unique integration-name.field choices');
   const native = readJson(root, path);
@@ -591,6 +623,7 @@ export function restartNeeded(root, writes) {
   return packages(readText(root, '.pi/settings.json')) !== packages(writes['.pi/settings.json']);
 }
 export function planChange(root, operations, options = {}) {
+  assertNativeJson(root);
   const oldText = readText(root, '.pi/system.yaml');
   // Legacy schemas can only enter through an explicit, separately previewed replacement.
   const oldModel = parsedModel(oldText);
@@ -621,10 +654,11 @@ export function planChange(root, operations, options = {}) {
     const declaredName = scanSkills({ [path]: content })[0]?.name;
     if (declaredName !== skill.name) throw new Error(`Vendored skill "${skill.name}" at ${path} declares name "${declaredName}"; the names must match`);
   }
-  const kept = new Set(vendoredSkills(model).map(s => s.name));
-  const priorVendored = new Set([...vendoredSkills(oldModel).map(s => s.name), ...(inventory?.vendoredSkills ?? [])]);
-  const orphaned = [...priorVendored].filter(name => !kept.has(name) && readText(root, skillDir({ name })) !== null).map(name => ({ name }));
-  if (orphaned.length) throw new Error(`Removed vendored skill still loads: delete ${orphaned.map(s => `.pi/skills/${s.name}/`).join(', ')} explicitly first`);
+  const localSkills = m => (m.skills ?? []).filter(s => !s.source || vendoredSkills(m).some(v => v.name === s.name));
+  const kept = new Set(localSkills(model).map(s => s.name));
+  const priorLocal = new Set([...localSkills(oldModel).map(s => s.name), ...(inventory?.vendoredSkills ?? [])]);
+  const orphaned = [...priorLocal].filter(name => !kept.has(name) && readText(root, skillDir({ name })) !== null).map(name => ({ name }));
+  if (orphaned.length) throw new Error(`Removed local skill still loads: delete ${orphaned.map(s => `.pi/skills/${s.name}/`).join(', ')} explicitly first`);
   const settingsText = readText(root, '.pi/settings.json');
   const opts = {
     piPackages: settingsText === null ? (options.piPackages ?? []) : (JSON.parse(settingsText).packages ?? []),
@@ -637,6 +671,10 @@ export function planChange(root, operations, options = {}) {
   // Configuration this version generates differently (a newer Faur, or a
   // hand edit) is rebuilt with the change and shown in its preview.
   const plan = generateProject(model, existing, opts);
+  for (const skill of (model.skills ?? []).filter(s => !s.source)) {
+    const path = skillDir(skill);
+    if (readText(root, path) === null) plan.warnings.push(`Declared local skill ${skill.name} is missing: create ${path} as a developer-owned file.`);
+  }
   if (plan.errors.length) throw new Error(plan.errors.join('\n'));
   if (options.reconcileAgent) {
     const path = options.reconcileAgent;
@@ -815,6 +853,8 @@ export function planChange(root, operations, options = {}) {
       if (index >= 0) files.splice(index, 1);
     }
   }
+  const removed = kind => new Set((oldModel.integrations?.[kind] ?? []).map(entry => entry.name).filter(name => !(model.integrations?.[kind] ?? []).some(entry => entry.name === name)));
+  const removedMcp = removed('mcp'), removedCli = removed('cli');
   // A later unrelated revision must not silently discard native-only fields
   // preserved by reconciliation. The selected merge above is the explicit
   // path for preserving such data while changing modeled fields.
@@ -830,7 +870,9 @@ export function planChange(root, operations, options = {}) {
       for (const [name, server] of Object.entries(native.mcpServers ?? {})) {
         const target = desired.mcpServers?.[name];
         if (!target) {
-          if (!isDeepStrictEqual(server, oldNative.mcpServers?.[name])) throw new Error(`Native MCP server ${name} would be lost; reconcile ${selected} explicitly`);
+          // Removing a declared server is the approved intent; its native
+          // edits go with it, and the previewed diff shows exactly what.
+          if (!removedMcp.has(name) && !isDeepStrictEqual(server, oldNative.mcpServers?.[name])) throw new Error(`Native MCP server ${name} would be lost; reconcile ${selected} explicitly`);
           continue;
         }
         for (const key of ['exposure', 'toolExposure']) {
@@ -851,7 +893,7 @@ export function planChange(root, operations, options = {}) {
         const target = desired.commands.find(item => item.name === command?.name);
         if (!target) {
           const oldNative = JSON.parse(oldScaffolds.find(file => file.path === selected)?.content ?? '{}');
-          if (!isDeepStrictEqual(command, oldNative.commands?.find(item => item.name === command?.name))) throw new Error(`Native command ${command?.name ?? '(unnamed)'} would be lost; reconcile ${selected} explicitly`);
+          if (!removedCli.has(command?.name) && !isDeepStrictEqual(command, oldNative.commands?.find(item => item.name === command?.name))) throw new Error(`Native command ${command?.name ?? '(unnamed)'} would be lost; reconcile ${selected} explicitly`);
           continue;
         }
         for (const key of Object.keys(command)) if (!['name', 'description', 'command', 'args', 'approve', 'lead'].includes(key) && !Object.hasOwn(target, key)) throw new Error(`Native command field ${command.name}.${key} would be lost; reconcile ${selected} explicitly`);
@@ -861,7 +903,7 @@ export function planChange(root, operations, options = {}) {
   }
   // Removed capabilities must stop loading. Delete only fingerprint-intact
   // scaffolds; authored/edited files are a conflict, not a silent orphan.
-  for (const path of [...new Set([...managedPaths(oldModel), ...(inventory?.scaffolds ?? [])])].filter(p => !managedPaths(model).includes(p))) {
+  for (const path of [...new Set([...managedPaths(oldModel), ...(inventory?.scaffolds ?? [])])].filter(p => !p.startsWith('.pi/skills/') && !managedPaths(model).includes(p))) {
     if (existing[path] === undefined) continue;
     const scaffold = oldScaffolds.find(f => f.path === path)?.content;
     if (scaffold !== existing[path] && !((inventory?.scaffolds ?? []).includes(path) && intactScaffold(existing[path]))) throw new Error(`Authored removal conflict: ${path}; preserve or relocate it explicitly first`);
@@ -962,6 +1004,7 @@ export function approvalSummary(root, plan) {
     }
     if (g.model && !g.added && !g.removed) lines.push(`${g.agent} model: ${g.model.from} → ${g.model.to}.`);
   }
+  if ((preview.grants ?? []).some(g => g.gains?.includes('codemode'))) lines.push('Codemode can call exposed tools, including inherited global MCP tools; tool lists alone do not isolate that access.');
   for (const c of surface.changedCli ?? []) {
     const verb = !c.before ? 'Adds' : !c.after ? 'Removes' : 'Changes';
     lines.push(c.after ? `${verb} command ${c.name}: ${formatCommand(c.after.command, c.after.args ?? [])} (${c.after.approve === false ? 'runs without asking' : 'asks before each run'}).` : `${verb} command ${c.name}.`);
@@ -975,6 +1018,7 @@ export function approvalSummary(root, plan) {
   for (const step of surface.setupCommands ?? []) lines.push(`Adds setup step: ${step.description ?? step.install ?? 'a check'}.`);
   for (const skill of preview.skills?.install ?? []) lines.push(`Installs skill ${skill.name} from ${skill.source}.`);
   for (const skill of preview.skills?.remove ?? []) lines.push(`Removes skill ${skill}.`);
+  for (const change of plan.preview.reapply?.accessChanges?.changes ?? []) lines.push(`Restores MCP access ${change}.`);
   if (lines.length === 1) lines.push('No tools, commands, MCP servers, packages or skills change.');
   if (preview.rebuilt) lines.push('Also rebuilds files this Faur version generates differently.');
   if (preview.restart) lines.push(preview.restart);

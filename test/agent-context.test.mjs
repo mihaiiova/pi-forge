@@ -19,7 +19,7 @@ const model = {
     { name: 'seo', description: 'Finds search opportunities', model: 'fixture/small', tools: ['read', 'mcp:openseo/get_report', 'web_search'], skills: ['audit'], prompt: 'Research.' },
     { name: 'quiet', model: 'fixture/small', tools: [] },
   ],
-  skills: [{ name: 'audit', description: 'Audit a site', body: '# Audit' }],
+  skills: [{ name: 'audit', description: 'Audit a site' }],
   integrations: {
     mcp: [
       { name: 'openseo', config: { url: 'http://localhost:3002/mcp', description: 'SEO data' } },
@@ -27,7 +27,6 @@ const model = {
     ],
     cli: [{ name: 'create-issue', description: 'Open an issue', command: 'gh', args: ['issue', 'create', '--title', '{title}'] }],
   },
-  workflows: [{ name: 'handoff', entry: 'lead', approval: 'Create the issue with issue_write only after approval.' }],
 };
 
 function project(t, doc = model) {
@@ -52,6 +51,7 @@ test("each agent's section lists exactly what it has", () => {
   assert.match(lead, /`github-issues` \(only `mcp__github_issues__list_issues`, `mcp__github_issues__issue_write`\)/, 'includeTools are declared directly');
   assert.match(lead, /`cli_create_issue` — Open an issue: `gh issue create --title \{title\}`; the user approves each run/);
   assert.match(lead, /\*\*Specialists\*\* \(delegate with the subagent tool\):\n  - `seo` — Finds search opportunities\n  - `quiet`/);
+  assert.match(lead, /- \*\*Skills:\*\*\n  - `audit` — Audit a site/);
   assert.doesNotMatch(lead, /request_permission/);
   const seo = capabilitySection(model, 'seo');
   assert.match(seo, /`openseo` \(only `mcp__openseo__get_report`\) — SEO data\n/, 'approval shown only for the selected tool');
@@ -106,11 +106,10 @@ test('removing a capability lists the instructions that still mention it', () =>
   const stale = staleMentions(model, without);
   assert.deepEqual(stale.map((s) => [s.removed, s.where]), [
     ['MCP server github-issues', 'orchestrator (lead) prompt'],
-    ['MCP server github-issues', 'workflow handoff'],
   ]);
   assert.deepEqual(stale[0].lines, ['Before filing, check github-issues for duplicates with list_issues.']);
   assert.deepEqual(staleMentions(model, model), []);
-  assert.deepEqual(staleMentions(model, { ...model, integrations: { ...model.integrations, mcp: [{ name: 'github', config: { url: 'x' } }, model.integrations.mcp[0]] } }).map((s) => s.removed), ['MCP server github-issues', 'MCP server github-issues'], 'a different name does not hide the removal');
+  assert.deepEqual(staleMentions(model, { ...model, integrations: { ...model.integrations, mcp: [{ name: 'github', config: { url: 'x' } }, model.integrations.mcp[0]] } }).map((s) => s.removed), ['MCP server github-issues'], 'a different name does not hide the removal');
 });
 
 test('the change preview carries stale mentions so the proposal can fix them', (t) => {
@@ -118,12 +117,11 @@ test('the change preview carries stale mentions so the proposal can fix them', (
   const plan = planChange(root, [
     { op: 'remove', target: 'mcp', name: 'github-issues' },
   ]);
-  assert.equal(plan.preview.staleMentions.mentions.length, 2);
+  assert.equal(plan.preview.staleMentions.mentions.length, 1);
   assert.match(plan.preview.staleMentions.note, /Update them in the same proposal/);
   const fixed = planChange(root, [
     { op: 'remove', target: 'mcp', name: 'github-issues' },
     { op: 'set', target: 'orchestrator', value: { ...model.orchestrator, prompt: 'Lead the growth work.\n' } },
-    { op: 'update', target: 'workflow', name: 'handoff', value: { approval: 'Create issues only after approval.' } },
   ]);
   assert.equal(fixed.preview.staleMentions, undefined);
 });

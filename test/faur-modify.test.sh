@@ -58,7 +58,7 @@ pass "faur modify --yes reports conflicts without overwriting"
 remove_work="$(mktemp -d)"
 cp -r "$fixtures/generate/multi-agent/.pi" "$remove_work/"
 node "$faur" generate "$remove_work" >/dev/null 2>&1
-edit_yaml "$remove_work/.pi/system.yaml" 'doc.agents = doc.agents.filter(a => a.name !== "researcher"); doc.workflows = []'
+edit_yaml "$remove_work/.pi/system.yaml" 'doc.agents = doc.agents.filter(a => a.name !== "researcher")'
 if node "$faur" generate "$remove_work" </dev/null >/dev/null 2>&1; then fail "existing generate did not require approval"; fi
 [[ -e "$remove_work/.pi/agents/researcher.md" ]] || fail "unapproved generate deleted scaffold"
 node "$faur" generate "$remove_work" --yes >/dev/null 2>&1 || fail "generate could not remove an intact scaffold"
