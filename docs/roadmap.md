@@ -44,6 +44,9 @@ the issues.
   5. When a reference agent needs them: #37, #38, #39, #51, #52, #69.
   6. Deferred: #48 (compose an existing sandbox), #70 (protected
      integrations).
+- **Simplification epic #73 (2026-11-06):** #75 is done (native skills
+  replace document and workflow declarations). Next #74 (tool access and
+  policies; design decision first), then #76 (diagnostics).
 - **Known limitations (current release):**
   - `check-agent --connect` uses a separate project-local Pi home and saves
     trust there; this does not verify the user's plain-Pi configuration.
@@ -371,6 +374,10 @@ workflow-invocation ─▶ run-index ─▶ acceptance-scenarios ─▶ scenario
 | [#68](https://github.com/mihaiiova/pi-forge/issues/68) | A | Public-alpha architecture acceptance tests |
 | [#69](https://github.com/mihaiiova/pi-forge/issues/69) | Reliability | Change the system's name and description through /faur |
 | [#70](https://github.com/mihaiiova/pi-forge/issues/70) | Deferred | Protected integrations for secret-consuming tools |
+| [#73](https://github.com/mihaiiova/faur/issues/73) | Simplify | Epic: Simplify Faur around native skills and explicit capabilities |
+| [#74](https://github.com/mihaiiova/faur/issues/74) | Simplify | Simplify tool access and remove overlapping policies |
+| [#75](https://github.com/mihaiiova/faur/issues/75) | Simplify | Replace document and simple workflow models with native skills |
+| [#76](https://github.com/mihaiiova/faur/issues/76) | Simplify | Simplify conversational capability diagnostics |
 
 Done: [#25](https://github.com/mihaiiova/pi-forge/issues/25) and [#41](https://github.com/mihaiiova/pi-forge/issues/41) (v0.19.0), [#27](https://github.com/mihaiiova/pi-forge/issues/27) and [#28](https://github.com/mihaiiova/pi-forge/issues/28) (v0.20.0), [#32](https://github.com/mihaiiova/pi-forge/issues/32) and [#34](https://github.com/mihaiiova/pi-forge/issues/34) (v0.21.0). [#33](https://github.com/mihaiiova/pi-forge/issues/33) (v0.25.0), [#49](https://github.com/mihaiiova/pi-forge/issues/49) and [#50](https://github.com/mihaiiova/pi-forge/issues/50) (v0.26.0), [#65](https://github.com/mihaiiova/pi-forge/issues/65) (v0.28.0). Closed without implementation: [#26](https://github.com/mihaiiova/pi-forge/issues/26) (migration bridge, not needed), [#36](https://github.com/mihaiiova/pi-forge/issues/36) (scheduler, decided), [#42](https://github.com/mihaiiova/pi-forge/issues/42) (findings filed), [#47](https://github.com/mihaiiova/pi-forge/issues/47) and [#53](https://github.com/mihaiiova/pi-forge/issues/53) (not planned), [#55](https://github.com/mihaiiova/pi-forge/issues/55), [#57](https://github.com/mihaiiova/pi-forge/issues/57) and [#58](https://github.com/mihaiiova/pi-forge/issues/58) (deferred to #70, not delivered), [#56](https://github.com/mihaiiova/pi-forge/issues/56) (investigation complete).
 

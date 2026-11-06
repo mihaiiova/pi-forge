@@ -13,7 +13,6 @@ const model = {
   schema: 1, name: 'delegation', orchestrator: { name: 'lead', model: 'fake/m', tools: ['read', 'subagent', 'mcp'] },
   agents: [{ name: 'worker', model: 'fake/m', tools: ['read', 'mcp:projsrv/projsrv_ping'], prompt: 'SPECIALIST-MARKER' }],
   integrations: { mcp: [{ name: 'projsrv', config: { command: process.execPath, args: [asset('mcp-stub.mjs'), 'projsrv'] } }] },
-  workflows: [{ name: 'test', entry: 'lead' }],
 };
 async function freePort() {
   const server = createServer();
