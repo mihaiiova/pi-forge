@@ -114,7 +114,7 @@ function nativeUnrepresented(root, model, settings, mcpJson) {
       return existsSync(file) && lstatSync(file).isFile();
     })) add(path, 'extension', 'Project-local extension is not represented in the design.');
   }
-  const declaredSkills = new Set([...managedPaths(model).filter(path => /^\.pi\/skills\/[^/]+\/SKILL\.md$/.test(path)), ...registrySkills(model).map(skill => `${installedDir(skill.name)}/SKILL.md`)]);
+  const declaredSkills = new Set([...(model.skills ?? []).filter(skill => !skill.source).map(skill => `.pi/skills/${skill.name}/SKILL.md`), ...vendoredSkills(model).map(skill => `.pi/skills/${skill.name}/SKILL.md`), ...registrySkills(model).map(skill => `${installedDir(skill.name)}/SKILL.md`)]);
   for (const directory of ['.pi/skills', '.agents/skills']) {
     for (const entry of entries(directory)) {
       if (!entry.isDirectory()) continue;
@@ -621,10 +621,11 @@ export function planChange(root, operations, options = {}) {
     const declaredName = scanSkills({ [path]: content })[0]?.name;
     if (declaredName !== skill.name) throw new Error(`Vendored skill "${skill.name}" at ${path} declares name "${declaredName}"; the names must match`);
   }
-  const kept = new Set(vendoredSkills(model).map(s => s.name));
-  const priorVendored = new Set([...vendoredSkills(oldModel).map(s => s.name), ...(inventory?.vendoredSkills ?? [])]);
-  const orphaned = [...priorVendored].filter(name => !kept.has(name) && readText(root, skillDir({ name })) !== null).map(name => ({ name }));
-  if (orphaned.length) throw new Error(`Removed vendored skill still loads: delete ${orphaned.map(s => `.pi/skills/${s.name}/`).join(', ')} explicitly first`);
+  const localSkills = m => (m.skills ?? []).filter(s => !s.source || vendoredSkills(m).some(v => v.name === s.name));
+  const kept = new Set(localSkills(model).map(s => s.name));
+  const priorLocal = new Set([...localSkills(oldModel).map(s => s.name), ...(inventory?.vendoredSkills ?? [])]);
+  const orphaned = [...priorLocal].filter(name => !kept.has(name) && readText(root, skillDir({ name })) !== null).map(name => ({ name }));
+  if (orphaned.length) throw new Error(`Removed local skill still loads: delete ${orphaned.map(s => `.pi/skills/${s.name}/`).join(', ')} explicitly first`);
   const settingsText = readText(root, '.pi/settings.json');
   const opts = {
     piPackages: settingsText === null ? (options.piPackages ?? []) : (JSON.parse(settingsText).packages ?? []),
@@ -637,6 +638,10 @@ export function planChange(root, operations, options = {}) {
   // Configuration this version generates differently (a newer Faur, or a
   // hand edit) is rebuilt with the change and shown in its preview.
   const plan = generateProject(model, existing, opts);
+  for (const skill of (model.skills ?? []).filter(s => !s.source)) {
+    const path = skillDir(skill);
+    if (readText(root, path) === null) plan.warnings.push(`Declared local skill ${skill.name} is missing: create ${path} as a developer-owned file.`);
+  }
   if (plan.errors.length) throw new Error(plan.errors.join('\n'));
   if (options.reconcileAgent) {
     const path = options.reconcileAgent;
@@ -861,7 +866,7 @@ export function planChange(root, operations, options = {}) {
   }
   // Removed capabilities must stop loading. Delete only fingerprint-intact
   // scaffolds; authored/edited files are a conflict, not a silent orphan.
-  for (const path of [...new Set([...managedPaths(oldModel), ...(inventory?.scaffolds ?? [])])].filter(p => !managedPaths(model).includes(p))) {
+  for (const path of [...new Set([...managedPaths(oldModel), ...(inventory?.scaffolds ?? [])])].filter(p => !p.startsWith('.pi/skills/') && !managedPaths(model).includes(p))) {
     if (existing[path] === undefined) continue;
     const scaffold = oldScaffolds.find(f => f.path === path)?.content;
     if (scaffold !== existing[path] && !((inventory?.scaffolds ?? []).includes(path) && intactScaffold(existing[path]))) throw new Error(`Authored removal conflict: ${path}; preserve or relocate it explicitly first`);
@@ -962,6 +967,7 @@ export function approvalSummary(root, plan) {
     }
     if (g.model && !g.added && !g.removed) lines.push(`${g.agent} model: ${g.model.from} → ${g.model.to}.`);
   }
+  if ((preview.grants ?? []).some(g => g.gains?.includes('codemode'))) lines.push('Codemode can call exposed tools, including inherited global MCP tools; tool lists alone do not isolate that access.');
   for (const c of surface.changedCli ?? []) {
     const verb = !c.before ? 'Adds' : !c.after ? 'Removes' : 'Changes';
     lines.push(c.after ? `${verb} command ${c.name}: ${formatCommand(c.after.command, c.after.args ?? [])} (${c.after.approve === false ? 'runs without asking' : 'asks before each run'}).` : `${verb} command ${c.name}.`);

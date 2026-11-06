@@ -6,7 +6,7 @@ Faur (formerly **Pi Agent Factory**) is a conversational development tool
 for specialized agents. You describe the outcome you want. Faur recommends the
 simplest agent that achieves it and generates it as an ordinary, project-local
 Pi project: an orchestrator, optional specialists, skills, packages, MCP
-integrations, commands, workflows and permissions. It then keeps that agent
+integrations, commands, skills and permissions. It then keeps that agent
 working as your needs change.
 
 **The specialized agent is the product. Pi is its runtime.** Faur composes
@@ -104,7 +104,7 @@ While designing, the Faur reads public pages you give it with
 `faur fetch <url>`: https only, public addresses, no credential-bearing URLs,
 and the result is marked as untrusted content. It does not search the web.
 
-A skill can also be authored inline, come from a pinned package, or be vendored
+A skill can also be authored as a project file, come from a pinned package, or be vendored
 from a directory you point at. Each agent lists the skills it receives:
 
 ```yaml
@@ -133,16 +133,14 @@ skills:
 Skills in the shared Agent Skills folder `~/.agents/skills/` also load for the
 orchestrator; subagents get only the skills listed for them.
 
-### Documents: formats you agree on
+### Tasks and document formats
 
-For each document an agent writes (or a report a subagent returns), the
-faur proposes a structure — purpose, sections in order, a word limit and a
-few rules — and you add, remove or change sections before it is recorded in
-`documents[]`. The agreed format goes into that agent's instructions, so each
-run produces the same shape. Any agent can have any number of documents, and a
-document can be delivered anywhere an MCP tool reaches — Google Drive, Notion,
-Slack — with `deliver: [{ mcp, tool, with }]`. Change formats later with
-`/faur`.
+Use an ordinary Pi skill for task procedures, document formats, paths and
+any delivery instructions. Its instructions are advisory, not enforced
+output guarantees. Local skills are developer-owned: Faur does not generate or
+overwrite them. Review and approve proposed changes before editing the skill
+with ordinary Pi tools; those external edits are not enforced by Faur's
+maintenance approval mechanism.
 
 Faur does not choose foreground or background launches. Built-in MCP tools
 work in either mode; foreground specialists need extension paths in their native
@@ -311,8 +309,10 @@ node /path/to/faur/src/faur.mjs generate /path/to/new-project --dry-run
 node /path/to/faur/src/faur.mjs generate /path/to/new-project
 ```
 
-Review the copied design for old paths and unsupported declarations first;
-review the preview before approval. Compare the original native files and
+Review the copied design for old paths and unsupported declarations first.
+The removed `documents`, `workflows` and `skills[].body` fields must be
+replaced with ordinary developer-owned skill files; preserve their procedures
+and output instructions in those files. Review the preview before approval. Compare the original native files and
 manually reconcile every authored prompt, skill, script and configuration
 change into the new project, without copying credentials or stale runtime
 state blindly. Verify the result before replacing or retiring the original.

@@ -5,6 +5,7 @@
     "read",
     "grep",
     "find",
-    "ls"
+    "ls",
+    "codemode"
   ]
 }

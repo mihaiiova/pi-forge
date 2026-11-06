@@ -36,7 +36,7 @@ function readJson(root, rel) {
  *   checks a command is on PATH.
  * @returns {{ ok: boolean, problems: Array<{ agent: string, problem: string }> }}
  */
-export function launchCheck(root, model, { registeredTools, mcpTools, probe } = {}) {
+export function launchCheck(root, model, { registeredTools, mcpTools, probe, verifyCodemode = true } = {}) {
   const problems = [];
   const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   const workTree = git(['rev-parse', '--is-inside-work-tree']);
@@ -65,7 +65,7 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
     const tools = Array.isArray(model.orchestrator.tools) ? model.orchestrator.tools : cliEntries(model).map((c) => `cli:${c.name}`);
     checkCommands(model.orchestrator.name, tools);
     for (const tool of tools) {
-      if (!BUILTIN.has(tool) && !cliRef(tool) && tool !== 'mcp' && !tool.startsWith('mcp:') && registered && !registered.has(tool)) {
+      if ((tool !== 'codemode' || verifyCodemode) && !BUILTIN.has(tool) && !cliRef(tool) && tool !== 'mcp' && !tool.startsWith('mcp:') && registered && !registered.has(tool)) {
         problems.push({ agent: model.orchestrator.name, problem: `${tool}: no loaded extension registers this tool` });
       }
     }
@@ -95,7 +95,7 @@ export function launchCheck(root, model, { registeredTools, mcpTools, probe } = 
         else if (!name && !usable.length) report(`${tool}: every tool of "${server}" is hidden by includeTools, excludeTools or a hide policy`);
         continue;
       }
-      if (registered && !registered.has(tool)) report(`${tool}: no loaded extension registers this tool`);
+      if ((tool !== 'codemode' || verifyCodemode) && registered && !registered.has(tool)) report(`${tool}: no loaded extension registers this tool`);
       report(`${tool}: foreground extension loading is not verified; the native agent tools list must include the providing extension path`);
     }
     const file = existsSync(join(root, `.pi/agents/${agent.name}.md`)) ? readFileSync(join(root, `.pi/agents/${agent.name}.md`), 'utf8') : '';

@@ -25,8 +25,6 @@ Top-level keys (all others rejected):
 | `agents` | no | array | specialist subagents (→ `.pi/agents/*.md`) |
 | `skills` | no | array | authored, packaged or vendored skills (→ `.pi/skills/*/`) |
 | `integrations` | no | object | MCP servers + env requirements |
-| `workflows` | no | array | declared workflow boundaries (metadata only) |
-| `documents` | no | array | agreed formats for documents agents write or return |
 | `policies` | no | object | enforced + advisory policy |
 | `setup` | no | array | project setup checks and installs (see Setup checks) |
 | `packages` | no | array of `npm:`/`git:` specs | additional runtime extension packages (`pi-subagents` is always included; `pi-mcp-adapter` is rejected because it would replace Pi's built-in MCP; packaged skill sources are added automatically) |
@@ -65,16 +63,16 @@ level go into its own `.pi/agents/<name>.md` frontmatter. No routing overrides
 Allowed keys: `name` (required string), `description`, `prompt`, `model`
 (required `provider/id`), `thinking` and `tools` (array of strings).
 
-**Browsing baseline (enforced by the generator).** Every explicit, non-empty
+**Tool baseline (enforced by the generator).** Every explicit, non-empty
 `tools` list, the orchestrator's and each subagent's, includes `read`, `ls`,
-`find` and `grep`. Faur adds any that are missing when it reads a design and
-writes them into `system.yaml` on its next change, which the preview names
-("<agent> gains ls, find, grep"). They give no reach `read` lacks (it opens
-any file the user can); they make it usable. `tools: []` stays empty, an
-omitted list keeps Pi's defaults, and an enforced `{ agent, tools }` policy
-rule is not extended, so a design can still keep a specialist away from
-files. A native edit that drops a baseline tool cannot be adopted; Faur
-refuses and says why.
+`find`, `grep` and `codemode`. Faur adds missing entries when it reads a design
+and records them in `system.yaml` on the next change; the preview names the
+added tools. Unlike file browsing, `codemode` can reach other exposed tools,
+including inherited global MCP servers, even when those tools are not directly
+listed. `tools: []` stays empty, an omitted list keeps Pi's defaults, and an
+enforced `{ agent, tools }` rule is not extended. A native edit that drops a
+baseline tool cannot be adopted; Faur refuses and says why. The tools an agent
+can actually call depend on Pi and its packages; a list is not OS isolation.
 
 Pi loads the project's `AGENTS.md` (and `AGENTS.md` files in parent folders)
 into the orchestrator's prompt by itself. Generation
@@ -91,11 +89,11 @@ commands, other tools, skills, and for the orchestrator its specialists. A
 subagent's section is written into its agent file after its prompt; the
 orchestrator's follows its prompt in `.pi/APPEND_SYSTEM.md`, between
 `<!-- faur:derived v1 … -->` markers, so Pi loads both natively. The
-orchestrator's specialist launch note and document formats are in the same
-section. Both are build output: they change when the system is regenerated,
+orchestrator's specialist launch note is in the same section. It is build
+output: it changes when the system is regenerated,
 not when the Faur tooling is updated. A change
 that removes an MCP server, command or skill reports `staleMentions`: the
-prompts, workflows, documents and advisory policies that still name it.
+prompts and advisory policies that still name it.
 
 ### `agents[]`
 
@@ -121,9 +119,7 @@ The faur ships no skills of its own; each agent gets the skills the user
 chooses for it, including ones the faur suggests from skills.sh.
 Allowed keys: `name` (required string), `description`, and at most one of:
 
-- `body` — authored inline; materializes to `.pi/skills/<name>/SKILL.md`. A
-  skill with neither `body` nor `source` that a workflow names gets a generated
-  orchestration body.
+- With no `source`, the skill is an ordinary developer-owned project file at `.pi/skills/<name>/SKILL.md`. Create or edit it with Pi’s normal file tools after showing the proposed content and obtaining approval; Faur does not generate or overwrite it.
 - `source: npm:<name>@<version>` or `git:<repo>@<ref>` — provided by a pinned
   package, which joins the runtime `packages`. No local file is generated.
 - `source: ./path`, `../path`, `/abs/path` or `~/path` — a directory containing
@@ -157,9 +153,11 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
     `deferred`: the orchestrator finds them with `tool_search`.
   - `excludeTools`: tools nobody may use (`hidden`: registered but
     unreachable, also for specialists). An enforced `hide` policy adds to it.
-  `exposure` and `toolExposure` are rejected: Faur derives them. Codemode is
-  not enabled automatically (`autoEnableCodemode: false`), since it would reach
-  every server's tools. Pi names each tool `mcp__<server>__<tool>`. An
+  `exposure` and `toolExposure` are rejected: Faur derives them. Pi's automatic
+  codemode activation is disabled (`autoEnableCodemode: false`) to preserve
+  explicit empty lists and policy ceilings; the tool baseline explicitly grants
+  codemode on non-empty lists. Codemode can reach exposed global and project MCP
+  tools. Pi names each tool `mcp__<server>__<tool>`. An
   orchestrator with `mcp` in its tools (or without `tools`) is told about every
   server's usable tools; without it, it is told it has none, while its
   specialists get their `mcp:` selections. That is advisory: nothing stops
@@ -213,59 +211,6 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
       tools: [read, write, "cli:create-issue"]
   ```
 
-### `workflows[]`
-
-Allowed keys: `name` (required), `description`, `skill`, `trigger`, `entry`,
-`agents`, `inputs`, `outputs`, `approval`, `verify`.
-
-- `skill` references a `skills[].name` (the orchestrating SKILL.md).
-- `entry` references `orchestrator.name` or an `agents[].name`.
-- `agents` is an array of strings, each referencing `orchestrator.name` or an
-  `agents[].name` (the specialists available to the workflow).
-- `inputs`/`outputs` are arrays of path strings.
-- `trigger` is `{ kind: "manual" | "headless" }` (scheduling deferred).
-- A workflow must declare at least one of `skill` or `entry`. Without `skill`,
-  generation writes a skill named after the workflow
-  (`.pi/skills/<workflow>/SKILL.md`) that states its boundary, so its name
-  cannot also be a `skills[]` name.
-
-Workflows are **declared boundaries, not a graph of internal steps**: execution
-authority stays with the named skill's own procedure. Every workflow runs as
-its skill: interactively with `/skill:<name> <request>`, headless with
-`pi --approve -p "/skill:<name> <request>"` (see
-[headless-workflows.md](../../docs/headless-workflows.md)). Duplicate `name`s
-are rejected.
-
-### `documents[]`
-
-How one agent writes one document, agreed with the user. Allowed keys: `name`
-(required kebab-case), `writer` (required: `orchestrator.name` or an
-`agents[].name`), `path` (optional project-relative file outside `.pi/` and
-`.faur/`; omit it for a report a subagent returns), `purpose`, `maxWords`
-(positive integer), `sections` (required non-empty array of `{ heading,
-guide? }`, in order), `rules` (array of strings) and `deliver` (array of
-`{ mcp, tool, with?, note? }`: send the document with that MCP tool, e.g. to
-Google Drive; `mcp` must be a declared server and the writer must have
-`mcp:<server>/<tool>` or `mcp:<server>`, or `mcp` for the orchestrator). A writer with a `path`
-must have `write` or `edit` when its tools are listed. The format is appended
-to the writer's instructions (`APPEND_SYSTEM.md` or its agent file) under
-"Document formats". Duplicate `name`s are rejected.
-
-```yaml
-documents:
-  - name: decisions
-    path: strategy/decisions.md
-    writer: lead
-    purpose: One page the owner can act on.
-    maxWords: 600
-    sections:
-      - { heading: Decide now, guide: "Yes/no questions for the owner, at most 3" }
-      - { heading: Actions, guide: "Table: action | owner | due | done when" }
-      - { heading: Open questions, guide: "At most 5" }
-      - { heading: Evidence and limits, guide: "At most 5 bullets linking to reports/" }
-    rules: [ "Caveats only in Evidence and limits", "No run IDs or tool arguments" ]
-```
-
 ### `policies`
 
 Allowed keys: `enforced` (array) and `advisory` (array of strings).
@@ -290,15 +235,11 @@ path/key and the expected value. Rejected conditions:
   opaque MCP `config` object);
 - wrong types / missing required fields within each block;
 - a missing or non-`provider/id` model, or an unknown thinking level;
-- unresolved references (agent, skill, workflow, MCP names, including
+- unresolved references (agent, skill, MCP names, including
   `agents[].skills`);
-- a skill declaring both `body` and `source`, or an unrecognized `source`;
-- malformed workflows (missing required fields, `agents`/`inputs`/`outputs` not
-  string arrays, missing `skill` and `entry`);
-- incompatible configurations (a workflow or policy referencing an undeclared
-  agent/skill/MCP);
-- duplicate `name` within `agents[]`, `skills[]`, `integrations.mcp[]`, `documents[]`, or
-  `workflows[]`.
+- an unrecognized skill `source`;
+- incompatible configurations (a policy referencing an undeclared agent/MCP);
+- duplicate `name` within `agents[]`, `skills[]`, or `integrations.mcp[]`.
 
 The skill name `faur` is reserved (it is the Faur skill) and cannot be declared in
 `skills[]`. Operational model edits use the structured operations of
@@ -309,9 +250,11 @@ defaults.
 
 ## 3. Schema versions
 
-Only `schema: 1` is accepted. There is no migration: documents written for the
-earlier tier-based layout (`models.tiers`, tier names as agent models) are
-rejected and must be redefined with per-agent models.
+Only `schema: 1` is accepted. There is no migration: designs using the earlier
+tier-based layout (`models.tiers`, tier names as agent models) must be redefined
+with per-agent models. The removed `documents`, `workflows` and `skills[].body`
+fields must be replaced with ordinary developer-owned skill files; keep their
+procedures and output instructions there.
 
 ## 4. Ownership / edit-preservation contract
 
@@ -325,8 +268,8 @@ rejected and must be redefined with per-agent models.
    nothing. `mcp.json` exists only with MCP servers and `.env.example` only
    with `integrations.env`; removing the last one removes the file.
    Hand-editing a derived file is unsupported — change the model instead.
-2. **Authored files** (agents, skills, the orchestrator prompt in
-   `APPEND_SYSTEM.md`, README, `.gitignore`, `.env.example`) are user-owned.
+2. **Authored files** (agents, the orchestrator prompt in `APPEND_SYSTEM.md`,
+   README, `.gitignore`, `.env.example`) are user-owned.
    `APPEND_SYSTEM.md` also holds the derived "What you can use" section after
    the prompt, between markers: it is rewritten with the declarations, and a
    hand edit inside it, or text after it, is a conflict rather than lost. The faur scaffolds them
@@ -349,6 +292,10 @@ rejected and must be redefined with per-agent models.
    unrelated. Faur also refuses nested negation rules along required `.pi`
    paths and declared integration secret paths, even if unrelated. The append is shown in
    dry runs and change previews, and repeating it is a no-op.
+   **Local skill files** are developer-owned and are not generated, overwritten
+   or deleted by Faur. Preview the proposed content and obtain explicit approval
+   before editing with normal Pi tools outside `/faur` maintenance mode. Faur
+   cannot enforce approval for edits made outside that mode.
    **Vendored skill directories** (`skills[].source` paths) are user-owned
    copies: created once from the source, never overwritten or deleted by the
    faur. Delete a copy explicitly to refresh it from its source.
@@ -365,7 +312,7 @@ rejected and must be redefined with per-agent models.
 
 When pinned, the Faur package is the first entry of the derived `packages`
 list, pinned to the release that generated the project. Maintenance
-change proposals delete removed agent/skill scaffolds only when intact, reject
+change proposals delete removed agent scaffolds only when intact, reject
 authored conflicts, and require separately confirmed drift reconciliation.
 The build record's declaration inventory identifies previously declared paths;
 it does not establish ownership. An intact inline marker is required before an

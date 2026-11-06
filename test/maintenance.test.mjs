@@ -150,8 +150,8 @@ test('adopting Pi settings preserves the native file and survives another revisi
   // Removing a baseline tool cannot be represented, so it is refused.
   settings.defaultTools = ['read', 'grep'];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
-  assert.throws(() => planSettingsAdoption(root), /Cannot adopt defaultTools without ls, find: every Faur agent keeps read, ls, find, grep/);
-  settings.defaultTools = ['read', 'grep', 'ls', 'find', 'bash'];
+  assert.throws(() => planSettingsAdoption(root), /Cannot adopt defaultTools without ls, find, codemode: every Faur agent keeps read, ls, find, grep, codemode/);
+  settings.defaultTools = ['read', 'grep', 'ls', 'find', 'bash', 'codemode'];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
   const original = readText(root, '.pi/settings.json');
   const adoption = planSettingsAdoption(root);
@@ -160,7 +160,7 @@ test('adopting Pi settings preserves the native file and survives another revisi
   assert.equal(readText(root, '.pi/settings.json'), original);
   const adopted = yaml.parse(readText(root, '.pi/system.yaml'));
   assert.equal(adopted.orchestrator.model, 'fixture/hand-edited');
-  assert.deepEqual(adopted.orchestrator.tools, ['read', 'grep', 'ls', 'find', 'bash']);
+  assert.deepEqual(adopted.orchestrator.tools, ['read', 'grep', 'ls', 'find', 'bash', 'codemode']);
   applyChange(root, planChange(root, [{ op: 'set', target: 'policies', value: {} }]), true);
   assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'hand-edited');
   assert.equal(readJson(root, '.pi/settings.json').theme, 'my-theme');
@@ -201,7 +201,7 @@ test('settings reconciliation adopts selected fields, reapplies others and prese
   mock.approve();
   await command('drift reconcile .pi/settings.json adopt=model', mock.ctx);
   assert.equal(readJson(root, path).defaultModel, 'manual');
-  assert.deepEqual(readJson(root, path).defaultTools, ['read', 'ls', 'find', 'grep'], 'reapplied tools carry the browsing baseline');
+  assert.deepEqual(readJson(root, path).defaultTools, ['read', 'ls', 'find', 'grep', 'codemode'], 'reapplied tools carry the baseline');
   assert.equal(readJson(root, path).theme, 'native-theme');
   assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/manual');
   const stale = planSettingsReconciliation(root, []);
@@ -244,7 +244,7 @@ test('a representable added specialist is adopted without rewriting its file', t
   mkdirSync(join(root, '.pi/agents'), { recursive: true });
   writeFileSync(join(root, narrowFile.path), narrowFile.content);
   assert.throws(() => planAgentAdoption(root, narrowFile.path), /Cannot adopt \.pi\/agents\/scout\.md tools without ls, find, grep/);
-  const agent = { ...narrow, tools: ['read', 'ls', 'find', 'grep'] };
+  const agent = { ...narrow, tools: ['read', 'ls', 'find', 'grep', 'codemode'] };
   const file = generateProject({ ...model, agents: [agent] }, {}, { piPackages: pkg.pi.packages }).files.find(item => item.path === '.pi/agents/scout.md');
   writeFileSync(join(root, file.path), file.content);
   const plan = planAgentAdoption(root, file.path);
@@ -259,7 +259,7 @@ test('a representable added specialist is adopted without rewriting its file', t
 test('unmarked specialist adoption preserves and reports native-only frontmatter', t => {
   const root = project(t);
   const path = '.pi/agents/scout.md';
-  const text = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n  - ls\n  - find\n  - grep\ncustomNative: retained\n---\nResearch carefully.\n';
+  const text = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n  - ls\n  - find\n  - grep\n  - codemode\ncustomNative: retained\n---\nResearch carefully.\n';
   mkdirSync(join(root, '.pi/agents'), { recursive: true });
   writeFileSync(join(root, path), text);
   const plan = planAgentAdoption(root, path);
@@ -277,7 +277,7 @@ test('unmarked specialist adoption refuses ambiguous prompt sources and stale pr
   const root = project(t);
   const path = '.pi/agents/scout.md';
   mkdirSync(join(root, '.pi/agents'), { recursive: true });
-  const front = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n  - ls\n  - find\n  - grep\n';
+  const front = '---\nname: scout\ndescription: Research\nmodel: fixture/small\ntools:\n  - read\n  - ls\n  - find\n  - grep\n  - codemode\n';
   writeFileSync(join(root, path), `${front}systemPrompt: First\n---\nSecond\n`);
   assert.throws(() => planAgentAdoption(root, path), /both systemPrompt and body/);
   writeFileSync(join(root, path), `${front}---\nResearch\n`);
@@ -549,7 +549,7 @@ test('unrelated revisions refuse to discard native subagent overrides or disable
 });
 
 test('inspection reports local unmanaged resources without reading content or flagging declared skills', t => {
-  const root = project(t, { ...model, skills: [{ name: 'known', description: 'Known skill', body: 'Use the known skill.' }] });
+  const root = project(t, { ...model, skills: [{ name: 'known', description: 'Known skill' }] });
   for (const [path, text] of [
     ['.pi/extensions/custom.ts', 'do-not-report-extension-value'],
     ['.pi/skills/local/SKILL.md', 'do-not-report-local-value'],
@@ -962,9 +962,8 @@ test('structured changes preserve comments, add/update/remove all schema entitie
   const operations = [
     { op: 'add', target: 'agent', name: 'reviewer', value: { model: 'fixture/large', tools: ['read'], prompt: 'Review findings.' } },
     { op: 'assign', name: 'reviewer', model: 'fixture/budget', thinking: 'low' },
-    { op: 'add', target: 'skill', name: 'keywords', value: { description: 'Keyword research', body: 'Find keywords.' } },
+    { op: 'add', target: 'skill', name: 'keywords', value: { description: 'Keyword research' } },
     { op: 'add', target: 'mcp', name: 'search', value: { config: { url: 'https://example.invalid/mcp', headers: { Authorization: 'Bearer ${SEARCH_TOKEN}' } } } },
-    { op: 'add', target: 'workflow', name: 'research', value: { skill: 'keywords', agents: ['reviewer'], entry: 'lead' } },
     { op: 'set', target: 'policies', value: { enforced: [{ agent: 'reviewer', tools: ['read'] }, { mcp: 'search', hide: ['write'] }] } },
   ];
   const before = snapshot(root);
@@ -980,22 +979,19 @@ test('structured changes preserve comments, add/update/remove all schema entitie
   assert.deepEqual(readJson(root, '.pi/mcp.json').mcpServers.search.toolExposure, { write: 'hidden' });
   assert.equal(inspectProject(root).consistency.ok, true);
   applyChange(root, planChange(root, [
-    { op: 'update', target: 'skill', name: 'keywords', value: { body: 'Find and prioritize keywords.' } },
+    { op: 'update', target: 'skill', name: 'keywords', value: { description: 'Prioritize keywords' } },
     { op: 'assign', name: 'reviewer', model: 'fixture/budget', thinking: null },
     { op: 'update', target: 'agent', name: 'reviewer', value: { description: 'Check research' } },
     { op: 'update', target: 'mcp', name: 'search', value: { config: { url: 'https://example.invalid/v2' } } },
-    { op: 'update', target: 'workflow', name: 'research', value: { description: 'Simple research' } },
     { op: 'set', target: 'orchestrator', value: { ...model.orchestrator, model: 'fixture/small', tools: ['read', 'grep'], prompt: 'New instructions.' } },
   ]), true);
   assert.match(readText(root, '.pi/APPEND_SYSTEM.md'), /New instructions/);
   assert.doesNotMatch(readText(root, '.pi/agents/reviewer.md'), /thinking:/, 'a null thinking level removes it');
   assert.equal(readJson(root, '.pi/settings.json').defaultModel, 'small');
   assert.throws(() => planChange(root, [{ op: 'remove', target: 'agent', name: 'reviewer' }]), /references/);
-  assert.throws(() => planChange(root, [{ op: 'remove', target: 'skill', name: 'keywords' }]), /references/);
   assert.throws(() => planChange(root, [{ op: 'assign', name: 'reviewer', model: 'budget' }]), /provider\/id/);
   assert.throws(() => planChange(root, [{ op: 'remove', target: 'mcp', name: 'search' }]), /references/);
   applyChange(root, planChange(root, [
-    { op: 'remove', target: 'workflow', name: 'research' },
     { op: 'set', target: 'policies', value: {} },
     { op: 'remove', target: 'agent', name: 'reviewer' },
     { op: 'remove', target: 'skill', name: 'keywords' },
@@ -1011,7 +1007,7 @@ test('conflicts, stale previews, malformed references and infrastructure names c
   const plan = planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]);
   writeFileSync(join(root, '.pi/system.yaml'), readText(root, '.pi/system.yaml') + '# later user edit\n');
   assert.throws(() => applyChange(root, plan, true), /changed since preview/);
-  assert.throws(() => planChange(root, [{ op: 'add', target: 'skill', name: 'faur', value: { body: 'replace maintenance' } }]), /reserved/);
+  assert.throws(() => planChange(root, [{ op: 'add', target: 'skill', name: 'faur', value: {}  }]), /reserved/);
   assert.throws(() => changeModel(yaml.stringify(model), [{ op: 'add', target: 'agent', name: '../escape', value: {} }]), /unsafe/);
   assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'absent' }]), /provider\/id/);
   assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small', thinking: 'extreme' }]), /thinking must be one of/);
@@ -1060,7 +1056,7 @@ test('vendored skills must already be in the project and cannot be orphaned', t 
   applyChange(root, planChange(root, [local, { op: 'add', target: 'agent', name: 'writer', value: { model: 'fixture/small', skills: ['house-style'] } }]), true);
   assert.match(readText(root, '.pi/agents/writer.md'), /skills:\n  - house-style\n/);
   assert.equal(readText(root, '.pi/skills/house-style/SKILL.md').includes('Write plainly.'), true, 'vendored copy is never rewritten');
-  assert.throws(() => planChange(root, [{ op: 'update', target: 'agent', name: 'writer', value: { skills: [] } }, { op: 'remove', target: 'skill', name: 'house-style' }]), /Removed vendored skill still loads/);
+  assert.throws(() => planChange(root, [{ op: 'update', target: 'agent', name: 'writer', value: { skills: [] } }, { op: 'remove', target: 'skill', name: 'house-style' }]), /Removed local skill still loads/);
 });
 
 test('unmarked instructions and unrelated derived drift never get silently reconciled', t => {
@@ -1179,7 +1175,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/small');
   assert.match(mock.notices.at(-1)[0], /^Applied: [\s\S]*\.pi\/system\.yaml[\s\S]*\/reload/);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
-  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'ls', 'find', 'grep']);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'ls', 'find', 'grep', 'codemode']);
 
   // Discard drops the proposal and leaves /faur.
   const applied = readText(root, '.pi/system.yaml');
@@ -1299,14 +1295,14 @@ test('registry skill approval names the installation and unsandboxed installer',
   assert.match(mock.prompts[0].title, /npx skills@.*not OS-sandboxed/);
 });
 
-test('/faur check shows document writer validation without verbose mode', async t => {
+test('/faur check reports removed document schema without verbose mode', async t => {
   const root = project(t);
   const invalid = { ...model, documents: [{ name: 'report', path: 'reports/report.md', writer: 'lead', sections: [{ heading: 'Summary' }] }] };
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(invalid));
   const mock = adapter();
   mock.faur = registerMaintenance(mock.pi, mock.Type, root);
   await mock.faur('check', mock.ctx);
-  assert.match(mock.notices.at(-1)[0], /writer "lead" has no write or edit tool/);
+  assert.match(mock.notices.at(-1)[0], /unknown key "documents"/);
 });
 
 test('review-only wording routes without suppressing explicit change requests', async t => {
@@ -1431,21 +1427,6 @@ test('env variables are declared by proposal and configured outside Faur', async
   assert.ok(!JSON.stringify([mock.messages, mock.notices]).includes('external-secret'));
 });
 
-test('document formats are proposed as operations and land in the writer instructions', t => {
-  const root = project(t);
-  const plan = planChange(root, [{ op: 'add', target: 'document', name: 'decisions', value: {
-    writer: 'lead', maxWords: 600,
-    sections: [{ heading: 'Decide now', guide: 'Yes/no questions' }, { heading: 'Actions' }],
-  } }]);
-  assert.match(plan.writes['.pi/system.yaml'], /# Preserve this purpose comment/);
-  assert.match(plan.writes['.pi/APPEND_SYSTEM.md'], /### decisions \(returned in your output\)[\s\S]*1\. \*\*Decide now\*\* — Yes\/no questions/);
-  applyChange(root, plan, true);
-  assert.deepEqual(inspectProject(root).effectiveCapabilities.documents, [{ name: 'decisions', writer: 'lead' }]);
-  // The lead only has read, so it cannot be given a file to write.
-  assert.throws(() => planChange(root, [{ op: 'update', target: 'document', name: 'decisions', value: { path: 'strategy/decisions.md' } }]), /no write or edit tool/);
-  assert.throws(() => planChange(root, [{ op: 'add', target: 'document', name: 'bad', value: { writer: 'nobody', sections: [] } }]), /writer references "nobody"/);
-});
-
 test('inspect summarizes subagent launches and the latest failure diagnostic only', t => {
   const root = project(t);
   const home = join(root, '.faur/pi-home');
@@ -1526,7 +1507,7 @@ test('/faur check verifies the agent without a model turn', async t => {
   const mock = adapter();
   mock.faur = registerMaintenance(mock.pi, mock.Type, root);
   const check = async () => { mock.notices.length = 0; await mock.faur('check', mock.ctx); return mock.notices.at(-1); };
-  assert.match((await check())[0], /All checks passed/);
+  assert.match((await check())[0], /some are not verified now[\s\S]*codemode/);
   const settings = readJson(root, '.pi/settings.json');
   writeFileSync(join(root, '.pi/settings.json'), json({ ...settings, defaultTools: ['read', 'bash'] }));
   const [drift, level] = await check();
@@ -1909,13 +1890,14 @@ test('every agent can browse: the baseline is recorded, generated and named in t
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(recorded));
   const plan = rebuildPlan(root);
   const summary = approvalSummary(root, plan);
-  assert.ok(summary.includes('lead gains ls, find, grep.'), summary.join('\n'));
-  assert.ok(summary.includes('scout gains read, ls, find, grep.'), summary.join('\n'));
+  assert.ok(summary.includes('lead gains ls, find, grep, codemode.'), summary.join('\n'));
+  assert.ok(summary.includes('scout gains read, ls, find, grep, codemode.'), summary.join('\n'));
+  assert.ok(summary.some(line => line.includes('inherited global MCP tools')));
   applyChange(root, plan, true);
   const design = yaml.parse(readText(root, '.pi/system.yaml'));
-  assert.deepEqual(design.orchestrator.tools, ['read', 'write', 'ls', 'find', 'grep'], 'the record says it');
-  assert.deepEqual(design.agents[0].tools, ['mcp:docs', 'read', 'ls', 'find', 'grep']);
-  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'write', 'ls', 'find', 'grep']);
+  assert.deepEqual(design.orchestrator.tools, ['read', 'write', 'ls', 'find', 'grep', 'codemode'], 'the record says it');
+  assert.deepEqual(design.agents[0].tools, ['mcp:docs', 'read', 'ls', 'find', 'grep', 'codemode']);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'write', 'ls', 'find', 'grep', 'codemode']);
   assert.match(readText(root, '.pi/agents/scout.md'), /tools:\n(  - .*\n)*  - grep\n/);
   assert.equal(rebuildPlan(root).rebuild.unchanged, true, 'idempotent');
   // tools: [] stays empty, and an enforced policy stays the ceiling.

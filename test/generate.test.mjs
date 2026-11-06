@@ -5,6 +5,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSystem } from "../src/parse.mjs";
 import { generateProject } from "../src/generate.mjs";
+import { withBaselineTools } from "../src/policy.mjs";
 import { COMMANDS_PACKAGE } from "../src/deps.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -52,7 +53,6 @@ test("projects never pin Faur; they pin the runtime packages their design uses",
   assert.deepEqual(pins(withCommand), [COMMANDS_PACKAGE], "declared commands come from pi-commands");
   assert.deepEqual(pins(withServer), [], "a lead without mcp is advisory: no package");
   assert.ok(!generateProject(withServer, {}).files.some((f) => f.path.includes("pi-permission-system")), "MCP generates no approval config");
-  assert.deepEqual(pins({ ...model, workflows: [{ name: "w", entry: "helper" }] }), [], "workflows are skills Pi runs itself");
   assert.deepEqual(pins({ ...model, orchestrator: { ...model.orchestrator, tools: [...model.orchestrator.tools, "subagent"] } }), ["npm:pi-subagents@0.83.1"], "subagent alone pins pi-subagents at this release's version");
   for (const m of [model, withCommand, withServer]) assert.ok(!pins(m).some((p) => p.includes("faur")));
 });
@@ -125,7 +125,7 @@ test("each agent's own model, thinking and skills land in its frontmatter", () =
   const withAgent = {
     ...model,
     agents: [{ name: "helper", model: "provider-b/model-small", thinking: "high", skills: ["notes"], tools: ["read"] }],
-    skills: [{ name: "notes", body: "# Notes" }],
+    skills: [{ name: "notes" }],
   };
   const agent = byPath(generateProject(withAgent, {}).files, ".pi/agents/helper.md").content;
   assert.match(agent, /^model: provider-b\/model-small$/m);
@@ -226,7 +226,7 @@ test("authored scaffold carries an faur marker and the scaffolded body", () => {
 
 test("golden tree: minimal fixture produces the committed snapshot", () => {
   const goldenDir = resolve(fixtureRoot, "golden");
-  const { files } = generateProject(model, {}, {
+  const { files } = generateProject(withBaselineTools(model), {}, {
     piPackages: ["npm:pi-subagents@0.83.1", "npm:pi-web-access@0.27.0"],
     contextFiles: [],
   });
@@ -335,37 +335,6 @@ test("developer extension paths in agent files are not overwritten", () => {
   assert.notEqual(planned.action, "write");
 });
 
-test("agreed document formats land in their writer's instructions", () => {
-  const documents = [
-    { name: "decisions", path: "strategy/decisions.md", writer: model.orchestrator.name, purpose: "Owner decisions", maxWords: 600,
-      sections: [{ heading: "Decide now", guide: "Yes/no questions" }, { heading: "Actions" }], rules: ["Caveats only in the last section"] },
-    { name: "evidence-packet", writer: "writer", sections: [{ heading: "Findings" }] },
-  ];
-  const withDocs = { ...model, agents: [{ name: "writer", model: "provider-a/m", tools: ["read"], prompt: "Research." }], documents };
-  const { files } = generateProject(withDocs, {});
-  const lead = byPath(files, ".pi/APPEND_SYSTEM.md").content;
-  assert.match(lead, /## Document formats/);
-  assert.match(lead, /### decisions → `strategy\/decisions.md`/);
-  assert.match(lead, /Length: at most 600 words\./);
-  assert.match(lead, /1\. \*\*Decide now\*\* — Yes\/no questions\n2\. \*\*Actions\*\*/);
-  assert.match(lead, /- Caveats only in the last section/);
-  assert.doesNotMatch(lead, /evidence-packet/);
-  const writer = byPath(files, ".pi/agents/writer.md").content;
-  assert.match(writer, /  Research\.\n  \n  ## What you can use\n[\s\S]*## Document formats/);
-  assert.match(writer, /### evidence-packet \(returned in your output\)/);
-});
-
-test("document delivery targets are rendered as steps for the writer", () => {
-  const documents = [{ name: "article", path: "drafts/article.md", writer: "writer", sections: [{ heading: "Body" }],
-    deliver: [{ mcp: "gdrive", tool: "create_file", with: { folder: "Owlie/Articles" } }, { mcp: "slack", tool: "post_message", note: "link only" }] }];
-  const withDocs = { ...model, agents: [{ name: "writer", model: "provider-a/m", tools: ["write", "mcp:gdrive/create_file", "mcp:slack/post_message"] }], documents };
-  const writer = byPath(generateProject(withDocs, {}).files, ".pi/agents/writer.md").content;
-  assert.match(writer, /When the file is written, also deliver it:/);
-  assert.match(writer, /- MCP server `gdrive`, tool `create_file` with \{"folder":"Owlie\/Articles"\}/);
-  assert.match(writer, /- MCP server `slack`, tool `post_message` — link only/);
-  assert.match(writer, /Report where each delivery landed/);
-});
-
 test("existing gitignore gets only missing safety entries without changing user text", () => {
   const original = "# user rules\nnode_modules\n.env/\n.pi/sessions";
   const file = byPath(generateProject(model, { ".gitignore": original }).files, ".gitignore");
@@ -389,23 +358,4 @@ test("edited scaffold gets safety entries appended without replacing edits", () 
   const file = byPath(generateProject(model, { ".gitignore": edited }).files, ".gitignore");
   assert.equal(file.action, 'write');
   assert.equal(file.content, edited + '# faur: required ignores\n.faur/\n');
-});
-
-test('README lists each workflow as the headless skill command, for the launcher in use', () => {
-  const workflows = [{ name: 'daily-report', entry: model.orchestrator.name }, { name: 'weekly', skill: 'summarize', entry: model.orchestrator.name }];
-  const plain = byPath(generateProject({ ...model, workflows }, {}).files, 'README.md').content;
-  assert.match(plain, /^pi --approve -p "\/skill:daily-report <request>"$/m);
-  assert.match(plain, /^pi --approve -p "\/skill:summarize <request>"$/m, 'a declared skill is the one invoked');
-  assert.match(plain, /exit code reports the run, not whether the task succeeded/);
-  assert.match(plain, /a call that asks the user is refused in a headless run/);
-  assert.doesNotMatch(plain, /--workflow|--timeout|systemd/);
-  const isolated = byPath(generateProject({ ...withServer, workflows }, {}).files, 'README.md').content;
-  assert.match(isolated, /^pi --approve -p "\/skill:daily-report <request>"$/m);
-});
-
-test('a workflow without a skill gets one named after it', () => {
-  const { files } = generateProject({ ...model, workflows: [{ name: 'daily-report', description: 'Report', entry: model.orchestrator.name }] }, {});
-  const skill = byPath(files, '.pi/skills/daily-report/SKILL.md').content;
-  assert.match(skill, /^---\nname: daily-report\ndescription: "Report"\n---/);
-  assert.match(skill, /## Boundary[\s\S]*Entry: helper/);
 });

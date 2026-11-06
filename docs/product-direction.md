@@ -138,11 +138,12 @@ something a project gets from a package, Faur moves to the built-in.
 - **Design record vs native files.** Faur derives `settings.json`,
   `mcp.json`, agent frontmatter and the capability section from
   `system.yaml`. Prompts, skills and README are the developer's; Faur
-  creates them once and never silently overwrites them. Native files the
+  never silently overwrites them. Skills are authored as ordinary project files.
+  Native files the
   developer edits are adopted or reconciled when Faur is invoked; features
   the schema can't represent are preserved and reported, not dropped.
-- **Hybrid orchestration.** Declare responsibilities, capabilities, policies
-  and workflow boundaries. Leave delegation, sequencing and tool choice to the
+- **Hybrid orchestration.** Declare responsibilities, capabilities and policies;
+  describe task procedures in skills. Leave delegation, sequencing and tool choice to the
   agents at run time. No graph workflow engine.
 - **Enforced vs advisory.** Tool allowlists and hidden MCP tools are enforced
   by Pi and pi-subagents at the tool layer where verified; Faur does not add

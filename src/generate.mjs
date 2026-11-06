@@ -23,8 +23,7 @@ import { configurationAdvisories } from './advisories.mjs';
  */
 import { createHash } from "node:crypto";
 import { splitModelRef } from "./models.mjs";
-import { authoredSkills, vendoredSkills, skillSourceKind } from "./skill-sources.mjs";
-import { workflowSkill } from "./workflow-skill.mjs";
+import { vendoredSkills, skillSourceKind } from "./skill-sources.mjs";
 import { mcpFromIntegrations } from "./mcp-gen.mjs";
 import { enforcedAgentTools, advisoryText } from "./policy.mjs";
 import { buildRuntimePlan } from "./runtime.mjs";
@@ -32,7 +31,6 @@ import { runtimeNeeds, COMMANDS_PACKAGE } from "./deps.mjs";
 import { integrationSecrets, gitignoreSafety, REQUIRED_IGNORES } from './integration-secrets.mjs';
 import { cliRef, cliToolName, cliEntries, cliAgents } from "./cli-tools.mjs";
 import { capabilitySection } from "./agent-context.mjs";
-import { documentInstructions } from "./documents.mjs";
 
 const MARKER = "faur:generated v1";
 /** Primary-session model keys the faur owns inside `.pi/settings.json`. */
@@ -295,8 +293,8 @@ function buildMcpJson(model, existingText) {
   delete out.autoEnableCodemode;
   const integrations = isPlainObject(model.integrations) ? model.integrations : {};
   out.mcpServers = mcpFromIntegrations(integrations.mcp, model.policies);
-  // Codemode would reach every server's tools; agents get theirs directly
-  // (or through tool_search for deferred servers) instead.
+  // Avoid implicitly activating codemode when a tool list or enforced policy
+  // omits it. Explicit baseline lists activate it through Pi's settings.
   out.autoEnableCodemode = false;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
@@ -309,12 +307,10 @@ function orchestratorPrompt(model) {
   return prompt ? `${prompt.replace(/\n*$/, "")}\n` : "";
 }
 
-/** What the lead can use, how to launch its specialists and its document
- * formats: all derived from declarations. */
+/** What the lead can use and how to launch its specialists. */
 function orchestratorDerived(model) {
   const name = isPlainObject(model.orchestrator) ? model.orchestrator.name : undefined;
   const parts = [capabilitySection(model, name)];
-  if (isNonEmptyString(name)) parts.push(documentInstructions(model, name));
   return parts.filter(Boolean).map((part) => part.replace(/\n+$/, "")).join("\n\n");
 }
 
@@ -369,19 +365,8 @@ function readmeBody(model, packages) {
     "```sh",
     "pi                          # interactive",
     "pi --approve -p \"...\"       # headless one-shot",
-    ...((Array.isArray(model.workflows) ? model.workflows : []).map(w => `pi --approve -p "/skill:${w.skill ?? w.name} <request>"`)),
     "```",
     "",
-    ...((model.workflows?.length ?? 0) ? [
-      "A workflow is a skill: the text after it is the request. Print mode exits 0",
-      "with the final answer on stdout, or non-zero with the error on stderr; the",
-      "exit code reports the run, not whether the task succeeded. Add",
-      "`--mode json` for an event stream; it exits 0 even when the run fails, so",
-      "check `stopReason` in its `agent_end` event. Pi waits for stdin to close when it is",
-      "not a terminal, so callers close it. Approval is never granted unattended:",
-      "a call that asks the user is refused in a headless run.",
-      "",
-    ] : []),
     ...(packages.length ? [
       "On the first interactive run, Pi may start npm package installation processes",
       "that continue briefly after Pi exits and may keep output pipes open. Callers",
@@ -447,7 +432,7 @@ function agentBody(agent, tools, model) {
   }
   if (agent.inheritProjectContext === true) lines.push("inheritProjectContext: true");
   if (agent.inheritSkills === true) lines.push("inheritSkills: true");
-  const prompt = [isNonEmptyString(agent.prompt) ? agent.prompt.replace(/\n$/, "") : "", capabilitySection(model, agent.name), documentInstructions(model, agent.name)]
+  const prompt = [isNonEmptyString(agent.prompt) ? agent.prompt.replace(/\n$/, "") : "", capabilitySection(model, agent.name)]
     .filter(Boolean).map((part) => part.replace(/\n+$/, "")).join("\n\n");
   if (prompt) {
     lines.push("systemPrompt: |");
@@ -459,47 +444,13 @@ function agentBody(agent, tools, model) {
   return lines.join("\n") + "\n";
 }
 
-function skillFileBody(skill, workflowBySkill) {
-  const lines = ["---"];
-  lines.push(`name: ${skill.name}`);
-  if (isNonEmptyString(skill.description)) lines.push(`description: ${yamlString(skill.description)}`);
-  lines.push("---");
-
-  let body = "";
-  if (isNonEmptyString(skill.body)) {
-    body = skill.body;
-  } else {
-    const wf = workflowBySkill.get(skill.name);
-    if (wf) body = workflowSkill(wf).body;
-  }
-  return lines.join("\n") + "\n\n" + body;
-}
-
 function agentEntries(model) {
   const agents = Array.isArray(model.agents) ? model.agents : [];
   return agents.filter((agent) => isPlainObject(agent) && isNonEmptyString(agent.name));
 }
 
-/** Workflows declared without a skill get one named after them, so every
- * workflow starts the same way: `/skill:<name>`, interactive or `pi -p`. */
-function workflowOnlySkills(model) {
-  return (Array.isArray(model.workflows) ? model.workflows : [])
-    .filter((wf) => isPlainObject(wf) && isNonEmptyString(wf.name) && !isNonEmptyString(wf.skill))
-    .map((wf) => ({ name: wf.name, description: isNonEmptyString(wf.description) ? wf.description : `Run the ${wf.name} workflow` }));
-}
-
-function skillEntries(model) {
-  // Sourced skills come from a pinned package or a vendored user directory, so
-  // they produce no generated SKILL.md and are not managed paths.
-  return [...authoredSkills(model), ...workflowOnlySkills(model)].filter((skill) => isNonEmptyString(skill.name));
-}
-
 function agentPath(agent) {
   return `.pi/agents/${agent.name}.md`;
-}
-
-function skillPath(skill) {
-  return `.pi/skills/${skill.name}/SKILL.md`;
 }
 
 function agentFiles(model, existing) {
@@ -510,22 +461,10 @@ function agentFiles(model, existing) {
   });
 }
 
-function skillFiles(model, existing) {
-  const workflows = Array.isArray(model.workflows) ? model.workflows : [];
-  const workflowBySkill = new Map();
-  for (const wf of workflows) {
-    if (isPlainObject(wf) && isNonEmptyString(wf.name)) workflowBySkill.set(isNonEmptyString(wf.skill) ? wf.skill : wf.name, wf);
-  }
-  return skillEntries(model).map((skill) => {
-    const path = skillPath(skill);
-    return authoredFile(path, "trailing-html", skillFileBody(skill, workflowBySkill), existing[path]);
-  });
-}
-
 /** Identity inventory only; a listed path is not proof that it may be removed. */
 export function declarationInventory(model) {
   return {
-    scaffolds: [...agentEntries(model).map(agentPath), ...skillEntries(model).map(skillPath)].sort(),
+    scaffolds: [...agentEntries(model).map(agentPath)].sort(),
     vendoredSkills: vendoredSkills(model).map(s => s.name).sort(),
     registrySkills: (model.skills ?? []).filter(s => skillSourceKind(s.source) === 'registry').map(({ name, source }) => ({ name, source })).sort((a, b) => a.name.localeCompare(b.name)),
   };
@@ -538,7 +477,6 @@ export function managedPaths(model) {
   if (hasEnv(model)) paths.push(".env.example");
   if (cliEntries(model).length) paths.push(COMMANDS_CONFIG);
   for (const agent of agentEntries(model)) paths.push(agentPath(agent));
-  for (const skill of skillEntries(model)) paths.push(skillPath(skill));
   return paths;
 }
 
@@ -568,7 +506,6 @@ export function generateProject(model, existingFiles = {}, opts = {}) {
     ...(hasEnv(model) ? [authoredFile(".env.example", "plain", envBody(model), existing[".env.example"])] : []),
     ...(cliEntries(model).length ? [derivedFile(COMMANDS_CONFIG, commandsConfig(model), existing[COMMANDS_CONFIG])] : []),
     ...agentFiles(model, existing),
-    ...skillFiles(model, existing),
   ];
 
   files.sort((a, b) => a.path.localeCompare(b.path));

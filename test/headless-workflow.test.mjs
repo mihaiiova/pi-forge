@@ -24,6 +24,8 @@ function project(t, yaml, responses, waitFor) {
   writeFileSync(join(root, '.pi/system.yaml'), yaml);
   const generated = spawnSync(process.execPath, [faur, 'generate', root], { encoding: 'utf8' });
   assert.equal(generated.status, 0, generated.stderr);
+  mkdirSync(join(root, '.pi/skills/test'), { recursive: true });
+  writeFileSync(join(root, '.pi/skills/test/SKILL.md'), '---\nname: test\ndescription: Test skill\n---\n\nRun the requested task.\n');
   const provider = join(root, '.pi/provider.mjs');
   writeFileSync(provider, `import {createFauxCore,fauxAssistantMessage,fauxToolCall} from ${JSON.stringify(ai)};
 import { appendFileSync } from 'node:fs';
@@ -158,9 +160,6 @@ integrations:
         command: ${JSON.stringify(process.execPath)}
         args: ["-e", ${JSON.stringify(`process.env.MCP_LOG=${JSON.stringify(called)}; import(${JSON.stringify(pathToFileURL(server).href)})`)}]
         includeTools: [run_audit]
-workflows:
-  - name: test
-    entry: lead
 `;
 
 function blocked(t, tool, input) {
@@ -200,9 +199,6 @@ integrations:
       command: ${JSON.stringify(process.execPath)}
       args: ["-e", ${JSON.stringify(`require('fs').writeFileSync(${JSON.stringify(output)}, JSON.stringify(process.argv[1]))`)}, "{value}"]
       ${approve === false ? 'approve: false' : ''}
-workflows:
-  - name: test
-    entry: lead
 `;
   const responses = `fauxAssistantMessage([fauxToolCall("cli_record",${JSON.stringify({ value: argument })})]), fauxAssistantMessage('done')`;
   const info = project(t, yaml(true), responses);
@@ -261,7 +257,32 @@ test('no Faur tool reaches the agent: request_permission does not exist', t => {
   assert.ok(result.toolResults.some(r => /Tool request_permission not found/.test(r)), result.toolResults.join('\n'));
 });
 
-test('a workflow without commands or approvals runs headless with pi -p and no Faur', t => {
+test('Owlie marketing skill loads headlessly without Faur or system.yaml', t => {
+  const info = project(t, `schema: 1
+name: marketing
+orchestrator:
+  name: lead
+  model: faux/faux-1
+skills:
+  - name: marketing
+`, "fauxAssistantMessage('MARKETING-OK')");
+  assert.ok(info);
+  const skill = readFileSync(join(repo, 'test/fixtures/owlie-marketing/.pi/skills/marketing/SKILL.md'), 'utf8');
+  mkdirSync(join(info.root, '.pi/skills/marketing'), { recursive: true });
+  writeFileSync(join(info.root, '.pi/skills/marketing/SKILL.md'), skill);
+  rmSync(join(info.root, '.pi/system.yaml'));
+  const run = spawnSync('pi', ['--approve', '--no-session', '--mode', 'json', '-p', '/skill:marketing review opportunities'], {
+    cwd: info.root, env: { ...info.env, PI_CODING_AGENT_DIR: join(info.root, '.home') }, encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const prompt = readFileSync(join(info.root, 'prompt.log'), 'utf8');
+  assert.match(prompt, /reports\/marketing-latest\.md/);
+  assert.match(prompt, /memory\/marketing\.md/);
+  assert.match(prompt, /review opportunities/);
+  assert.match(run.stdout, /MARKETING-OK/);
+});
+
+test('a skill without commands or approvals runs headless with pi -p and no Faur', t => {
   const info = project(t, `schema: 1
 name: marketing
 orchestrator:
@@ -275,17 +296,14 @@ integrations:
       config:
         command: ${JSON.stringify(process.execPath)}
         args: [${JSON.stringify(server)}]
-workflows:
-  - name: test
-    description: Check a page
-    entry: lead
 `, "fauxAssistantMessage('Workflow complete')");
   const settings = JSON.parse(readFileSync(join(info.root, '.pi/settings.json'), 'utf8'));
   assert.deepEqual(settings.packages ?? [], [], 'no Faur package: the project runs on Pi alone');
+  rmSync(join(info.root, '.pi/system.yaml'));
   const run = headless(info, 'url=https://example.com');
   assert.equal(run.status, 0, run.stderr);
   assert.equal(run.text, 'Workflow complete');
   const prompt = readFileSync(join(info.root, 'prompt.log'), 'utf8');
-  assert.match(prompt, /<skill name="test"[\s\S]*## Boundary[\s\S]*Entry: lead/, 'the generated workflow skill is expanded');
+  assert.match(prompt, /<skill name="test"[\s\S]*Run the requested task/, 'the developer-owned skill is expanded');
   assert.match(prompt, /url=https:\/\/example\.com/, 'the request follows the skill');
 });

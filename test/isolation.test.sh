@@ -35,9 +35,6 @@ agents:
 skills:
   - name: draft
     description: "Draft an article"
-    body: |
-      # Draft
-      Draft an article.
 integrations:
   mcp:
     - name: openseo
@@ -52,7 +49,7 @@ node "$faur" generate "$work" >/dev/null 2>&1
 [[ ! -e "$work/run" ]] || fail "A: generated an unwanted run launcher"
 [[ -f "$work/.pi/settings.json" ]] || fail "A: settings.json not generated"
 [[ -f "$work/.pi/agents/analyst.md" ]] || fail "A: analyst agent not generated"
-[[ -f "$work/.pi/skills/draft/SKILL.md" ]] || fail "A: draft skill not generated"
+[[ ! -e "$work/.pi/skills/draft/SKILL.md" ]] || fail "A: developer-owned skill must not be generated"
 pass "A: deterministic generation produces the declared project tree"
 
 # A2: undeclared host capabilities are excluded from generated config, and

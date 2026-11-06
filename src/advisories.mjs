@@ -20,9 +20,8 @@ export function configurationAdvisories(model) {
     const tools = lead.tools;
     const canRead = tools.includes('read') || tools.includes('bash') || commands.some(c => tools.includes(`cli:${c.name}`) && ['cat', 'head', 'less', 'sed', 'awk'].includes(c.command.split('/').pop()));
     const prompt = lead.prompt ?? '';
-    const docs = (model.documents ?? []).filter(d => d.writer === lead.name && d.path);
-    if (!canRead && (/\b(read|inspect|open)\b[^\n.]{0,80}\b(files?|reports?|receipts?|paths?)\b|\b(receipts?)\b/i.test(prompt) || docs.length))
-      out.push(`Orchestrator ${lead.name} may need to read files${docs.length ? ` (document paths: ${docs.map(d => d.path).join(', ')})` : ''}, but has no read, bash, or recognizable CLI reader; check its instructions and capabilities.`);
+    if (!canRead && (/\b(read|inspect|open)\b[^\n.]{0,80}\b(files?|reports?|receipts?|paths?)\b|\b(receipts?)\b/i.test(prompt)))
+      out.push(`Orchestrator ${lead.name} may need to read files, but has no read, bash, or recognizable CLI reader; check its instructions and capabilities.`);
   }
   return out;
 }

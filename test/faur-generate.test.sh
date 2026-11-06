@@ -54,7 +54,7 @@ node -e '
 const s = require(process.argv[1]);
 if (s.defaultProvider !== "anthropic") process.exit(1);
 if (s.defaultModel !== "claude-sonnet-5-5") process.exit(1);
-if (JSON.stringify(s.defaultTools) !== JSON.stringify(["read", "grep", "find", "ls"])) process.exit(1);
+if (JSON.stringify(s.defaultTools) !== JSON.stringify(["read", "grep", "find", "ls", "codemode"])) process.exit(1);
 if (s.packages !== undefined) process.exit(1);
 ' "$work/.pi/settings.json" || fail "settings.json missing orchestrator model/defaultTools"
 pass "settings.json carries orchestrator model + defaultTools"
@@ -94,16 +94,16 @@ pass "faur generate on the coding-agent fixture produces the orchestrator surfac
 # ── multi-agent materialization + golden ────────────────────────
 ma="$(mktemp -d)"
 cp -r "$fixtures/generate/multi-agent/.pi" "$ma/"
+skills_before="$(cd "$ma" && find .pi/skills -type f -exec sha256sum {} \; | sort)"
 node "$faur" generate "$ma" >/dev/null
+skills_after="$(cd "$ma" && find .pi/skills -type f -exec sha256sum {} \; | sort)"
+[[ "$skills_before" == "$skills_after" ]] || fail "generation changed developer-owned skills"
 for a in seo-analyst article-writer researcher; do
   [[ -f "$ma/.pi/agents/$a.md" ]] || fail "multi-agent generate did not create .pi/agents/$a.md"
 done
-[[ -f "$ma/.pi/skills/analyze-and-draft/SKILL.md" ]] || fail "workflow skill missing"
-[[ -f "$ma/.pi/skills/refresh-product-knowledge/SKILL.md" ]] || fail "skill missing"
 grep -q '^name: seo-analyst$' "$ma/.pi/agents/seo-analyst.md" || fail "agent frontmatter name wrong"
 grep -Pzq 'tools:\n  - read\n  - grep\n  - find\n  - ls\n' "$ma/.pi/agents/seo-analyst.md" || fail "agent tools allowlist wrong"
 grep -q '^model: provider-b/model-small$' "$ma/.pi/agents/seo-analyst.md" || fail "agent's own model not emitted"
-grep -q 'Approval boundary: publish' "$ma/.pi/skills/analyze-and-draft/SKILL.md" || fail "workflow approval boundary missing"
 tail -n1 "$ma/.pi/agents/seo-analyst.md" | grep -q 'faur:generated v1 sha256=' || fail "agent missing trailing marker"
 for f in $(cd "$fixtures/generate/multi-agent/golden" && find . -type f | sort); do
   if [[ "$f" == "./.pi/settings.json" ]]; then

@@ -52,14 +52,14 @@ export function hostConflicts(root, model, { agentDir = process.env.PI_CODING_AG
 }
 
 /** Check model validity, generated configuration and launch prerequisites. */
-export function checkProject(root, { registeredTools, mcpTools, env = process.env, hostAgentDir, mcpCommand } = {}) {
+export function checkProject(root, { registeredTools, mcpTools, env = process.env, hostAgentDir, mcpCommand, verifyCodemode = true } = {}) {
   const raw = loadYaml().parse(readText(root, '.pi/system.yaml') ?? '');
   const validation = validateSystem(raw).errors;
   if (validation.length) return { ok: false, validation, consistency: null, launch: null, advisories: [] };
   const doc = withBaselineTools(raw);
   const piPackages = readJson(root, '.pi/settings.json').packages ?? [];
   const consistency = checkCapabilities(doc, { settings: readJson(root, '.pi/settings.json'), mcpJson: readText(root, '.pi/mcp.json') === null ? {} : readJson(root, '.pi/mcp.json') }, { piPackages }).errors;
-  const launch = launchCheck(root, doc, { registeredTools, mcpTools }).problems.map(p => `${p.agent}: ${p.problem}`);
+  const launch = launchCheck(root, doc, { registeredTools, mcpTools, verifyCodemode }).problems.map(p => `${p.agent}: ${p.problem}`);
   for (const step of unmetSetup(root, doc)) launch.push(`${step.owner}: setup ${step.description}; fix: ${step.install}${step.needsRoot ? ' (run manually; needs root)' : ''}`);
   for (const path of new Set(integrationSecrets(doc))) {
     const problem = secretFileProblem(root, path);
@@ -106,7 +106,8 @@ export function connectMcp(root) {
 export function checkAgent(root, options = {}) {
   const checked = options.toolCheck;
   const registeredTools = options.registeredTools ?? (checked && !checked.error && !checked.missing.length ? Object.keys(checked.providers) : undefined);
-  const checks = checkProject(root, { ...options, registeredTools });
+  // The SDK extension scan does not include the CLI's built-in codemode.
+  const checks = checkProject(root, { ...options, registeredTools, verifyCodemode: Array.isArray(options.registeredTools) });
   if (checks.validation.length) {
     const result = { timestamp: new Date().toISOString(), ok: false, capabilities: [], checks };
     atomicWrite(root, '.faur/check.json', json(result));
@@ -144,6 +145,7 @@ export function checkAgent(root, options = {}) {
         const present = command && (command.includes('/') ? existsSync(resolve(root, command)) : probeClis([command])[command]);
         capabilities.push({ agent: agent.name, name, provider: `CLI ${command ?? name.slice(4)}`, status: present ? 'verified now' : 'missing', fix: `${present ? 'Presence only' : 'Install the command or add it to PATH'}; authentication is not checked.` });
       } else if (BUILTIN.has(name)) capabilities.push({ agent: agent.name, name, provider: 'built-in', status: 'verified now', fix: 'None.' });
+      else if (name === 'codemode' && !options.registeredTools) capabilities.push({ agent: agent.name, name, provider: 'Pi built-in extension', status: 'not verifiable', fix: 'Check in a running Pi session; the SDK inspection does not load Pi CLI built-in extensions.' });
       else if (!name.startsWith('mcp:') && !name.startsWith('cli:') && name !== 'mcp') {
         const provider = checked?.providers[name] ?? options.toolProviders?.[name];
         const present = provider || options.registeredTools?.includes(name);

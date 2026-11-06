@@ -61,7 +61,7 @@ test("runtimeNeeds: pi-commands for commands and pi-subagents for specialists", 
   assert.equal(lead(["read"], { agents: [{ name: "a" }] }).subagents, true);
   assert.equal(lead(["read", "cli:x"], { integrations: { cli: [{ name: "x", command: "echo" }] } }).commands, true);
   assert.deepEqual(lead(["read"], { integrations: { mcp: [{ name: "s", config: { url: "u" } }] } }), { commands: false, subagents: false }, "a lead without mcp needs no package: that rule is advisory");
-  assert.deepEqual(lead(["read"], { workflows: [{ name: "w" }] }), { commands: false, subagents: false }, "workflows are skills Pi runs itself");
+  assert.deepEqual(lead(["read"], { skills: [{ name: "w" }] }), { commands: false, subagents: false }, "local skills run on Pi alone");
 });
 
 test("pi-mcp-adapter is rejected: it would replace Pi's built-in MCP", () => {

@@ -18,14 +18,14 @@ const KEBAB_CASE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const TOP_LEVEL_KEYS = [
   "schema", "name", "description", "orchestrator",
-  "agents", "skills", "integrations", "workflows", "documents", "policies", "packages", "setup",
+  "agents", "skills", "integrations", "policies", "packages", "setup",
 ];
 const ORCHESTRATOR_KEYS = ["name", "description", "prompt", "model", "thinking", "tools"];
 const AGENT_KEYS = [
   "name", "description", "tools", "model", "thinking", "skills", "prompt",
   "inheritProjectContext", "inheritSkills",
 ];
-const SKILL_KEYS = ["name", "description", "body", "source"];
+const SKILL_KEYS = ["name", "description", "source"];
 const INTEGRATIONS_KEYS = ["mcp", "env", "cli"];
 const CLI_KEYS = ["name", "description", "command", "args", "approve", "setup", "secretsFile"];
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -34,14 +34,6 @@ const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED_ENV_RE = /^(PATH|HOME|SHELL|USER|IFS|ENV|BASH_ENV|PS4|PROMPT_COMMAND|TMPDIR|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_TLS_REJECT_UNAUTHORIZED|SSL_CERT_FILE|SSL_CERT_DIR|LD_[A-Z0-9_]*|DYLD_[A-Z0-9_]*|PI_CODING_AGENT_DIR|PI_PACKAGE_DIR|PI_OFFLINE|PI_NO_UPDATE_CHECK|GIT_SSH_COMMAND|GIT_ASKPASS|SSH_ASKPASS|GIT_CONFIG_[A-Z0-9_]*|PYTHONPATH|PYTHONSTARTUP|PERL5OPT|RUBYOPT|HTTPS?_PROXY|ALL_PROXY|NO_PROXY|FAUR_[A-Z0-9_]*)$/i;
 const MCP_KEYS = ["name", "config", "setup", "secretsFile"];
 const ENV_KEYS = ["name", "secret"];
-const WORKFLOW_KEYS = [
-  "name", "description", "skill", "trigger", "entry", "agents",
-  "inputs", "outputs", "approval", "verify",
-];
-const TRIGGER_KEYS = ["kind"];
-const DOCUMENT_KEYS = ["name", "path", "writer", "purpose", "maxWords", "sections", "rules", "deliver"];
-const DELIVER_KEYS = ["mcp", "tool", "with", "note"];
-const SECTION_KEYS = ["heading", "guide"];
 const POLICIES_KEYS = ["enforced", "advisory"];
 const ENFORCED_KEYS = ["agent", "tools", "mcp", "hide"];
 
@@ -268,9 +260,6 @@ export function validateSystem(doc) {
       if (skill.description !== undefined && !isNonEmptyString(skill.description)) {
         errors.push(`document.skills[${i}].description must be a non-empty string`);
       }
-      if (skill.body !== undefined && !isNonEmptyString(skill.body)) {
-        errors.push(`document.skills[${i}].body must be a non-empty string`);
-      }
       if (skill.source !== undefined) {
         if (skillSourceKind(skill.source) === null) {
           errors.push(
@@ -278,9 +267,6 @@ export function validateSystem(doc) {
               `"git:repo@ref"), a directory path (./, ../, /, ~/) containing SKILL.md, or ` +
               `"skills:<owner>/<repo>/<skill-dir>@<40-character commit>"`,
           );
-        }
-        if (skill.body !== undefined) {
-          errors.push(`document.skills[${i}] must declare either "body" or "source", not both`);
         }
       }
     });
@@ -394,55 +380,6 @@ export function validateSystem(doc) {
     }
   }
 
-  // ── workflows ───────────────────────────────────────────────
-  const workflowNames = collectNames(doc.workflows, "document.workflows", errors);
-  if (doc.workflows !== undefined && Array.isArray(doc.workflows)) {
-    doc.workflows.forEach((wf, i) => {
-      if (!isPlainObject(wf)) return;
-      checkUnknownKeys(wf, WORKFLOW_KEYS, `document.workflows[${i}]`, errors);
-      checkNonEmptyString(wf.name, `document.workflows[${i}].name`, errors);
-      checkKebabCase(wf.name, `document.workflows[${i}].name`, errors);
-      if (wf.description !== undefined && !isNonEmptyString(wf.description)) {
-        errors.push(`document.workflows[${i}].description must be a non-empty string`);
-      }
-      if (wf.skill !== undefined) checkNonEmptyString(wf.skill, `document.workflows[${i}].skill`, errors);
-      if (wf.entry !== undefined) checkNonEmptyString(wf.entry, `document.workflows[${i}].entry`, errors);
-      if (wf.approval !== undefined) checkNonEmptyString(wf.approval, `document.workflows[${i}].approval`, errors);
-      if (wf.verify !== undefined) checkNonEmptyString(wf.verify, `document.workflows[${i}].verify`, errors);
-      if (wf.agents !== undefined) checkStringArray(wf.agents, `document.workflows[${i}].agents`, errors);
-      if (wf.inputs !== undefined) checkStringArray(wf.inputs, `document.workflows[${i}].inputs`, errors);
-      if (wf.outputs !== undefined) checkStringArray(wf.outputs, `document.workflows[${i}].outputs`, errors);
-
-      if (wf.trigger !== undefined) {
-        if (!isPlainObject(wf.trigger)) {
-          errors.push(`document.workflows[${i}].trigger must be an object`);
-        } else {
-          checkUnknownKeys(wf.trigger, TRIGGER_KEYS, `document.workflows[${i}].trigger`, errors);
-          if (
-            wf.trigger.kind !== undefined &&
-            !["manual", "headless"].includes(wf.trigger.kind)
-          ) {
-            errors.push(
-              `document.workflows[${i}].trigger.kind must be "manual" or "headless" ` +
-                `(got "${wf.trigger.kind}")`,
-            );
-          }
-        }
-      }
-
-      // A workflow must name at least the orchestrating skill or an entry agent.
-      if (!isNonEmptyString(wf.skill) && !isNonEmptyString(wf.entry)) {
-        errors.push(
-          `document.workflows[${i}] must declare at least one of "skill" or "entry"`,
-        );
-      }
-      // Without a skill, the workflow gets a generated one under its own name.
-      if (!isNonEmptyString(wf.skill) && isNonEmptyString(wf.name) && Array.isArray(doc.skills) && doc.skills.some((s) => isPlainObject(s) && s.name === wf.name)) {
-        errors.push(`document.workflows[${i}] "${wf.name}" has no skill, so it gets a generated skill of that name, which skills[] already declares; set workflows[${i}].skill to "${wf.name}" or rename one of them`);
-      }
-    });
-  }
-
   // ── policies ────────────────────────────────────────────────
   if (doc.policies !== undefined) {
     if (!isPlainObject(doc.policies)) {
@@ -521,40 +458,6 @@ export function validateSystem(doc) {
     });
   }
 
-  const agentOrOrchestrator = (name, path) => {
-    if (name !== orchestratorName && !agentNames.has(name)) {
-      const available = [orchestratorName, ...agentNames].filter(Boolean).sort();
-      errors.push(
-        `${path} references "${name}" which is neither the orchestrator` +
-          (available.length ? ` (${available.join(", ")})` : " (no agents declared)") +
-          " nor a declared agent",
-      );
-    }
-  };
-
-  if (doc.workflows !== undefined && Array.isArray(doc.workflows)) {
-    doc.workflows.forEach((wf, i) => {
-      if (!isPlainObject(wf)) return;
-      if (isNonEmptyString(wf.skill) && !skillNames.has(wf.skill)) {
-        const available = [...skillNames].sort().join(", ");
-        errors.push(
-          `document.workflows[${i}].skill references "${wf.skill}" which is not a ` +
-            (available ? `declared skill (declared: ${available})` : "declared skill (no skills declared)"),
-        );
-      }
-      if (isNonEmptyString(wf.entry)) {
-        agentOrOrchestrator(wf.entry, `document.workflows[${i}].entry`);
-      }
-      if (Array.isArray(wf.agents)) {
-        wf.agents.forEach((name, j) => {
-          if (typeof name === "string") {
-            agentOrOrchestrator(name, `document.workflows[${i}].agents[${j}]`);
-          }
-        });
-      }
-    });
-  }
-
   if (
     doc.policies !== undefined && isPlainObject(doc.policies) &&
     Array.isArray(doc.policies.enforced)
@@ -574,74 +477,6 @@ export function validateSystem(doc) {
           `document.policies.enforced[${i}].mcp references "${rule.mcp}" which ` +
             (available ? `is not a declared MCP server (declared: ${available})` : "is not a declared MCP server (no servers declared)"),
         );
-      }
-    });
-  }
-
-  // ── documents ───────────────────────────────────────────────
-  collectNames(doc.documents, "document.documents", errors);
-  if (Array.isArray(doc.documents)) {
-    const toolsOf = (name) => (name === orchestratorName ? doc.orchestrator?.tools
-      : doc.agents?.find((a) => isPlainObject(a) && a.name === name)?.tools);
-    doc.documents.forEach((d, i) => {
-      if (!isPlainObject(d)) return;
-      const path = `document.documents[${i}]`;
-      checkUnknownKeys(d, DOCUMENT_KEYS, path, errors);
-      checkNonEmptyString(d.name, `${path}.name`, errors);
-      checkKebabCase(d.name, `${path}.name`, errors);
-      checkNonEmptyString(d.writer, `${path}.writer`, errors);
-      if (isNonEmptyString(d.writer)) agentOrOrchestrator(d.writer, `${path}.writer`);
-      if (d.purpose !== undefined) checkNonEmptyString(d.purpose, `${path}.purpose`, errors);
-      if (d.rules !== undefined) checkStringArray(d.rules, `${path}.rules`, errors);
-      if (d.maxWords !== undefined && !(Number.isInteger(d.maxWords) && d.maxWords > 0)) {
-        errors.push(`${path}.maxWords must be a positive integer`);
-      }
-      if (d.path !== undefined) {
-        if (!isNonEmptyString(d.path) || d.path.startsWith("/") || d.path.startsWith("~") ||
-            d.path.split(/[\\/]/).some((seg) => seg === "..") || /^\.(pi|faur)([\\/]|$)/.test(d.path)) {
-          errors.push(`${path}.path must be a project-relative file path outside .pi/ and .faur/ (got ${JSON.stringify(d.path)})`);
-        }
-        const tools = isNonEmptyString(d.writer) ? toolsOf(d.writer) : undefined;
-        if (Array.isArray(tools) && !tools.includes("write") && !tools.includes("edit")) {
-          errors.push(`${path}.writer "${d.writer}" has no write or edit tool; omit path for a report it returns, or choose a writer that can write files`);
-        }
-      }
-      if (d.deliver !== undefined) {
-        if (!Array.isArray(d.deliver)) errors.push(`${path}.deliver must be an array of { mcp, tool, with?, note? }`);
-        else d.deliver.forEach((target, j) => {
-          const dp = `${path}.deliver[${j}]`;
-          if (!isPlainObject(target)) { errors.push(`${dp} must be an object`); return; }
-          checkUnknownKeys(target, DELIVER_KEYS, dp, errors);
-          checkNonEmptyString(target.mcp, `${dp}.mcp`, errors);
-          checkNonEmptyString(target.tool, `${dp}.tool`, errors);
-          if (target.with !== undefined && !isPlainObject(target.with)) errors.push(`${dp}.with must be an object of tool arguments`);
-          if (target.note !== undefined) checkNonEmptyString(target.note, `${dp}.note`, errors);
-          if (!isNonEmptyString(target.mcp)) return;
-          if (!mcpNames.has(target.mcp)) {
-            errors.push(`${dp}.mcp references "${target.mcp}" which is not a declared MCP server`);
-            return;
-          }
-          // The writer must be able to call the tool it delivers with.
-          const tools = isNonEmptyString(d.writer) ? toolsOf(d.writer) : undefined;
-          if (!Array.isArray(tools)) return;
-          const reach = d.writer === orchestratorName
-            ? tools.includes("mcp")
-            : tools.includes(`mcp:${target.mcp}`) || tools.includes(`mcp:${target.mcp}/${target.tool}`);
-          if (!reach) {
-            errors.push(`${dp}: writer "${d.writer}" cannot call ${target.mcp}/${target.tool}; add ${d.writer === orchestratorName ? '"mcp"' : `"mcp:${target.mcp}/${target.tool}"`} to its tools`);
-          }
-        });
-      }
-      if (!Array.isArray(d.sections) || d.sections.length === 0) {
-        errors.push(`${path}.sections must be a non-empty array of { heading, guide }`);
-      } else {
-        d.sections.forEach((section, j) => {
-          const sp = `${path}.sections[${j}]`;
-          if (!isPlainObject(section)) { errors.push(`${sp} must be an object`); return; }
-          checkUnknownKeys(section, SECTION_KEYS, sp, errors);
-          checkNonEmptyString(section.heading, `${sp}.heading`, errors);
-          if (section.guide !== undefined) checkNonEmptyString(section.guide, `${sp}.guide`, errors);
-        });
       }
     });
   }

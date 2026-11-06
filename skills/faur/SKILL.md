@@ -116,13 +116,14 @@ interview again; reuse the design and the conversation, then:
    the assumptions. Ask only about decisions that cannot safely be inferred or
    that materially change functionality, cost, external permissions or
    security — and ask those before writing `system.yaml`.
-3. **Construct** `.pi/system.yaml` from the seven primitives (`orchestrator`,
-   `agents`, `skills`, `integrations`, `workflows`, `policies`, `packages`).
+3. **Construct** `.pi/system.yaml` from the primitives (`orchestrator`,
+   `agents`, `skills`, `integrations`, `policies`, `packages`).
 4. **Validate** with `faur validate <dir>`.
 5. **Preview** with `faur generate <dir> --dry-run`, and summarize what will
    be created — agents with their exact models and tools, skills with their
-   sources, MCP servers and their scope, documents and deliveries, required
-   credentials — and anything still unresolved.
+   sources, MCP servers and their scope, required credentials — and anything
+   still unresolved. Show separately any proposed developer-owned skill content;
+   `faur generate` does not create it.
 6. **Get explicit confirmation of that preview** before writing any file, then
    run `faur generate <dir> --yes`. "Build it" agrees to the design; it is not
    approval to write files unseen.
@@ -158,13 +159,12 @@ first; the user decides.
   with the printed `source: skills:<owner>/<repo>/<dir>@<commit>`;
   `faur generate` installs them into the project's `.agents/skills/<name>/`
   with the `skills` CLI (project-local, never global) and `skills-lock.json`
-  records the commit. Skills can also be an inline `body`, a pinned package
+  records the commit. Skills can also be a pinned package
   (`source: npm:<name>@<version>` or `git:<repo>@<ref>`), or a directory the
   user points at (`source: ./path`, `../path`, `/abs/path` or `~/path`),
   vendored into `.pi/skills/<name>/`. Attach skills per agent with
   `agents[].skills`. An agent that should find and install skills itself can
-  be given the `vercel-labs/skills@find-skills` skill plus `bash`; tell it, as
-  a document rule or in its prompt, to install project-locally (`--agent pi`,
+  be given the `vercel-labs/skills@find-skills` skill plus `bash`; tell it in its prompt, to install project-locally (`--agent pi`,
   no `-g`).
 - **Project instructions:** Pi loads the project's `AGENTS.md`, and those in
   parent folders, into the orchestrator's prompt by itself; nothing to
@@ -179,16 +179,7 @@ first; the user decides.
   modify an existing issue"); command approval belongs in `approve`; Faur does not add per-call approval to MCP calls.
   Give MCP servers a `config.description` and agents a `description`; those
   appear in the section.
-- **Documents:** any agent may write or return any number of documents. For
-  each one, propose a structure — purpose, sections in order with a one-line
-  guide each, optionally a word limit and rules — e.g. "a short report with
-  findings, prioritized opportunities and recommended actions". The user
-  adjusts it in conversation or in the build summary; propose, never decide the
-  format alone. Record it in `documents[]` with its `writer`. A document can
-  also be delivered anywhere an MCP tool reaches (Google Drive, Notion, Slack,
-  …): `deliver: [{ mcp, tool, with?, note? }]`, any number per document; the
-  writer needs that tool. The agreed format and deliveries are rendered into
-  the writer's instructions.
+- **Task procedures and documents:** use an ordinary skill to describe the task, output format, paths and delivery instructions. Show the proposed skill to the user and obtain explicit approval before creating or changing its developer-owned file. Do not duplicate its complete content in `system.yaml`. For maintenance, first exit `/faur` and use ordinary Pi file tools; `/faur` does not enforce approval outside its mode. These instructions are guidance, not enforced output guarantees.
 - **Tools:** every agent with a tools list gets `read`, `ls`, `find` and
   `grep`; Faur adds them, so list them and don't argue them away. Add other
   tools only for what the agent does (`write`/`edit` for files it produces,
@@ -235,7 +226,7 @@ first; the user decides.
   every required credential is declared as a `${ENV}`/`.env.example` entry and
   no secret is committed.
 - **Validate** — `faur validate <dir>`, then a headless smoke run:
-  `pi --approve -p "/skill:<workflow> <request>"` in the project folder.
+  `pi --approve -p "/skill:<name> <request>"` in the project folder.
   Plain `pi` adds the user's global Pi configuration; `/faur check` reports
   known conflicts such as a package replacing built-in MCP. It is not an OS
   sandbox, and the caller's environment, including credentials, is inherited. Skills in
@@ -277,10 +268,9 @@ Acceptance scenarios for this conversational behavior:
   requirements (e.g. "publishing requires human confirmation"). Prose is never
   mistaken for enforcement.
 - **Ownership:** derived files (`.pi/settings.json`, `.pi/mcp.json`) regenerate
-  merge-preserving; authored files (agents, skills, `APPEND_SYSTEM.md`, README,
-  `.gitignore`, `.env.example`) are scaffold-once and fingerprint-protected. A user
-  edit is **never silently overwritten** — the faur reports a conflict and
-  proposes a diff.
+  merge-preserving; authored agent and prompt scaffolds are fingerprint-protected.
+  Local skills are developer-owned and not generated by Faur. A user edit is
+  never silently overwritten; show the proposed change and obtain approval.
 
 ## Out of scope
 
@@ -315,7 +305,7 @@ when this turn ends. Don't do the work, and don't tell them to type
    Discover and fetch only when the request adds or changes something outside
    this system — an MCP server, skill, package, model or command-line tool —
    or the user asks for options. Changes to prompts, descriptions, tool
-   selections, model assignments, workflows, documents or policies need only
+   selections, model assignments or policies need only
    the inspection from step 1: go straight to the proposal.
    - action=discover with a query searches public package/MCP registries; add
      clis="docker gh" to check which commands exist on this machine (presence
@@ -381,7 +371,7 @@ when this turn ends. Don't do the work, and don't tell them to type
      same way). Give it to an agent by adding "cli:create-issue" to its tools.
      Prefer the narrowest fixed shape; the user can also manage these
      directly with /faur permissions.
-   - add/update/remove with target agent, skill or workflow (value contains the
+   - add/update/remove with target agent or skill (value contains the
      corresponding schema fields except name). update is a shallow field merge.
    - {"op":"assign","name":"researcher","model":"provider/id","thinking":"low"}
      switches one agent's (or the orchestrator's) model. Offer only models from
@@ -390,15 +380,9 @@ when this turn ends. Don't do the work, and don't tell them to type
      Also supported: policies, integrations, packages. Use these to change
      tools, policies or declared dependencies without a generic path-based
      mutation language.
-   - {"op":"add","target":"document","name":"decisions","value":{"path":"strategy/decisions.md","writer":"lead","purpose":"...","maxWords":600,"sections":[{"heading":"Decide now","guide":"..."}],"rules":["..."]}}
-     declares how one agent writes one document (update/remove the same way).
-     Omit path for a report a subagent returns instead of writing a file.
-     Add "deliver":[{"mcp":"gdrive","tool":"create_file","with":{"folder":"..."}}]
-     to send it anywhere an MCP tool reaches, any number of targets; the
-     writer needs that MCP tool (mcp:<server>/<tool>, or "mcp" for the lead).
    - {"op":"replace","model":{...}} for uncommon edits.
      The entire replacement is strictly validated; its YAML formatting is reset.
-   Repair all dependent workflow/policy/model references in the same batch.
+   Repair all dependent policy/model references in the same batch.
    Skills: whenever an agent is added or changed, search skills.sh for its
    role and suggest a few candidates for that agent (source, installs, page).
    Pin each one the user wants to consider with discover skill=..., and
@@ -408,7 +392,7 @@ when this turn ends. Don't do the work, and don't tell them to type
    and list the name in that agent's skills. When applied, the skills CLI installs
    it into .agents/skills/<name>/ in this project (never globally); the
    preview shows the exact SKILL.md, and a different installed file is
-   rejected. Skills can also be an inline body, a pinned package source, or a
+   rejected. Skills can also be a pinned package source, or a
    directory already copied into .pi/skills/<name>/. Removing a packaged
    skill also removes its package unless another declaration still uses it;
    explain any other capabilities that package provides. A vendored skill's
@@ -424,8 +408,8 @@ when this turn ends. Don't do the work, and don't tell them to type
    to act on), propose a structure first in plain text: purpose, sections in
    order with a one-line guide each, and optionally a length limit and rules.
    Offer suggestions (such as keeping caveats in one section) as options, not
-   defaults. Ask the user to add, remove or change anything, and propose the
-   document operations only after they agree.
+   defaults. Ask the user to add, remove or change anything. After explicit
+   approval, leave `/faur` to create or edit the ordinary skill with Pi tools.
 5. Present the change in plain words: what changes in the model and in the
    generated files, and what agents gain or lose. End with one sentence: "Faur
    will now ask you to apply, discuss or discard it." Mention /reload or a
@@ -445,8 +429,8 @@ them: the Faur renders a "What you can use" section from the declarations
 so it always matches what the agent actually has. Keep a rule about an action
 as an outcome ("never modify an existing issue; check for duplicates first"),
 and put command approval in approve, not prose. Faur does not add per-call approval to MCP calls. When a preview has
-staleMentions, a removed capability is still mentioned in a prompt, workflow,
-document or advisory policy: update that text in the same proposal so agents
+staleMentions, a removed capability is still mentioned in a prompt or advisory
+policy: update that text in the same proposal so agents
 stop reaching for it.
 
 ## Initial review — read-only
@@ -455,8 +439,7 @@ For review-only, list or suggest requests, or "how can we improve this agent?", 
 applying operations. Review purpose and orchestrator instructions; specialist
 responsibilities; model/cost assignments; skills and duplicate capabilities;
 MCP servers and potentially unused tools; missing useful capabilities;
-workflow simplification; enforced versus advisory permissions; document
-formats (declared, or missing for documents agents keep writing); and available
+task skill simplification; enforced versus advisory permissions; and available
 execution evidence, including subagentRuns (repeated failures of one agent
 point to a configuration problem, quoted by its diagnostic) and launchCheck
 (tools, MCP servers or skills an agent is declared to have but would not get).

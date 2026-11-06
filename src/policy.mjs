@@ -68,14 +68,12 @@ export function advisoryText(policies) {
 }
 
 /**
- * Every agent can browse and read files: an explicit, non-empty tool list
- * always includes these. They add no reach `read` lacks (it opens any file
- * the user can); they make it usable. `tools: []` stays empty, an omitted
- * list keeps Pi's defaults (which include bash), and an enforced
- * `{ agent, tools }` policy rule stays the ceiling, so a design can still
- * keep an agent away from files.
+ * Explicit, non-empty lists include file browsing and codemode. Codemode can
+ * reach other exposed tools, including inherited global MCP servers; unlike
+ * browsing it can expand an agent's reach. Empty and omitted lists are left
+ * alone, and enforced `{ agent, tools }` rules are not extended.
  */
-export const BASELINE_TOOLS = ['read', 'ls', 'find', 'grep'];
+export const BASELINE_TOOLS = ['read', 'ls', 'find', 'grep', 'codemode'];
 
 /** `tools` with the baseline added, or unchanged when empty or omitted. */
 export function withBaseline(tools) {

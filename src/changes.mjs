@@ -3,7 +3,7 @@ import { withBaseline, withBaselineTools } from './policy.mjs';
 import { loadYaml } from './yaml-loader.mjs';
 import { validateSystem } from './validate.mjs';
 
-const collections = { agent: ['agents'], skill: ['skills'], mcp: ['integrations', 'mcp'], env: ['integrations', 'env'], cli: ['integrations', 'cli'], workflow: ['workflows'], document: ['documents'] };
+const collections = { agent: ['agents'], skill: ['skills'], mcp: ['integrations', 'mcp'], env: ['integrations', 'env'], cli: ['integrations', 'cli'] };
 const blocks = { orchestrator: ['orchestrator'], policies: ['policies'], integrations: ['integrations'], packages: ['packages'] };
 const safeName = (s) => typeof s === 'string' && /^[a-zA-Z0-9_-]+$/.test(s) && !['__proto__', 'constructor', 'prototype'].includes(s);
 export function assertValid(model) {

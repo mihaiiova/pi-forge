@@ -10,8 +10,4 @@ agents:
     model: provider-b/model-small
     thinking: high
     tools: [read]
-workflows:
-  - name: analyze
-    skill: does-not-exist
-    entry: orchestrator
-    agents: [ghost-agent]
+    skills: [does-not-exist]
