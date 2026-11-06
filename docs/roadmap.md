@@ -18,7 +18,8 @@ the issues.
   `src/`/`test/` layout and headless `/faur` (v0.33.0); a visible `/faur` mode, hand-back of
   agent work and approval dialogs that fit the screen (v0.34.0); browsing
   baseline, compact maintenance output and continuous review-to-proposal
-  conversations (v0.35.0).
+  conversations (v0.35.0); #75 native skills instead of documents and
+  workflows, MCP drift and env fixes, and `/faur` across `/reload` (v0.36.0).
 - **Versioning:** below 1.0. Pre-1.0 releases may break projects, which are
   regenerated.
 - **Direction change (2026-11-02):** Faur is only the maker. Generated
