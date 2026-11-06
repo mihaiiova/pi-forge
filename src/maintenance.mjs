@@ -1,6 +1,6 @@
 /** Configuration maintenance reuses the Faur's existing model/ownership seams. */
 import { BASELINE_TOOLS } from './policy.mjs';
-import { changeModel, parsedModel } from './changes.mjs';
+import { changeModel, parsedModel, legacyDeclarations } from './changes.mjs';
 import { scanSkills } from './discover.mjs';
 import { staleMentions } from './agent-context.mjs';
 import { loadYaml } from './yaml-loader.mjs';
@@ -192,12 +192,14 @@ export function inspectProject(root) {
   assertNativeJson(root);
   const text = readText(root, '.pi/system.yaml');
   const model = parsedModel(text);
+  const legacy = legacyDeclarations(text);
   const settings = readJson(root, '.pi/settings.json');
   const mcpJson = readText(root, '.pi/mcp.json') === null ? {} : readJson(root, '.pi/mcp.json');
   const caps = effectiveCapabilities(model, { piPackages: pinsAt(root) });
   return redactForModel(root, {
     systemYaml: loadYaml().stringify(redacted(loadYaml().parse(text))), systemYamlRedacted: true,
     parsedModel: redacted(model), effectiveCapabilities: caps,
+    ...(legacy ? { legacy: { declarations: redacted(legacy), note: 'documents and workflows are no longer supported. Propose a local skill (with its SKILL.md content) for each procedure or output they describe, in the same change; applying any change removes them.' } } : {}),
     nativeDrift: nativeDrift(root, model),
     nativeUnrepresented: nativeUnrepresented(root, model, settings, mcpJson),
     nativeDriftNote: 'Two-way comparison only: differences may be hand edits, design edits, formatting, or generator-version changes. It is not a complete inventory of native Pi features. Settings, the marked lead prompt, marked specialist prompts and representable MCP and command edits can be previewed with /faur drift adopt <path>; other features require explicit reconciliation.',
@@ -207,6 +209,8 @@ export function inspectProject(root) {
       const content = readText(root, p);
       return [p, p.endsWith('.json') && content !== null ? json(redacted(JSON.parse(content))) : content];
     })),
+    // Local skills are the developer's files; revisions propose a whole new file.
+    localSkills: Object.fromEntries((model.skills ?? []).filter(skill => !skill.source).map(skill => [`.pi/skills/${skill.name}/SKILL.md`, readText(root, `.pi/skills/${skill.name}/SKILL.md`)])),
     subagentRuns: subagentRuns(root),
     evidence: 'subagentRuns summarizes recent launches (agent, outcome, first diagnostic line) from .faur/pi-home; repeated failures are a configuration problem to propose a fix for. No other execution evidence inferred from configuration. Only cite execution evidence the user supplies or explicitly authorizes reading; never read auth files or environment secrets. Credential redaction is best-effort, not a general secret scanner.',
   });
@@ -636,7 +640,7 @@ export function planChange(root, operations, options = {}) {
     || new Set(inventory.registrySkills.map(skill => typeof skill === 'string' ? skill : skill.name)).size !== inventory.registrySkills.length)) {
     throw new Error('Invalid declaration inventory in .faur/build.json; resolve it before reconciliation');
   }
-  const { model, text, baselineAdded } = changeModel(oldText, operations);
+  const { model, text, baselineAdded, skillFiles, legacyRemoved } = changeModel(oldText, operations);
   assertNoNewSecrets(loadYaml().parse(oldText), model);
   if (options.reconcileAgent !== undefined && (!/^\.pi\/agents\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(options.reconcileAgent) || operations.length !== 1 || operations[0].op !== 'update' || operations[0].target !== 'agent' || options.reconcileAgent !== `.pi/agents/${operations[0].name}.md`)) throw new Error('Invalid selected specialist reconciliation');
   if (options.preserveNativePath !== undefined && !['.pi/mcp.json', '.pi/commands.json'].includes(options.preserveNativePath)) throw new Error('Unsupported selected native merge path');
@@ -673,7 +677,7 @@ export function planChange(root, operations, options = {}) {
   const plan = generateProject(model, existing, opts);
   for (const skill of (model.skills ?? []).filter(s => !s.source)) {
     const path = skillDir(skill);
-    if (readText(root, path) === null) plan.warnings.push(`Declared local skill ${skill.name} is missing: create ${path} as a developer-owned file.`);
+    if (readText(root, path) === null && !Object.hasOwn(skillFiles, skill.name)) plan.warnings.push(`Declared local skill ${skill.name} is missing: propose its SKILL.md content with the skill declaration.`);
   }
   if (plan.errors.length) throw new Error(plan.errors.join('\n'));
   if (options.reconcileAgent) {
@@ -910,6 +914,30 @@ export function planChange(root, operations, options = {}) {
     writes[path] = null;
     files.push({ path, action: 'remove', content: '' });
   }
+  // Skill files generated for removed workflows (0.35 and earlier) still load.
+  // Remove an untouched one; an edited one is the developer's and stays.
+  const declaredLocal = new Set((model.skills ?? []).filter(skill => !skill.source).map(skill => skill.name));
+  for (const path of (inventory?.scaffolds ?? []).filter(p => p.startsWith('.pi/skills/') && !managedPaths(model).includes(p))) {
+    const name = path.split('/')[2];
+    if (Object.hasOwn(skillFiles, name)) continue;
+    const content = readText(root, path);
+    if (content === null) continue;
+    if (declaredLocal.has(name) || !intactScaffold(content)) { plan.warnings.push(`${path} was generated for a removed workflow and has been edited or declared; it is kept and still loads.`); continue; }
+    writes[path] = null;
+    files.push({ path, action: 'remove', content: '' });
+  }
+  // Proposed local skill files go through the same preview, approval and
+  // stale check as generated files. Afterwards they are the developer's.
+  for (const [name, content] of Object.entries(skillFiles)) {
+    const path = skillDir({ name });
+    const current = readText(root, path);
+    if (current === content) continue;
+    writes[path] = content;
+    generatedModes[path] = current === null ? 0o666 & ~process.umask() : lstatSync(safePath(root, path)).mode & 0o7777;
+    const index = files.findIndex(file => file.path === path);
+    const item = { path, action: current === null ? 'create' : 'write', content };
+    if (index < 0) files.push(item); else files[index] = item;
+  }
   const settings = JSON.parse(writes['.pi/settings.json'] ?? existing['.pi/settings.json']);
   // .pi/mcp.json exists only for designs with MCP servers.
   const mcpText = '.pi/mcp.json' in writes ? writes['.pi/mcp.json'] : existing['.pi/mcp.json'];
@@ -944,6 +972,7 @@ export function planChange(root, operations, options = {}) {
       nativeUnrepresented: settingsText === null ? [] : nativeUnrepresented(root, oldModel, JSON.parse(settingsText), existing['.pi/mcp.json'] === undefined ? {} : JSON.parse(existing['.pi/mcp.json'])),
       nativeDriftNote: 'Two-way comparison; differences can also reflect generator-version changes. Settings, marked prompts and representable MCP and command edits can be previewed with /faur drift adopt <path>.',
       warnings: plan.warnings,
+      ...(legacyRemoved.length ? { legacy: { removed: legacyRemoved, note: 'These declarations are no longer supported and are removed by this change. Their instructions are kept only where a skill in this change carries them.' } } : {}),
       ...(inventory === null && settingsText !== null ? { inventoryWarning: 'No prior declaration inventory is available; reconciliation cannot identify declarations removed by manual system.yaml edits. Existing unlisted files are preserved.' } : {}),
       ...(drift.length ? { rebuilt: `This Faur version generates ${drift.join(', ')} differently from the files on disk (a newer version, or a hand edit, which would be lost). Applying also rebuilds them.` } : {}),
       executionSurface: {
@@ -959,7 +988,7 @@ export function planChange(root, operations, options = {}) {
       modelDiff: diffLines(oldText, text),
       advisories: configurationAdvisories(model),
       ...(stale.length ? { staleMentions: { note: 'These instructions still mention a capability this change removes, so agents would keep reaching for it. Update them in the same proposal.', mentions: stale } } : {}),
-      files: files.map(f => ({ path: f.path, action: f.action, diff: diffLines(existing[f.path] ?? '', f.content) })),
+      files: files.map(f => ({ path: f.path, action: f.action, diff: diffLines(existing[f.path] ?? readText(root, f.path) ?? '', f.content) })),
       ...(vendorCopies.length ? { vendoredSkills: vendorCopies.map(copy => ({ name: copy.name, source: copy.source, into: `${copy.dest}/`, files: Object.keys(copy.files) })) } : {}),
       capabilitiesDiff: diffLines(json(beforeCapabilities), json(afterCapabilities)),
       ...(skills.install.length || skills.remove.length ? { skills: {
@@ -1019,6 +1048,8 @@ export function approvalSummary(root, plan) {
   for (const skill of preview.skills?.install ?? []) lines.push(`Installs skill ${skill.name} from ${skill.source}.`);
   for (const skill of preview.skills?.remove ?? []) lines.push(`Removes skill ${skill}.`);
   for (const change of plan.preview.reapply?.accessChanges?.changes ?? []) lines.push(`Restores MCP access ${change}.`);
+  if (plan.preview.legacy) lines.push(`Removes the unsupported ${plan.preview.legacy.removed.join(' and ')} declarations.`);
+  for (const file of plan.preview.files ?? []) if (/^\.pi\/skills\/[^/]+\/SKILL\.md$/.test(file.path) && file.action !== 'remove') lines.push(`${file.action === 'create' ? 'Creates' : 'Replaces'} skill ${file.path.split('/')[2]}; afterwards it is yours to edit.`);
   if (lines.length === 1) lines.push('No tools, commands, MCP servers, packages or skills change.');
   if (preview.rebuilt) lines.push('Also rebuilds files this Faur version generates differently.');
   if (preview.restart) lines.push(preview.restart);

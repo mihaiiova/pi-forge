@@ -119,7 +119,14 @@ The faur ships no skills of its own; each agent gets the skills the user
 chooses for it, including ones the faur suggests from skills.sh.
 Allowed keys: `name` (required string), `description`, and at most one of:
 
-- With no `source`, the skill is an ordinary developer-owned project file at `.pi/skills/<name>/SKILL.md`. Create or edit it with Pi’s normal file tools after showing the proposed content and obtaining approval; Faur does not generate or overwrite it.
+- With no `source`, the skill is an ordinary project file at
+  `.pi/skills/<name>/SKILL.md` holding one of the agent's procedures. Faur
+  drafts it from the conversation: an `add` or `update` operation for the
+  skill carries the whole file as `content` (frontmatter `name` matching the
+  declaration, and a `description` saying when to use it). The approved change
+  writes it with the same preview and stale-file check as every other file; it
+  is never stored in `system.yaml` and never regenerated, so later edits are
+  the developer's. Skill instructions are advisory.
 - `source: npm:<name>@<version>` or `git:<repo>@<ref>` — provided by a pinned
   package, which joins the runtime `packages`. No local file is generated.
 - `source: ./path`, `../path`, `/abs/path` or `~/path` — a directory containing
@@ -258,8 +265,11 @@ defaults.
 Only `schema: 1` is accepted. There is no migration: designs using the earlier
 tier-based layout (`models.tiers`, tier names as agent models) must be redefined
 with per-agent models. The removed `documents`, `workflows` and `skills[].body`
-fields must be replaced with ordinary developer-owned skill files; keep their
-procedures and output instructions there.
+fields are replaced by local skills. `/faur` still reads a design that has
+`documents` or `workflows`: inspect reports them, the next proposal carries a
+skill for each procedure they describe, and applying it removes the old keys
+and any untouched skill Faur generated for a workflow (an edited one is kept
+and reported). `faur validate` and `faur generate` reject them.
 
 ## 4. Ownership / edit-preservation contract
 
@@ -297,10 +307,11 @@ procedures and output instructions there.
    unrelated. Faur also refuses nested negation rules along required `.pi`
    paths and declared integration secret paths, even if unrelated. The append is shown in
    dry runs and change previews, and repeating it is a no-op.
-   **Local skill files** are developer-owned and are not generated, overwritten
-   or deleted by Faur. Preview the proposed content and obtain explicit approval
-   before editing with normal Pi tools outside `/faur` maintenance mode. Faur
-   cannot enforce approval for edits made outside that mode.
+   **Local skill files** are never generated or regenerated. Faur writes one
+   only as part of an approved change that carries its `content`, with the
+   same preview and stale-file check as other files; otherwise it leaves them
+   alone. Edits made outside Faur are the developer's and are not subject to
+   its approval.
    **Vendored skill directories** (`skills[].source` paths) are user-owned
    copies: created once from the source, never overwritten or deleted by the
    faur. Delete a copy explicitly to refresh it from its source.

@@ -122,8 +122,11 @@ interview again; reuse the design and the conversation, then:
 5. **Preview** with `faur generate <dir> --dry-run`, and summarize what will
    be created — agents with their exact models and tools, skills with their
    sources, MCP servers and their scope, required credentials — and anything
-   still unresolved. Show separately any proposed developer-owned skill content;
-   `faur generate` does not create it.
+   still unresolved, and show each skill you drafted (see "Procedures are
+   skills"). `faur generate` does not write skill content: after generating,
+   write the drafted skills with `faur change <dir> --operations <json-file>`
+   using `{"op":"update","target":"skill","name":"<name>","content":"<SKILL.md>"}`
+   (`--dry-run` first, then `--yes`), the same path maintenance uses.
 6. **Get explicit confirmation of that preview** before writing any file, then
    run `faur generate <dir> --yes`. "Build it" agrees to the design; it is not
    approval to write files unseen.
@@ -179,7 +182,30 @@ first; the user decides.
   modify an existing issue"); command approval belongs in `approve`; Faur does not add per-call approval to MCP calls.
   Give MCP servers a `config.description` and agents a `description`; those
   appear in the section.
-- **Task procedures and documents:** use an ordinary skill to describe the task, output format, paths and delivery instructions. Show the proposed skill to the user and obtain explicit approval before creating or changing its developer-owned file. Do not duplicate its complete content in `system.yaml`. For maintenance, first exit `/faur` and use ordinary Pi file tools; `/faur` does not enforce approval outside its mode. These instructions are guidance, not enforced output guarantees.
+- **Procedures are skills (skill first).** Whenever the conversation shows
+  something the agent does repeatedly — a report, a review, a handoff, a
+  recurring output, a multi-step task — write a skill for this agent rather
+  than more prompt text or a schema. Draft it from what the user said; there
+  is no template. A good skill has:
+  - frontmatter `name` (kebab-case) and a `description` that says when to use
+    it, in the user's terms, so the agent picks it without being told;
+  - the steps, and what to read or check first (earlier outputs, memory,
+    existing issues);
+  - inputs: what the request after `/skill:<name>` supplies;
+  - outputs: exact paths, sections in order with a one-line guide each, and
+    any length limit, plus what to keep when replacing an earlier output;
+  - rules and approvals. Approval that must hold belongs in a command's
+    `approve`; the skill only says when to ask. Say which rules are advisory.
+
+  Keep it short and specific to this agent; one skill per procedure. The
+  agent's prompt states its role; the skill holds the procedure, which loads
+  when the skill is used. Show the draft, then propose it as one operation:
+  `{"op":"add","target":"skill","name":"<name>","value":{"description":"<when to use it>"},"content":"<the full SKILL.md>"}`
+  (use `"op":"update"` to replace an existing skill's file). `system.yaml`
+  records only the name and description; the file is created by the
+  approved change and is the developer's afterwards: Faur never regenerates
+  it, and a file edited since the preview is refused as stale. Skill
+  instructions are guidance, not enforced output.
 - **Tools:** every agent with a tools list gets `read`, `ls`, `find` and
   `grep`; Faur adds them, so list them and don't argue them away. Add other
   tools only for what the agent does (`write`/`edit` for files it produces,
@@ -404,14 +430,20 @@ when this turn ends. Don't do the work, and don't tell them to type
    the user to convert any affected literal credentials to environment references.
    Non-secret settings (OAuth scopes, regions, paths) go into `config.env` as
    literals, not as variables the user must export: Pi does not load `.env`.
-   Document formats are the user's decision. Any agent can have any number
-   of documents, each with its own format. When a request concerns what an
-   agent produces (or a review finds outputs that are long, repetitive or hard
-   to act on), propose a structure first in plain text: purpose, sections in
+   Output formats and procedures are the user's decision and live in skills
+   (see "Procedures are skills"). When a request concerns what an agent
+   produces (or a review finds outputs that are long, repetitive or hard to
+   act on), sketch the structure in plain text first: purpose, sections in
    order with a one-line guide each, and optionally a length limit and rules.
-   Offer suggestions (such as keeping caveats in one section) as options, not
-   defaults. Ask the user to add, remove or change anything. After explicit
-   approval, leave `/faur` to create or edit the ordinary skill with Pi tools.
+   Offer suggestions as options, not defaults. Then propose the skill with
+   its full `content` in the same proposal as any declaration change; to
+   revise an existing skill, read it from inspect and propose `update` with
+   the whole new file. Never tell the user to leave `/faur` to write it.
+   If inspect reports `legacy` (`documents` or `workflows` from an older
+   Faur), the next change must migrate them: propose one skill per procedure
+   they describe, carrying every path, section, limit and rule, in the same
+   change. Applying removes the old declarations and an untouched generated
+   workflow skill; an edited one is kept.
 5. Present the change in plain words: what changes in the model and in the
    generated files, and what agents gain or lose. End with one sentence: "Faur
    will now ask you to apply, discuss or discard it." Mention /reload or a

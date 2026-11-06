@@ -148,3 +148,66 @@ export default pi => {
   const ui = events.filter(e => e.type === 'extension_ui_request' && e.method === 'setStatus' && e.statusKey === 'faur');
   assert.match(ui.at(-1)?.statusText ?? '', /In \/faur/, 'the mode is still shown');
 });
+
+test('in /faur the agent proposes a skill, the person applies it, and Pi loads it', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'faur-maint-skill-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, '.pi'));
+  writeFileSync(join(root, '.pi/system.yaml'), `schema: 1
+name: reporter
+orchestrator:
+  name: lead
+  model: faux/faux-1
+  tools: [read, write]
+  prompt: Write marketing reports.
+`);
+  const generated = spawnSync(process.execPath, [join(repo, 'src/faur.mjs'), 'generate', root], { encoding: 'utf8' });
+  assert.equal(generated.status, 0, generated.stderr);
+  const skill = '---\nname: weekly-report\ndescription: Use when asked for the weekly report.\n---\n\nWrite reports/weekly.md with Summary and Next steps.\n';
+  const operations = JSON.stringify([{ op: 'add', target: 'skill', name: 'weekly-report', value: { description: 'Use when asked for the weekly report.' }, content: skill }]);
+  const provider = join(root, 'provider.mjs');
+  writeFileSync(provider, `import {createFauxCore,fauxAssistantMessage,fauxToolCall} from ${JSON.stringify(ai)};
+export default pi => {
+ const faux=createFauxCore({api:'faux-test',provider:'faux',models:[{id:'faux-1'}]});
+ faux.setResponses([
+  fauxAssistantMessage(fauxToolCall('faur_plan',{action:'propose',operations:${JSON.stringify(operations)}})),
+  fauxAssistantMessage('Faur will now ask you to apply, discuss or discard it.'),
+ ]);
+ pi.registerProvider('faux',{baseUrl:'http://localhost',apiKey:'test',api:'faux-test',streamSimple:faux.streamSimple,models:[{type:'chat',id:'faux-1',name:'faux',reasoning:false,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:100000,maxTokens:1000}]});
+};`);
+  const child = spawn('pi', ['--no-extensions', '-e', provider, '-e', join(repo, 'extensions/faur/index.ts'), '--approve', '--no-session', '--mode', 'rpc'], {
+    cwd: root, env: { ...process.env, PI_OFFLINE: '1', PI_CODING_AGENT_DIR: join(root, '.home') }, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  t.after(() => child.kill());
+  const events = [];
+  let buffer = '';
+  let wake = () => {};
+  child.stdout.on('data', chunk => {
+    buffer += chunk;
+    let i;
+    while ((i = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
+      try { events.push(JSON.parse(line)); } catch { continue; }
+      const e = events.at(-1);
+      // The person reads the summary and applies.
+      if (e.type === 'extension_ui_request' && e.method === 'select') child.stdin.write(JSON.stringify({ type: 'extension_ui_response', id: e.id, value: e.options.includes('Apply') ? 'Apply' : e.options[0] }) + '\n');
+      wake();
+    }
+  });
+  const until = (predicate, ms = 30000) => new Promise((ok, fail) => {
+    const timer = setTimeout(() => fail(new Error(`timed out; events: ${events.map(e => e.type + (e.method ? ':' + e.method : '') + (e.message ? ':' + e.message : '')).join(' ')}`)), ms);
+    const check = () => { if (predicate()) { clearTimeout(timer); wake = () => {}; ok(); } };
+    wake = check; check();
+  });
+  child.stdin.write(JSON.stringify({ id: '1', type: 'prompt', message: '/faur add a weekly report procedure' }) + '\n');
+  await until(() => events.some(e => e.type === 'extension_ui_request' && e.method === 'notify' && /^Applied:/.test(e.message)));
+  const select = events.find(e => e.type === 'extension_ui_request' && e.method === 'select');
+  assert.match(select.title, /Creates skill weekly-report/, 'the approval names the skill');
+  assert.equal(readFileSync(join(root, '.pi/skills/weekly-report/SKILL.md'), 'utf8'), skill);
+  assert.doesNotMatch(readFileSync(join(root, '.pi/system.yaml'), 'utf8'), /Next steps/);
+  // A new Pi in the project discovers the skill as /skill:weekly-report.
+  child.kill();
+  const listed = spawnSync('pi', ['--no-extensions', '--approve', '--mode', 'rpc', '--no-session'], { cwd: root, env: { ...process.env, PI_OFFLINE: '1', PI_CODING_AGENT_DIR: join(root, '.home') }, input: JSON.stringify({ id: 'c', type: 'get_commands' }) + '\n', encoding: 'utf8', timeout: 30000 });
+  const response = listed.stdout.split('\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } }).find(e => e?.type === 'response' && e.command === 'get_commands');
+  assert.ok(response?.data?.commands?.some(c => c.name === 'skill:weekly-report'), JSON.stringify(response?.data?.commands?.map(c => c.name)));
+});
