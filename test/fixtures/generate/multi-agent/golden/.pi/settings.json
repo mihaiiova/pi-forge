@@ -10,8 +10,7 @@
     "bash",
     "edit",
     "write",
-    "subagent",
-    "codemode"
+    "subagent"
   ],
   "packages": [
     "npm:pi-subagents@0.83.1"

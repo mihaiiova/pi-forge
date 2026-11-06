@@ -179,7 +179,7 @@ test('adopting Pi settings preserves the native file and survives another revisi
   // Removing a baseline tool cannot be represented, so it is refused.
   settings.defaultTools = ['read', 'grep'];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
-  assert.throws(() => planSettingsAdoption(root), /Cannot adopt defaultTools without ls, find, codemode: every Faur agent keeps read, ls, find, grep, codemode/);
+  assert.throws(() => planSettingsAdoption(root), /Cannot adopt defaultTools without ls, find: every Faur agent keeps read, ls, find, grep\./);
   settings.defaultTools = ['read', 'grep', 'ls', 'find', 'bash', 'codemode'];
   writeFileSync(join(root, '.pi/settings.json'), JSON.stringify(settings, null, 4) + '\n');
   const original = readText(root, '.pi/settings.json');
@@ -230,7 +230,7 @@ test('settings reconciliation adopts selected fields, reapplies others and prese
   mock.approve();
   await command('drift reconcile .pi/settings.json adopt=model', mock.ctx);
   assert.equal(readJson(root, path).defaultModel, 'manual');
-  assert.deepEqual(readJson(root, path).defaultTools, ['read', 'ls', 'find', 'grep', 'codemode'], 'reapplied tools carry the baseline');
+  assert.deepEqual(readJson(root, path).defaultTools, ['read', 'ls', 'find', 'grep'], 'reapplied tools carry the baseline');
   assert.equal(readJson(root, path).theme, 'native-theme');
   assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/manual');
   const stale = planSettingsReconciliation(root, []);
@@ -1263,7 +1263,7 @@ test('slash adapter preserves operational allowlist, read-only review and indepe
   assert.equal(yaml.parse(readText(root, '.pi/system.yaml')).orchestrator.model, 'fixture/small');
   assert.match(mock.notices.at(-1)[0], /^Applied: [\s\S]*\.pi\/system\.yaml[\s\S]*\/reload/);
   assert.deepEqual(mock.pi.getActiveTools(), ['read']);
-  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'ls', 'find', 'grep', 'codemode']);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'ls', 'find', 'grep']);
 
   // Discard drops the proposal and leaves /faur.
   const applied = readText(root, '.pi/system.yaml');
@@ -1595,7 +1595,9 @@ test('/faur check verifies the agent without a model turn', async t => {
   const mock = adapter();
   mock.faur = registerMaintenance(mock.pi, mock.Type, root);
   const check = async () => { mock.notices.length = 0; await mock.faur('check', mock.ctx); return mock.notices.at(-1); };
-  assert.match((await check())[0], /some are not verified now[\s\S]*codemode/);
+  const passed = (await check())[0];
+  assert.match(passed, /All checks passed/);
+  assert.doesNotMatch(passed, /codemode/, 'codemode is never added implicitly');
   const settings = readJson(root, '.pi/settings.json');
   writeFileSync(join(root, '.pi/settings.json'), json({ ...settings, defaultTools: ['read', 'bash'] }));
   const [drift, level] = await check();
@@ -1971,6 +1973,15 @@ test('a preview file left by a killed session is removed when the next one start
   assert.equal(existsSync(join(root, PREVIEW_FILE)), false);
 });
 
+test('codemode is granted only when listed, and the approval says what it reaches', t => {
+  const root = project(t);
+  const plan = planChange(root, [{ op: 'set', target: 'orchestrator', value: { ...model.orchestrator, tools: ['read', 'codemode'] } }]);
+  const summary = approvalSummary(root, plan);
+  assert.ok(summary.some(line => line.includes('lead gains') && line.includes('codemode')), summary.join('\n'));
+  assert.ok(summary.some(line => line.includes('inherited global MCP tools')), summary.join('\n'));
+  assert.ok(JSON.parse(plan.writes['.pi/settings.json']).defaultTools.includes('codemode'));
+});
+
 test('every agent can browse: the baseline is recorded, generated and named in the preview', t => {
   const root = project(t);
   // A design recorded before the baseline (like projects made by v0.34).
@@ -1978,14 +1989,14 @@ test('every agent can browse: the baseline is recorded, generated and named in t
   writeFileSync(join(root, '.pi/system.yaml'), yaml.stringify(recorded));
   const plan = rebuildPlan(root);
   const summary = approvalSummary(root, plan);
-  assert.ok(summary.includes('lead gains ls, find, grep, codemode.'), summary.join('\n'));
-  assert.ok(summary.includes('scout gains read, ls, find, grep, codemode.'), summary.join('\n'));
-  assert.ok(summary.some(line => line.includes('inherited global MCP tools')));
+  assert.ok(summary.includes('lead gains ls, find, grep.'), summary.join('\n'));
+  assert.ok(summary.includes('scout gains read, ls, find, grep.'), summary.join('\n'));
+  assert.ok(!summary.some(line => line.includes('inherited global MCP tools')), 'the baseline grants no codemode')
   applyChange(root, plan, true);
   const design = yaml.parse(readText(root, '.pi/system.yaml'));
-  assert.deepEqual(design.orchestrator.tools, ['read', 'write', 'ls', 'find', 'grep', 'codemode'], 'the record says it');
-  assert.deepEqual(design.agents[0].tools, ['mcp:docs', 'read', 'ls', 'find', 'grep', 'codemode']);
-  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'write', 'ls', 'find', 'grep', 'codemode']);
+  assert.deepEqual(design.orchestrator.tools, ['read', 'write', 'ls', 'find', 'grep'], 'the record says it');
+  assert.deepEqual(design.agents[0].tools, ['mcp:docs', 'read', 'ls', 'find', 'grep']);
+  assert.deepEqual(readJson(root, '.pi/settings.json').defaultTools, ['read', 'write', 'ls', 'find', 'grep']);
   assert.match(readText(root, '.pi/agents/scout.md'), /tools:\n(  - .*\n)*  - grep\n/);
   assert.equal(rebuildPlan(root).rebuild.unchanged, true, 'idempotent');
   // tools: [] stays empty, and an enforced policy stays the ceiling.

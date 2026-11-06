@@ -425,7 +425,7 @@ test('Faur installed in the developer\'s Pi maintains a generated project and ad
     assert.deepEqual(commands.filter(name => /factory/.test(name)), [], 'no old command names');
     const tools = session.extensionRunner.getAllRegisteredTools().map(t => t.definition.name);
     assert.ok(!tools.includes('request_permission') && !tools.includes('memory') && !tools.some(n => n.startsWith('cli_')), 'Faur adds nothing the agent runs');
-    assert.deepEqual(session.getActiveToolNames().sort(), ['codemode', 'find', 'grep', 'ls', 'read']);
+    assert.deepEqual(session.getActiveToolNames().sort(), ['find', 'grep', 'ls', 'read'], 'no implicit codemode');
     const notices = [];
     const command = session.extensionRunner.getCommand('faur');
     assert.match(command.description, /check \| status \| sync/);

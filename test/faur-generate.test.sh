@@ -54,7 +54,7 @@ node -e '
 const s = require(process.argv[1]);
 if (s.defaultProvider !== "anthropic") process.exit(1);
 if (s.defaultModel !== "claude-sonnet-5-5") process.exit(1);
-if (JSON.stringify(s.defaultTools) !== JSON.stringify(["read", "grep", "find", "ls", "codemode"])) process.exit(1);
+if (JSON.stringify(s.defaultTools) !== JSON.stringify(["read", "grep", "find", "ls"])) process.exit(1);
 if (s.packages !== undefined) process.exit(1);
 ' "$work/.pi/settings.json" || fail "settings.json missing orchestrator model/defaultTools"
 pass "settings.json carries orchestrator model + defaultTools"
