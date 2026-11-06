@@ -68,12 +68,13 @@ export function advisoryText(policies) {
 }
 
 /**
- * Explicit, non-empty lists include file browsing and codemode. Codemode can
- * reach other exposed tools, including inherited global MCP servers; unlike
- * browsing it can expand an agent's reach. Empty and omitted lists are left
- * alone, and enforced `{ agent, tools }` rules are not extended.
+ * Explicit, non-empty lists include file browsing. Codemode is not part of
+ * the baseline: it can reach other exposed tools, including inherited global
+ * MCP servers, so an agent gets it only when its list names it. Empty and
+ * omitted lists are left alone, and enforced `{ agent, tools }` rules are not
+ * extended.
  */
-export const BASELINE_TOOLS = ['read', 'ls', 'find', 'grep', 'codemode'];
+export const BASELINE_TOOLS = ['read', 'ls', 'find', 'grep'];
 
 /** `tools` with the baseline added, or unchanged when empty or omitted. */
 export function withBaseline(tools) {

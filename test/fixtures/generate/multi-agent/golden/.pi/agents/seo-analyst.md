@@ -6,7 +6,6 @@ tools:
   - grep
   - find
   - ls
-  - codemode
 model: provider-b/model-small
 thinking: low
 systemPrompt: |
@@ -18,9 +17,8 @@ systemPrompt: |
   Generated from this system's declarations; it changes when they do. Use only what is listed here.
   
   - **Built-in tools:** read, grep, find, ls
-  - **Other tools:** codemode
   
   If a task needs something not listed, report what is missing to the orchestrator instead of working around it.
 ---
 
-<!-- faur:generated v1 sha256=d00496e0cea2392475b3956b297006595ec0cf47670c36c48237866a59f6127e -->
+<!-- faur:generated v1 sha256=7ae280caba4aa7152f48c1a3592042e5fc80859cfd39ad75e856b72edf467a99 -->

@@ -65,11 +65,11 @@ Allowed keys: `name` (required string), `description`, `prompt`, `model`
 
 **Tool baseline (enforced by the generator).** Every explicit, non-empty
 `tools` list, the orchestrator's and each subagent's, includes `read`, `ls`,
-`find`, `grep` and `codemode`. Faur adds missing entries when it reads a design
+`find` and `grep`. Faur adds missing entries when it reads a design
 and records them in `system.yaml` on the next change; the preview names the
-added tools. Unlike file browsing, `codemode` can reach other exposed tools,
-including inherited global MCP servers, even when those tools are not directly
-listed. `tools: []` stays empty, an omitted list keeps Pi's defaults, and an
+added tools. `codemode` is never added implicitly: list it to grant it. Unlike
+file browsing, it can reach other exposed tools, including inherited global
+MCP servers, even when those tools are not directly listed. `tools: []` stays empty, an omitted list keeps Pi's defaults, and an
 enforced `{ agent, tools }` rule is not extended. A native edit that drops a
 baseline tool cannot be adopted; Faur refuses and says why. The tools an agent
 can actually call depend on Pi and its packages; a list is not OS isolation.
@@ -155,9 +155,8 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
     unreachable, also for specialists). An enforced `hide` policy adds to it.
   `exposure` and `toolExposure` are rejected: Faur derives them. Pi's automatic
   codemode activation is disabled (`autoEnableCodemode: false`) to preserve
-  explicit empty lists and policy ceilings; the tool baseline explicitly grants
-  codemode on non-empty lists. Codemode can reach exposed global and project MCP
-  tools. Pi names each tool `mcp__<server>__<tool>`. An
+  tool lists and policy ceilings; an agent gets codemode only when its `tools`
+  list names it. Codemode can reach exposed global and project MCP tools. Pi names each tool `mcp__<server>__<tool>`. An
   orchestrator with `mcp` in its tools (or without `tools`) is told about every
   server's usable tools; without it, it is told it has none, while its
   specialists get their `mcp:` selections. That is advisory: nothing stops

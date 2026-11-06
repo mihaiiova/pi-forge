@@ -100,7 +100,7 @@ test('generated agents get cli_ tools without a launch default; defaultTools kee
 test('a grant to a subagent with no tools list starts one', () => {
   const doc = { ...model, agents: [{ name: 'bare', model: 'fixture/small' }] };
   const granted = changeModel(yaml.stringify(doc), grantOps(doc, { name: 'echo-two', command: 'node', args: ['--version'], approve: false }, ['bare'])).model;
-  assert.deepEqual(granted.agents[0].tools, ['cli:echo-two', 'read', 'ls', 'find', 'grep', 'codemode'], 'a new list carries the tool baseline');
+  assert.deepEqual(granted.agents[0].tools, ['cli:echo-two', 'read', 'ls', 'find', 'grep'], 'a new list carries the tool baseline');
   assert.throws(() => changeModel(yaml.stringify(doc), grantOps(doc, { name: 'echo-two', command: 'node', args: ['--version'] }, ['bare'])), /"bare" may run in the background, .*command echo-two/, 'a command that asks cannot go to a subagent');
 });
 
