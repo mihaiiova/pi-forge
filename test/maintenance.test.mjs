@@ -369,26 +369,26 @@ test('reapplying one native configuration requires approval and leaves other edi
 });
 
 test('paired redaction reports added, removed and changed sensitive fields without fingerprints', () => {
-  const before = { env: { NODE_OPTIONS: 'old-private-value', KEEP: 'same-private-value', REMOVE: 'removed-private-value' }, nested: { apiKey: 'nested-private-value' } };
-  const after = { env: { NODE_OPTIONS: 'new-private-value', KEEP: 'same-private-value', ADD: 'added-private-value' }, nested: [] };
+  const before = { env: { SERVICE_TOKEN: 'old-private-value', KEEP_TOKEN: 'same-private-value', REMOVE_SECRET: 'removed-private-value' }, nested: { apiKey: 'nested-private-value' } };
+  const after = { env: { SERVICE_TOKEN: 'new-private-value', KEEP_TOKEN: 'same-private-value', ADD_PASSWORD: 'added-private-value' }, nested: [] };
   const result = redactedDiffPair(before, after);
   assert.deepEqual(result.changes, [
-    { path: ['env', 'NODE_OPTIONS'], action: 'changed' },
-    { path: ['env', 'REMOVE'], action: 'removed' },
-    { path: ['env', 'ADD'], action: 'added' },
+    { path: ['env', 'SERVICE_TOKEN'], action: 'changed' },
+    { path: ['env', 'REMOVE_SECRET'], action: 'removed' },
+    { path: ['env', 'ADD_PASSWORD'], action: 'added' },
     { path: ['nested', 'apiKey'], action: 'removed' },
   ]);
-  assert.equal(result.before.env.KEEP, '[redacted]');
-  assert.equal(result.after.env.KEEP, '[redacted]');
+  assert.equal(result.before.env.KEEP_TOKEN, '[redacted]');
+  assert.equal(result.after.env.KEEP_TOKEN, '[redacted]');
   assert.doesNotMatch(JSON.stringify(result), /private-value|[a-f0-9]{32,}/);
 });
 
-test('MCP reapply refuses hidden execution-bearing environment changes without revealing values', async t => {
+test('MCP reapply refuses hidden sensitive environment changes without revealing values', async t => {
   const design = structuredClone(pinnedModel);
-  design.integrations.mcp[0].config = { command: 'node', env: { NODE_OPTIONS: 'design-private-value', REMOVED_IN_NATIVE: 'design-only-secret' } };
+  design.integrations.mcp[0].config = { command: 'node', env: { SERVICE_TOKEN: 'design-private-value', REMOVED_TOKEN: 'design-only-secret' } };
   const root = project(t, design);
   const mcp = readJson(root, '.pi/mcp.json');
-  mcp.mcpServers.docs.env = { NODE_OPTIONS: 'native-private-value', EXTRA_NATIVE: 'native-only-secret' };
+  mcp.mcpServers.docs.env = { SERVICE_TOKEN: 'native-private-value', EXTRA_SECRET: 'native-only-secret' };
   writeFileSync(join(root, '.pi/mcp.json'), json(mcp));
   const mock = adapter();
   const command = registerMaintenance(mock.pi, mock.Type, root);
@@ -401,11 +401,11 @@ test('MCP reapply refuses hidden execution-bearing environment changes without r
 
 test('CLI previews redact hidden MCP environment changes and refuse to apply them', t => {
   const design = structuredClone(pinnedModel);
-  design.integrations.mcp[0].config = { command: 'node', env: { NODE_OPTIONS: 'design-private-value' } };
+  design.integrations.mcp[0].config = { command: 'node', env: { SERVICE_TOKEN: 'design-private-value' } };
   const root = project(t, design);
   const path = '.pi/mcp.json';
   const native = readJson(root, path);
-  native.mcpServers.docs.env.NODE_OPTIONS = 'native-private-value';
+  native.mcpServers.docs.env.SERVICE_TOKEN = 'native-private-value';
   writeFileSync(join(root, path), json(native));
   for (const args of [['modify', root, '--dry-run'], ['modify', root, '--yes']]) {
     const result = requireResult(process.execPath, [faur, ...args], { encoding: 'utf8' });
@@ -892,10 +892,11 @@ test('ordinary revisions refuse collateral native MCP exposure and codemode chan
   });
 });
 
-test('explicit MCP reapply refuses unrepresented exposure and codemode changes', async t => {
+test('explicit MCP reapply restores designed exposure and codemode after approval', async t => {
+  // Pi's /mcp deletes `exposure` when codemode is chosen; reapply is the way back.
   const cases = [
-    ['exposure', value => { value.mcpServers.docs.exposure = 'hidden'; }],
-    ['toolExposure', value => { value.mcpServers.docs.toolExposure = { secret: 'hidden' }; }],
+    ['exposure', value => { delete value.mcpServers.docs.exposure; }],
+    ['toolExposure', value => { value.mcpServers.docs.toolExposure = { delete_page: 'hidden' }; }],
     ['autoEnableCodemode', value => { value.autoEnableCodemode = true; }],
   ];
   for (const [field, edit] of cases) await t.test(field, async t => {
@@ -905,14 +906,19 @@ test('explicit MCP reapply refuses unrepresented exposure and codemode changes',
     const edited = structuredClone(expected);
     edit(edited);
     writeFileSync(join(root, path), json(edited));
-    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native MCP/);
-    assert.throws(() => planNativeReapply(root, path), new RegExp(`Unrepresented MCP .*${field}`));
+    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native MCP/, 'unrelated changes still refuse to overwrite it silently');
+    const plan = planNativeReapply(root, path);
+    assert.ok(plan.preview.reapply.accessChanges.changes.some(change => change.includes(field)));
+    assert.match(approvalSummary(root, plan).join('\n'), new RegExp(`Restores MCP access .*${field}`));
+    const declined = adapter();
+    await registerMaintenance(declined.pi, declined.Type, root)(`drift reapply ${path}`, declined.ctx);
+    assert.deepEqual(readJson(root, path), edited, 'without approval nothing changes');
     const mock = adapter();
     const command = registerMaintenance(mock.pi, mock.Type, root);
     mock.approve();
     await command(`drift reapply ${path}`, mock.ctx);
-    assert.deepEqual(mock.dialogs, []);
-    assert.deepEqual(readJson(root, path), edited, 'refusal preserves native configuration');
+    assert.equal(mock.dialogs.length, 1);
+    assert.deepEqual(readJson(root, path), expected, 'approved reapply restores the design');
   });
 });
 
@@ -1097,7 +1103,7 @@ test('a text-only rebuild is previewed without capability changes', t => {
 test('credential redaction protects inspection and model-facing diffs; new literals are rejected', async t => {
   const root = project(t);
   const literal = 'fixture-private-token-123456';
-  const withSecret = { ...model, integrations: { mcp: [{ name: 'public', config: { url: 'https://example.invalid/public' } }, { name: 'search', config: { url: 'https://example.invalid', headers: { Authorization: 'Bearer ' + literal, 'X-Api-Key': 'complex "quoted"\nprivate-fragment' }, env: { ODD_NAME: literal } } }] } };
+  const withSecret = { ...model, integrations: { mcp: [{ name: 'public', config: { url: 'https://example.invalid/public' } }, { name: 'search', config: { url: 'https://example.invalid', headers: { Authorization: 'Bearer ' + literal, 'X-Api-Key': 'complex "quoted"\nprivate-fragment' }, env: { SERVICE_TOKEN: literal } } }] } };
   // Legacy inline credentials are preserved locally, not copied into model
   // context. New changes must use environment references instead.
   const files = generateProject(withSecret, {}, { piPackages: pkg.pi.packages }).files;
@@ -1117,6 +1123,20 @@ test('credential redaction protects inspection and model-facing diffs; new liter
   assert.ok(!JSON.stringify(response).includes('private-fragment'));
   assert.throws(() => planChange(root, [{ op: 'update', target: 'mcp', name: 'search', value: { config: { url: 'https://example.invalid', headers: { Authorization: 'Bearer new-literal-secret' } } } }]), /environment reference/);
   assert.throws(() => changeModel(yaml.stringify(model), [{ op: 'set', target: 'constructor', value: {} }]), /Unknown operation/);
+});
+
+test('non-secret MCP environment settings are reviewed literals; token-shaped values still need references', t => {
+  const root = project(t);
+  const drive = env => [{ op: 'add', target: 'mcp', name: 'drive', value: { config: { command: 'npx', args: ['-y', 'drive-mcp@1.0.0'], env } } }];
+  const plan = planChange(root, drive({ GOOGLE_DRIVE_MCP_SCOPES: 'drive,documents', CONFIG_DIR: '/home/user/.config/drive-mcp/accounts' }));
+  assert.deepEqual(JSON.parse(plan.writes['.pi/mcp.json']).mcpServers.drive.env, { GOOGLE_DRIVE_MCP_SCOPES: 'drive,documents', CONFIG_DIR: '/home/user/.config/drive-mcp/accounts' });
+  const shown = JSON.stringify(approvalPreview(root, plan));
+  assert.match(shown, /drive,documents/, 'the approval shows the literal it writes');
+  assert.doesNotMatch(shown, /\[redacted/);
+  for (const value of ['ghp_abcdefghijklmnopqrstuvwx', 'Zx9aQ7bW3cE5dR1fT8gY2hU6jI4kO0lP', 'postgres://app:hunter2@db.internal/app']) {
+    assert.throws(() => planChange(root, drive({ DATA_SOURCE: value })), /environment reference/, value);
+  }
+  assert.throws(() => planChange(root, drive({ DRIVE_API_KEY: 'short' })), /environment reference/, 'sensitive names stay credentials');
 });
 
 test('slash adapter preserves operational allowlist, read-only review and independent approval', async t => {

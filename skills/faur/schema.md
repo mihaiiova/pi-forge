@@ -163,7 +163,13 @@ Allowed keys: `mcp` (array), `env` (array) and `cli` (array).
   specialists get their `mcp:` selections. That is advisory: nothing stops
   the orchestrator calling an MCP tool. Faur does not provide per-call MCP
   approval; the removed `approveTools` key is rejected. OAuth servers need no credentials in the
-  config: sign in with `/mcp`. A global `/mcp` extension can replace Pi's
+  config: sign in with `/mcp`. Credentials in `env` and `headers` must be
+  `${NAME}` references. Non-secret settings, such as OAuth scopes, are
+  written as literals and shown in the approval. Faur rejects a literal it
+  recognizes as a credential: by name (`token`, `secret`, `key`, …), by known
+  token prefixes, by an opaque 32+ character value, or by a URL with an
+  embedded password. That check is best effort, not enforcement: a secret
+  under an innocuous name with no recognizable shape is not detected. A global `/mcp` extension can replace Pi's
   built-in MCP; `/faur check` reports known conflicts. Duplicate `name`s are rejected.
 - `env[]` entries: `name` (required shell variable name) and `secret`
   (optional boolean). These become `.env.example` entries. Pi reads no

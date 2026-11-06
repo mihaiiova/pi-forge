@@ -402,6 +402,8 @@ when this turn ends. Don't do the work, and don't tell them to type
    Inspections redact credential-shaped values. Never write `[redacted]` back to
    the model. Prefer targeted operations that leave hidden values untouched; ask
    the user to convert any affected literal credentials to environment references.
+   Non-secret settings (OAuth scopes, regions, paths) go into `config.env` as
+   literals, not as variables the user must export: Pi does not load `.env`.
    Document formats are the user's decision. Any agent can have any number
    of documents, each with its own format. When a request concerns what an
    agent produces (or a review finds outputs that are long, repetitive or hard
@@ -494,8 +496,12 @@ adopts any subset of `description`, `model`, `thinking`, and `prompt`, and
 reapplies the others. For MCP or commands, `/faur drift reconcile .pi/mcp.json
 adopt=server.url` or `/faur drift reconcile .pi/commands.json adopt=command.args`
 adopts selected `name.field` entries and reapplies unselected modeled fields.
-Unknown native fields are preserved and reported. Reapply refuses MCP exposure,
-tool exposure or codemode differences that cannot be safely represented.
+Unknown native fields are preserved and reported. MCP `exposure`,
+`toolExposure` and `autoEnableCodemode` are derived from the design and cannot
+be adopted; Pi's `/mcp` can change them (choosing codemode removes
+`exposure`). `/faur drift reapply .pi/mcp.json` restores the designed values
+after an approval that lists each access change; to keep a different access,
+change `includeTools`/`excludeTools` in the design instead.
 Approval is refused if a changed sensitive value cannot be shown safely; configure
 such values outside Faur and reconcile the native files explicitly. `adopt=none` reapplies the
 modeled fields. `/faur drift reconcile .pi/APPEND_SYSTEM.md adopt=prompt`

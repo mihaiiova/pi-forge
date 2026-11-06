@@ -472,15 +472,21 @@ export function planNativeReapply(root, path) {
     }
   }
   if (typeof desired !== 'string' || desired === before) throw new Error(`No representable change to reapply for ${path}`);
+  // Exposure and codemode are derived from the design, so an explicit,
+  // previewed reapply restores them. Pi's /mcp rewrites them in place (choosing
+  // codemode deletes `exposure`), and adoption cannot represent them; refusing
+  // here would leave a hand edit as the only way back to the approved access.
+  const accessChanges = [];
   if (before !== null && path === '.pi/mcp.json') {
     const actual = JSON.parse(before), next = JSON.parse(desired);
-    if (!isDeepStrictEqual(actual.autoEnableCodemode, next.autoEnableCodemode)) throw new Error('Unrepresented MCP autoEnableCodemode difference; preserve it and reconcile manually');
+    const shown = value => value === undefined ? '(unset)' : JSON.stringify(value);
+    if (!isDeepStrictEqual(actual.autoEnableCodemode, next.autoEnableCodemode)) accessChanges.push(`autoEnableCodemode: ${shown(actual.autoEnableCodemode)} → ${shown(next.autoEnableCodemode)}`);
     for (const [name, server] of Object.entries(actual.mcpServers ?? {})) {
       if (!next.mcpServers?.[name]) throw new Error(`MCP server ${name} is not represented in the design; preserve it and reconcile explicitly`);
       const unsupported = Object.keys(server).filter(key => !Object.hasOwn(next.mcpServers[name], key) && !['exposure', 'toolExposure'].includes(key));
       if (unsupported.length) throw new Error(`MCP server ${name} has unrepresented settings: ${unsupported.join(', ')}`);
       for (const key of ['exposure', 'toolExposure']) {
-        if (!isDeepStrictEqual(server[key], next.mcpServers[name][key])) throw new Error(`Unrepresented MCP ${name}.${key} difference; preserve it and reconcile manually`);
+        if (!isDeepStrictEqual(server[key], next.mcpServers[name][key])) accessChanges.push(`${name}.${key}: ${shown(server[key])} → ${shown(next.mcpServers[name][key])}`);
       }
     }
   }
@@ -497,6 +503,7 @@ export function planNativeReapply(root, path) {
   plan.restart = restartNeeded(root, plan.writes);
   plan.preview.files = [{ path, action: before === null ? 'create' : 'write', diff: diffLines(before ?? '', desired) }];
   plan.preview.reapply = { path, note: 'Reapply only this native configuration; the design and other native files stay unchanged.' };
+  if (accessChanges.length) plan.preview.reapply.accessChanges = { note: 'Restores the designed MCP tool access.', changes: accessChanges };
   plan.preview.restart = plan.restart ? 'Takes effect after restarting Pi: packages change.' : 'Takes effect after /reload; no restart needed.';
   return plan;
 }
@@ -981,6 +988,7 @@ export function approvalSummary(root, plan) {
   for (const step of surface.setupCommands ?? []) lines.push(`Adds setup step: ${step.description ?? step.install ?? 'a check'}.`);
   for (const skill of preview.skills?.install ?? []) lines.push(`Installs skill ${skill.name} from ${skill.source}.`);
   for (const skill of preview.skills?.remove ?? []) lines.push(`Removes skill ${skill}.`);
+  for (const change of plan.preview.reapply?.accessChanges?.changes ?? []) lines.push(`Restores MCP access ${change}.`);
   if (lines.length === 1) lines.push('No tools, commands, MCP servers, packages or skills change.');
   if (preview.rebuilt) lines.push('Also rebuilds files this Faur version generates differently.');
   if (preview.restart) lines.push(preview.restart);
