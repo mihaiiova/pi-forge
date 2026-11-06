@@ -126,6 +126,22 @@ function nativeUnrepresented(root, model, settings, mcpJson) {
   return result;
 }
 
+/**
+ * Native JSON a developer edited by hand can be malformed (a trailing comma
+ * after deleting an entry). Name the file and position instead of surfacing a
+ * bare parser error from deep inside a plan; nothing has been changed.
+ */
+const NATIVE_JSON = ['.pi/settings.json', '.pi/mcp.json', '.pi/commands.json'];
+function assertNativeJson(root) {
+  for (const path of NATIVE_JSON) {
+    const text = readText(root, path);
+    if (text === null) continue;
+    try { JSON.parse(text); } catch (error) {
+      throw new Error(`${path} is not valid JSON (${error.message}). Fix its syntax first; Faur changed nothing.`);
+    }
+  }
+}
+
 /** Report native-file differences without changing or exposing their contents. */
 export function nativeDrift(root, model) {
   const paths = managedPaths(model);
@@ -173,6 +189,7 @@ export function nativeDrift(root, model) {
 }
 
 export function inspectProject(root) {
+  assertNativeJson(root);
   const text = readText(root, '.pi/system.yaml');
   const model = parsedModel(text);
   const settings = readJson(root, '.pi/settings.json');
@@ -197,6 +214,7 @@ export function inspectProject(root) {
 /** Adopt the Pi settings fields represented by the orchestrator declaration.
  * Refuse when adoption would rewrite the selected file or another edited file. */
 export function planSettingsAdoption(root) {
+  assertNativeJson(root);
   const settings = readJson(root, '.pi/settings.json');
   const oldModel = parsedModel(readText(root, '.pi/system.yaml'));
   const imported = importSystem(settings, {}).system.orchestrator;
@@ -223,6 +241,7 @@ export function planSettingsAdoption(root) {
 
 /** Reconcile modeled settings field-by-field; unknown settings are retained. */
 export function planSettingsReconciliation(root, adopt) {
+  assertNativeJson(root);
   const allowed = ['model', 'thinking', 'tools'];
   if (!Array.isArray(adopt) || new Set(adopt).size !== adopt.length || adopt.some(field => !allowed.includes(field))) throw new Error('Settings reconciliation accepts model, thinking and tools only');
   const path = '.pi/settings.json';
@@ -260,6 +279,7 @@ export function planSettingsReconciliation(root, adopt) {
 
 /** Adopt the authored portion of a Faur-marked lead prompt. */
 export function planPromptAdoption(root) {
+  assertNativeJson(root);
   const path = '.pi/APPEND_SYSTEM.md';
   const text = readText(root, path);
   const match = text?.match(/^<!-- faur:generated v1 sha256=[0-9a-f]{64} -->\n([\s\S]*?)\n<!-- faur:derived v1 begin: generated from system\.yaml; edits here are reported, not kept -->\n/);
@@ -315,6 +335,7 @@ function planUnmarkedAgentAdoption(root, path, name, oldModel, text) {
 
 /** Adopt a specialist's prompt and modeled frontmatter when safely representable. */
 export function planAgentAdoption(root, path) {
+  assertNativeJson(root);
   const match = /^\.pi\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path);
   if (!match) throw new Error('Invalid agent path');
   const oldModel = parsedModel(readText(root, '.pi/system.yaml'));
@@ -390,6 +411,7 @@ export function planAgentAdoption(root, path) {
 
 /** Adopt representable connection or command edits without replacing the native file. */
 export function planIntegrationAdoption(root, path) {
+  assertNativeJson(root);
   if (!['.pi/mcp.json', '.pi/commands.json'].includes(path)) throw new Error('Unsupported integration file');
   const text = readText(root, path);
   if (text === null) throw new Error(`${path} is missing; resolve the deletion explicitly`);
@@ -439,6 +461,7 @@ const MCP_REAPPLY = Symbol('mcp reapply');
 
 /** Reapply a single native file while preserving unrepresented content. */
 export function planNativeReapply(root, path) {
+  assertNativeJson(root);
   const agentName = /^\.pi\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path)?.[1];
   const prompt = path === '.pi/APPEND_SYSTEM.md';
   if (!prompt && !agentName && !['.pi/settings.json', '.pi/mcp.json', '.pi/commands.json'].includes(path)) throw new Error(`Reapply is not supported for ${path}; preserve the file and reconcile it explicitly`);
@@ -510,6 +533,7 @@ export function planNativeReapply(root, path) {
 
 /** Reconcile a marked specialist's modeled prompt and frontmatter fields. */
 export function planAgentReconciliation(root, path, adopt) {
+  assertNativeJson(root);
   const match = /^\.pi\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path);
   const allowed = ['description', 'model', 'thinking', 'prompt'];
   if (!match || !Array.isArray(adopt) || new Set(adopt).size !== adopt.length || adopt.some(field => !allowed.includes(field))) throw new Error('Invalid specialist reconciliation choices');
@@ -551,6 +575,7 @@ export function planAgentReconciliation(root, path, adopt) {
 
 /** Reconcile selected integration fields; all other modeled fields are reapplied. */
 export function planIntegrationReconciliation(root, path, adopt) {
+  assertNativeJson(root);
   if (!['.pi/mcp.json', '.pi/commands.json'].includes(path)) throw new Error('Unsupported integration file');
   if (!Array.isArray(adopt) || new Set(adopt).size !== adopt.length || adopt.some(field => !/^[a-z0-9]+(?:-[a-z0-9]+)*\.[A-Za-z][A-Za-z0-9_]*$/.test(field))) throw new Error('Use unique integration-name.field choices');
   const native = readJson(root, path);
@@ -598,6 +623,7 @@ export function restartNeeded(root, writes) {
   return packages(readText(root, '.pi/settings.json')) !== packages(writes['.pi/settings.json']);
 }
 export function planChange(root, operations, options = {}) {
+  assertNativeJson(root);
   const oldText = readText(root, '.pi/system.yaml');
   // Legacy schemas can only enter through an explicit, separately previewed replacement.
   const oldModel = parsedModel(oldText);
@@ -827,6 +853,8 @@ export function planChange(root, operations, options = {}) {
       if (index >= 0) files.splice(index, 1);
     }
   }
+  const removed = kind => new Set((oldModel.integrations?.[kind] ?? []).map(entry => entry.name).filter(name => !(model.integrations?.[kind] ?? []).some(entry => entry.name === name)));
+  const removedMcp = removed('mcp'), removedCli = removed('cli');
   // A later unrelated revision must not silently discard native-only fields
   // preserved by reconciliation. The selected merge above is the explicit
   // path for preserving such data while changing modeled fields.
@@ -842,7 +870,9 @@ export function planChange(root, operations, options = {}) {
       for (const [name, server] of Object.entries(native.mcpServers ?? {})) {
         const target = desired.mcpServers?.[name];
         if (!target) {
-          if (!isDeepStrictEqual(server, oldNative.mcpServers?.[name])) throw new Error(`Native MCP server ${name} would be lost; reconcile ${selected} explicitly`);
+          // Removing a declared server is the approved intent; its native
+          // edits go with it, and the previewed diff shows exactly what.
+          if (!removedMcp.has(name) && !isDeepStrictEqual(server, oldNative.mcpServers?.[name])) throw new Error(`Native MCP server ${name} would be lost; reconcile ${selected} explicitly`);
           continue;
         }
         for (const key of ['exposure', 'toolExposure']) {
@@ -863,7 +893,7 @@ export function planChange(root, operations, options = {}) {
         const target = desired.commands.find(item => item.name === command?.name);
         if (!target) {
           const oldNative = JSON.parse(oldScaffolds.find(file => file.path === selected)?.content ?? '{}');
-          if (!isDeepStrictEqual(command, oldNative.commands?.find(item => item.name === command?.name))) throw new Error(`Native command ${command?.name ?? '(unnamed)'} would be lost; reconcile ${selected} explicitly`);
+          if (!removedCli.has(command?.name) && !isDeepStrictEqual(command, oldNative.commands?.find(item => item.name === command?.name))) throw new Error(`Native command ${command?.name ?? '(unnamed)'} would be lost; reconcile ${selected} explicitly`);
           continue;
         }
         for (const key of Object.keys(command)) if (!['name', 'description', 'command', 'args', 'approve', 'lead'].includes(key) && !Object.hasOwn(target, key)) throw new Error(`Native command field ${command.name}.${key} would be lost; reconcile ${selected} explicitly`);

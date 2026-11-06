@@ -951,6 +951,45 @@ test('ordinary revisions refuse a manual deferred override of a modeled hidden M
   assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /docs\.toolExposure/);
   assert.equal(readJson(root, path).mcpServers.docs.toolExposure.secret, 'deferred');
 });
+test('malformed native JSON is named, and nothing is planned or changed', async t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const broken = readFileSync(join(root, path), 'utf8').trimEnd().slice(0, -1) + ',\n}\n';
+  writeFileSync(join(root, path), broken);
+  const named = /\.pi\/mcp\.json is not valid JSON .*Faur changed nothing/;
+  assert.throws(() => planNativeReapply(root, path), named);
+  assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), named);
+  assert.throws(() => inspectProject(root), named);
+  const mock = adapter();
+  mock.approve();
+  await registerMaintenance(mock.pi, mock.Type, root)(`drift reapply ${path}`, mock.ctx);
+  assert.ok(mock.notices.some(([message]) => named.test(message)), JSON.stringify(mock.notices));
+  assert.equal(readFileSync(join(root, path), 'utf8'), broken);
+});
+
+test('an approved removal takes a drifted native server or command with it', t => {
+  for (const [path, edit, op] of [
+    ['.pi/mcp.json', value => { delete value.mcpServers.docs.exposure; }, { op: 'remove', target: 'mcp', name: 'docs' }],
+    ['.pi/commands.json', value => { value.commands[0].timeout = 5; }, { op: 'remove', target: 'cli', name: 'hello' }],
+  ]) {
+    // A second server keeps .pi/mcp.json in place, as in a real project.
+    const design = structuredClone(pinnedModel);
+    design.integrations.mcp.push({ name: 'other', config: { url: 'http://localhost:3003/mcp' } });
+    design.integrations.cli.push({ name: 'other', command: 'echo', args: ['other'], approve: false });
+    design.orchestrator.tools = [...design.orchestrator.tools, 'cli:other'];
+    const root = project(t, design);
+    const value = readJson(root, path);
+    edit(value);
+    writeFileSync(join(root, path), json(value));
+    const lead = { op: 'set', target: 'orchestrator', value: { ...design.orchestrator, tools: design.orchestrator.tools.filter(tool => tool !== (op.target === 'cli' ? 'cli:hello' : 'mcp')) } };
+    assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /Native/, 'unrelated changes still refuse');
+    const plan = planChange(root, [op, lead]);
+    applyChange(root, plan, true);
+    const after = readText(root, path);
+    assert.ok(after === null || !after.includes(op.target === 'cli' ? '"hello"' : '"docs"'), after);
+  }
+});
+
 
 test('ordinary revisions allow explicit modeled MCP policy changes without native drift', t => {
   const root = project(t, pinnedModel);
