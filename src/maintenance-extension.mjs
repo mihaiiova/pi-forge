@@ -24,6 +24,7 @@ import { unmetSetup, installSetup } from './setup.mjs';
 const PROVIDER_ENV = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', openrouter: 'OPENROUTER_API_KEY', google: 'GEMINI_API_KEY' };
 
 /** The footer status while /faur maintains a project. */
+const MODE_ENTRY = 'faur-mode';
 export const MODE_STATUS = "In /faur: your agent's tools are off · reply to continue · /faur exit to leave";
 
 export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, Text } = {}) {
@@ -143,7 +144,13 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, T
       finally { planning = false; }
     },
   };
+  // /faur mode lives in this extension instance, and /reload replaces the
+  // instance. Record entering and leaving in the session so a reload can
+  // restore the mode (and its tool block) instead of silently dropping it
+  // with the agent's tools half restored.
+  const record = active => pi.appendEntry?.(MODE_ENTRY, active ? { active: true, savedTools } : { active: false });
   const hide = () => {
+    if (armed) record(false);
     armed = false;
     pending = null;
     proposedThisTurn = false;
@@ -161,6 +168,17 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, T
   const showMode = (ctx) => {
     statusUi = ctx.ui;
     ctx.ui?.setStatus?.('faur', `\x1b[30;43m ${MODE_STATUS} \x1b[0m`);
+  };
+  /** Enter /faur mode: only the planner (and an active question dialog) stays. */
+  const arm = (ctx, tools) => {
+    armed = true;
+    savedTools = tools;
+    pi.registerTool({ ...tool, exposure: 'model-only' });
+    // Only retain the question dialog if it was already active. Like any
+    // installed extension, its implementation runs with the user's authority.
+    pi.setActiveTools(['faur_plan', ...savedTools.filter(n => n === 'ask_user_question')]);
+    record(true);
+    showMode(ctx);
   };
   /** Stay in /faur: the person's next plain message continues the conversation. */
   const stay = (ctx) => {
@@ -226,14 +244,24 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, T
   });
   // A preview file belongs to one open dialog; drop one a killed session left.
   const dropPreview = () => { try { rmSync(join(root, PREVIEW_FILE), { force: true }); } catch { /* best effort */ } };
-  pi.on('session_start', (_event, ctx) => {
+  // The extension registers this from its own session_start handler, where a
+  // handler added now would miss the current event: it calls start() itself.
+  const start = (event, ctx) => {
     dropPreview();
+    const mode = (ctx.sessionManager?.getBranch?.() ?? []).filter(entry => entry.type === 'custom' && entry.customType === MODE_ENTRY).at(-1)?.data;
+    if (mode?.active && event?.reason === 'reload' && Array.isArray(mode.savedTools)) {
+      arm(ctx, mode.savedTools);
+      tell(ctx, 'Still in /faur after /reload; your agent\'s tools stay off. A proposal waiting for approval was dropped: ask for it again. /faur exit leaves.', 'warning');
+    } else if (mode?.active) {
+      // A restart or another session starts with the agent's own tools.
+      pi.appendEntry?.(MODE_ENTRY, { active: false });
+    }
     // Report specialists that would start without their tools or skills.
     try {
       const check = launchCheck(root, parsedModel(readText(root, '.pi/system.yaml')), { registeredTools: pi.getAllTools?.().map(t => t.name) });
       if (!check.ok) tell(ctx, `Some agents would start without what they need:\n${check.problems.map(p => `- ${p.agent}: ${p.problem}`).join('\n')}`, 'warning');
     } catch { /* an invalid model is reported by the commands that use it */ }
-  });
+  };
   pi.on('session_shutdown', () => { armed = false; pending = null; dropPreview(); });
   // Nothing here runs at agent run time: declared commands come from
   // pi-commands is pinned when declared commands are used.
@@ -321,18 +349,12 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, T
     const drift = nativeDrift(root, parsedModel(readText(root, '.pi/system.yaml')));
     if (drift.length) tell(ctx, `Native files differ from the recorded design: ${drift.map(item => `${item.path} (${item.reason})`).join(', ')}. Differences may also be due to generator-version changes. For supported paths, use /faur drift adopt <path>, /faur drift reapply <path>, or /faur drift reconcile <path> adopt=<fields> to preview and approve a choice. Only supported fields can be reconciled; unsafe or unrepresentable changes are refused and preserved.`, 'warning');
     review = !request || (!/\b(?:apply|implement|make|change|update|add|remove|fix|create)\b/i.test(request) && (/\b(?:review|list|suggest|suggestions|recommendations)\b/i.test(request) || /how (?:can|could) we improve/i.test(request))) || /\b(?:review[- ]only|read[- ]only|do not (?:make|apply|implement)|don't (?:make|apply|implement))\b/i.test(request);
-    armed = true;
-    savedTools = pi.getActiveTools().filter(n => n !== 'faur_plan');
-    pi.registerTool({ ...tool, exposure: 'model-only' });
-    // Only retain the question dialog if it was already active. Like any
-    // installed extension, its implementation runs with the user's authority.
-    pi.setActiveTools(['faur_plan', ...savedTools.filter(n => n === 'ask_user_question')]);
+    arm(ctx, pi.getActiveTools().filter(n => n !== 'faur_plan'));
     lastRequest = request;
-    showMode(ctx);
     const workflow = readFileSync(new URL('../skills/faur/SKILL.md', import.meta.url), 'utf8').split('## Project maintenance workflow\n')[1];
     pi.sendUserMessage(`${workflow}\n\nInitial response: ${review ? 'REVIEW ONLY; do not propose yet' : 'CHANGE PROPOSAL'}.\nUser request: ${request || 'review'}\n\nUse faur_plan inspect first. The command grants no Bash/write privileges. After an initial review, the person's replies can request a proposal in this same conversation; do not require another /faur request. The conversation continues until they apply or discard a proposal, or leave with /faur exit.`);
   };
-  return async (args, ctx) => {
+  const command = async (args, ctx) => {
     try {
       const request = (args ?? '').trim();
       if (request === 'exit') {
@@ -417,4 +439,6 @@ export function registerMaintenance(pi, Type, root, { fetcher = fetchDocument, T
       await revise(ctx, request);
     } catch (error) { hide(); tell(ctx, error.message, 'error'); }
   };
+  command.start = start;
+  return command;
 }

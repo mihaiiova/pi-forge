@@ -9,10 +9,14 @@ export default function (pi: ExtensionAPI) {
   // Inside a trusted generated project, /faur maintains it; Faur adds nothing
   // to the agents' own run (subagent processes load nothing from here).
   let project: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
-  pi.on('session_start', (_event, ctx) => {
+  pi.on('session_start', (event, ctx) => {
     project = undefined;
     if (!ctx.isProjectTrusted() || !existsSync(join(ctx.cwd, '.pi/system.yaml'))) return;
-    if (process.env.PI_SUBAGENT_CHILD !== '1') project = registerMaintenance(pi, Type, ctx.cwd, { Text });
+    if (process.env.PI_SUBAGENT_CHILD === '1') return;
+    const maintenance = registerMaintenance(pi, Type, ctx.cwd, { Text });
+    project = maintenance;
+    // Restores /faur mode after /reload and reports agents missing tools.
+    maintenance.start(event, ctx);
   });
   let endDesignTurn: (() => void) | undefined;
   pi.on('agent_end', () => { endDesignTurn?.(); endDesignTurn = undefined; });

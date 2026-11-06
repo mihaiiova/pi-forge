@@ -246,7 +246,7 @@ Inside it, `/faur` is the one command:
 
 | Command | What it does |
 |---|---|
-| `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Faur prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. Without a request, or with `review`, the first answer is a read-only review. |
+| `/faur [request]` | Revise the agent, for example `/faur add a research specialist` or `/faur use a cheaper model for the writer`. When the turn ends with a proposal, Faur prompts you to **discuss** (the default), **apply** or **discard** it. Plain replies continue the conversation until you apply or discard, or leave with `/faur exit`. The mode survives `/reload` (a proposal waiting for approval is dropped); restarting Pi leaves it. Without a request, or with `review`, the first answer is a read-only review. |
 | `/faur check` | Validate `system.yaml`, compare the generated files with it, and run the launch check. |
 | `/faur status` | Agents and models, capabilities, and whether the project still pins Faur from an earlier release. |
 | `/faur sync` | Preview rebuilding the project with this Faur and apply only after confirmation. |

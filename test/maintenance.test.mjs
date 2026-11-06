@@ -56,7 +56,7 @@ function snapshot(root) {
     return [p.slice(root.length + 1), readFileSync(p, 'utf8')];
   }));
 }
-function adapter(initialTools = ['read']) {
+function adapter(initialTools = ['read'], entries = []) {
   const events = {}, tools = {}, commands = {}, messages = [], notices = [], sent = [];
   let active = [...initialTools];
   let confirm = false;
@@ -64,6 +64,7 @@ function adapter(initialTools = ['read']) {
     registerTool: t => { tools[t.name] = t; }, registerCommand: (n, c) => { commands[n] = c; },
     on: (n, cb) => { const prev = events[n]; events[n] = prev ? (...a) => { const r = prev(...a); return cb(...a) ?? r; } : cb; }, getActiveTools: () => [...active], setActiveTools: t => { active = t; },
     sendUserMessage: (m, options) => { messages.push(m); sent.push(options); },
+    appendEntry: (customType, data) => { entries.push({ type: 'custom', customType, data }); },
   };
   const Type = Object.fromEntries(['Object', 'Union', 'Literal', 'Optional', 'String', 'Number', 'Array', 'Record'].map(k => [k, v => v]));
   const dialogs = [], prompts = [], choices = [], status = {}, widgets = {}, editors = [];
@@ -84,9 +85,37 @@ function adapter(initialTools = ['read']) {
     editor: async (title, text) => { editors.push({ title, text }); full = text; },
     setStatus: (key, text) => { status[key] = text; },
     setWidget: (key, lines) => { widgets[key] = lines; },
-  }, sessionManager: { getBranch: () => [] }, modelRegistry: { getAvailable: () => [] } };
-  return { pi, Type, ctx, events, tools, commands, messages, notices, sent, dialogs, editors, prompts, status, widgets, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
+  }, sessionManager: { getBranch: () => entries }, modelRegistry: { getAvailable: () => [] } };
+  return { pi, Type, ctx, events, tools, commands, messages, notices, sent, entries, active: () => active, dialogs, editors, prompts, status, widgets, choose: (...c) => choices.push(...c), approve: () => { confirm = true; choices.push('Apply'); }, endTurn: (c = ctx) => events.agent_end({}, c) };
 }
+test('/faur mode survives /reload and ends with a restart', async t => {
+  const root = project(t);
+  const operational = ['read', 'write', 'cli_hello', 'ask_user_question'];
+  const before = adapter(operational);
+  await registerMaintenance(before.pi, before.Type, root)('add a reviewer', before.ctx);
+  assert.deepEqual(before.active(), ['faur_plan', 'ask_user_question']);
+  // /reload: a new extension instance whose tools Pi re-registered as active.
+  const reloaded = adapter(['ask_user_question', 'cli_hello', 'mcp__docs__search'], before.entries);
+  const command = registerMaintenance(reloaded.pi, reloaded.Type, root);
+  command.start({ reason: 'reload' }, reloaded.ctx);
+  assert.deepEqual(reloaded.active(), ['faur_plan', 'ask_user_question']);
+  assert.equal(reloaded.tools.faur_plan.exposure, 'model-only');
+  assert.match(reloaded.status.faur, /In \/faur/);
+  assert.ok(reloaded.notices.some(([message]) => /Still in \/faur after \/reload/.test(message)));
+  assert.equal(reloaded.events.tool_call({ toolName: 'cli_hello' })?.block, true, 'the agent\'s tools stay blocked');
+  await command('exit', reloaded.ctx);
+  assert.deepEqual(reloaded.active(), operational, 'leaving restores the tools saved on entry');
+  assert.equal(before.entries.at(-1).data.active, false);
+  // A restart starts with the agent's own tools and closes the stale record.
+  const stale = adapter(operational);
+  await registerMaintenance(stale.pi, stale.Type, root)('add a reviewer', stale.ctx);
+  const restarted = adapter(operational, stale.entries);
+  registerMaintenance(restarted.pi, restarted.Type, root).start({ reason: 'startup' }, restarted.ctx);
+  assert.deepEqual(restarted.active(), operational);
+  assert.equal(restarted.events.tool_call({ toolName: 'cli_hello' }), undefined);
+  assert.equal(stale.entries.at(-1).data.active, false);
+});
+
 test('maintenance tool renders a compact call without changing its result', async t => {
   const root = project(t);
   const mock = adapter();
@@ -922,35 +951,6 @@ test('explicit MCP reapply restores designed exposure and codemode after approva
   });
 });
 
-test('explicit MCP reapply still refuses unsupported server content and stale previews', t => {
-  const root = project(t, pinnedModel);
-  const path = '.pi/mcp.json';
-  const value = readJson(root, path);
-  value.mcpServers.docs.url = 'http://localhost:4001/mcp';
-  value.mcpServers.docs.futureOption = { preserve: true };
-  writeFileSync(join(root, path), json(value));
-  assert.throws(() => planNativeReapply(root, path), /unrepresented settings: futureOption/);
-  assert.deepEqual(readJson(root, path), value);
-  delete value.mcpServers.docs.futureOption;
-  writeFileSync(join(root, path), json(value));
-  const plan = planNativeReapply(root, path);
-  value.autoEnableCodemode = true;
-  writeFileSync(join(root, path), json(value));
-  assert.throws(() => applyChange(root, plan, true), /changed since preview/);
-  assert.deepEqual(readJson(root, path), value);
-});
-
-test('ordinary revisions refuse a manual deferred override of a modeled hidden MCP tool', t => {
-  const design = { ...pinnedModel, policies: { enforced: [{ mcp: 'docs', hide: ['secret'] }] } };
-  const root = project(t, design);
-  const path = '.pi/mcp.json';
-  const value = readJson(root, path);
-  assert.equal(value.mcpServers.docs.toolExposure.secret, 'hidden');
-  value.mcpServers.docs.toolExposure.secret = 'deferred';
-  writeFileSync(join(root, path), json(value));
-  assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /docs\.toolExposure/);
-  assert.equal(readJson(root, path).mcpServers.docs.toolExposure.secret, 'deferred');
-});
 test('malformed native JSON is named, and nothing is planned or changed', async t => {
   const root = project(t, pinnedModel);
   const path = '.pi/mcp.json';
@@ -990,6 +990,35 @@ test('an approved removal takes a drifted native server or command with it', t =
   }
 });
 
+test('explicit MCP reapply still refuses unsupported server content and stale previews', t => {
+  const root = project(t, pinnedModel);
+  const path = '.pi/mcp.json';
+  const value = readJson(root, path);
+  value.mcpServers.docs.url = 'http://localhost:4001/mcp';
+  value.mcpServers.docs.futureOption = { preserve: true };
+  writeFileSync(join(root, path), json(value));
+  assert.throws(() => planNativeReapply(root, path), /unrepresented settings: futureOption/);
+  assert.deepEqual(readJson(root, path), value);
+  delete value.mcpServers.docs.futureOption;
+  writeFileSync(join(root, path), json(value));
+  const plan = planNativeReapply(root, path);
+  value.autoEnableCodemode = true;
+  writeFileSync(join(root, path), json(value));
+  assert.throws(() => applyChange(root, plan, true), /changed since preview/);
+  assert.deepEqual(readJson(root, path), value);
+});
+
+test('ordinary revisions refuse a manual deferred override of a modeled hidden MCP tool', t => {
+  const design = { ...pinnedModel, policies: { enforced: [{ mcp: 'docs', hide: ['secret'] }] } };
+  const root = project(t, design);
+  const path = '.pi/mcp.json';
+  const value = readJson(root, path);
+  assert.equal(value.mcpServers.docs.toolExposure.secret, 'hidden');
+  value.mcpServers.docs.toolExposure.secret = 'deferred';
+  writeFileSync(join(root, path), json(value));
+  assert.throws(() => planChange(root, [{ op: 'assign', name: 'lead', model: 'fixture/small' }]), /docs\.toolExposure/);
+  assert.equal(readJson(root, path).mcpServers.docs.toolExposure.secret, 'deferred');
+});
 
 test('ordinary revisions allow explicit modeled MCP policy changes without native drift', t => {
   const root = project(t, pinnedModel);
@@ -1936,9 +1965,9 @@ test('approval previews show every changed line with short context, not whole fi
 test('a preview file left by a killed session is removed when the next one starts', t => {
   const root = project(t);
   const mock = adapter();
-  registerMaintenance(mock.pi, mock.Type, root);
+  const command = registerMaintenance(mock.pi, mock.Type, root);
   writeFileSync(join(root, PREVIEW_FILE), 'stale preview');
-  mock.events.session_start({}, mock.ctx);
+  command.start({}, mock.ctx);
   assert.equal(existsSync(join(root, PREVIEW_FILE)), false);
 });
 
